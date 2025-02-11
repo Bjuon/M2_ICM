@@ -88,18 +88,15 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-local = false; 
+local = true; 
 if local
-    % Mode local : chemins adaptés pour un environnement local
-    if isunix
-        startpath = "/home/user/pf-marche"; % Remplacez par le chemin local Unix
-    elseif ispc
-        startpath = "C:\local\pf-marche"; % Remplacez par le chemin local Windows
+    % Mode local 
+    startpath = "F:\Programing\M2\Data_ICM"; 
     end
 else
-    % Mode serveur : chemins réseau
+    % Mode serveur 
     if isunix
-        startpath = "/network/lustre/iss02/pf-marche";
+        startpath = "/network/lustre/iss/pf-marche";
         feature('DefaultCharacterSet', 'CP1252');
     elseif ispc
         startpath = "\\iss\pf-marche";
