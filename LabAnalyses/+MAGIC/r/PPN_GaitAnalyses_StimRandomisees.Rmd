@@ -1,0 +1,1252 @@
+---
+title: 'Gait reduction: PCA'
+output: html_document
+date: "2024-10-29"
+---
+
+Modifié de l'analyse PPN PostOp, elle meme deja modifie lourdement
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(here)
+
+library(kableExtra)
+library(tidyverse)
+library(magrittr)
+
+library(FactoMineR)
+library(factoextra)
+library(ggcorrplot)
+library(ggpubr)
+library(ggbeeswarm)
+library(patchwork)
+library(lmerTest)
+library(ggeffects)
+
+
+filename     = "C:/LustreSync/LAU Brian - 2024_GBMOV/Data/ResAPA_32Pat_forPCA.xlsx"
+beta_filename= "13-35Hz.RData"
+folder_ctl   = '//iss/pf-marche/02_protocoles_data/02_Protocoles_Data/GOGAIT/04_Traitement/02_Analyse_APA/MAT/SujetsSains'
+filepath_PPN = "//iss/pf-marche/02_protocoles_data/02_Protocoles_Data/MarcheReelle/00_notes/ResAPA_PPN.xlsx"
+
+source(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","Codes/", "utils.R"))
+source(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","Codes/", "utils_gait.R"))
+LoadLibraries()
+
+```
+
+
+```{r, echo = F}
+df_varkey = tribble(
+  ~renamed, ~original, ~units, ~description,
+  "APA-time", "t_APA", "sec", "APA duration",
+  "APA-ap", "APA_antpost", "", "",
+  "APA-ml", "APA_lateral", "", "",
+  "APA-push", "VZmin_APA", "", "",
+  "footoff-CoM-ap", "t_VyFO1", "", "",
+  "footoff-time", "Vy_F01", "", "",
+  "step-speed", "V_swing1", "", "",
+  "step-length", "Longeur_pas", "mm", "",
+  "step-width", "StepWidth", "mm", "",
+  "time-step1", "t_swing1", "sec", "",
+  "time-stance", "t_DA", "sec", "",
+  "time-step2", "t_swing2", "sec", "",
+  "time-cycle", "t_cycle_marche", "sec", "",
+  "time-cadence", "cadence", "Hz", "",
+  "CoMfall-max", "V2", "", "",
+  "CoMfall-strike", "V1", "", "",
+  "CoMfall-break", "Diff_V", "", "",
+  "CoP-speed-ap", "Vm", "", "",
+  "CoP-speed-time-ap", "t_Vm", "sec", "",
+  "CoP-speed-ml", "VML_absolute", "", ""
+)
+```
+
+## Quick look
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+
+df_ctl = data.frame()
+
+for (file in list.files(folder_ctl, pattern = '.xlsx', full.names = TRUE, recursive = TRUE)) {
+  if (grepl('~', file)) next
+  df_ctl = rbind(df_ctl, readxl::read_excel(file))
+}
+
+df <- read_gait_data(filename) %>%
+  select(-Session)
+
+df_PPN = read_gait_data(filepath_PPN) %>%
+  filter(Session %in% c("M5", "M7", "M9")) 
+
+df_PPN$GoNogo = as.character(df_PPN$GoNogo)
+df_PPN$GoNogo[df_PPN$Subject  == "CHADO01" & df_PPN$Session == 'M5'] = "CnF" 
+df_PPN$GoNogo[df_PPN$Subject  == "CHADO01" & df_PPN$Session == 'M7'] = "SHAM"  
+df_PPN$GoNogo[df_PPN$Subject  == "CHADO01" & df_PPN$Session == 'M9'] = "PPN"
+df_PPN$GoNogo[df_PPN$Subject  == "SOUDA02" & df_PPN$Session == 'M5'] = "PPN" 
+df_PPN$GoNogo[df_PPN$Subject  == "SOUDA02" & df_PPN$Session == 'M7'] = "SHAM"  
+df_PPN$GoNogo[df_PPN$Subject  == "SOUDA02" & df_PPN$Session == 'M9'] = "CnF"
+df_PPN$GoNogo[df_PPN$Subject  == "LESNE03" & df_PPN$Session == 'M5'] = "SHAM"  
+df_PPN$GoNogo[df_PPN$Subject  == "LESNE03" & df_PPN$Session == 'M7'] = "CnF" 
+df_PPN$GoNogo[df_PPN$Subject  == "LESNE03" & df_PPN$Session == 'M9'] = "PPN" 
+df_PPN$GoNogo[df_PPN$Subject  == "GILNA05" & df_PPN$Session == 'M5'] = "CnF" 
+df_PPN$GoNogo[df_PPN$Subject  == "GILNA05" & df_PPN$Session == 'M7'] = "PPN" 
+df_PPN$GoNogo[df_PPN$Subject  == "GILNA05" & df_PPN$Session == 'M9'] = "SHAM"
+df_PPN$GoNogo[df_PPN$Subject  == "DETMI07" & df_PPN$Session == 'M5'] = "SHAM"  
+df_PPN$GoNogo[df_PPN$Subject  == "DETMI07" & df_PPN$Session == 'M7'] = "CnF" 
+df_PPN$GoNogo[df_PPN$Subject  == "DETMI07" & df_PPN$Session == 'M9'] = "PPN"
+df_PPN$GoNogo[df_PPN$Subject  == "AVALA08" & df_PPN$Session == 'M5'] = "PPN" 
+df_PPN$GoNogo[df_PPN$Subject  == "AVALA08" & df_PPN$Session == 'M7'] = "CnF" 
+df_PPN$GoNogo[df_PPN$Subject  == "AVALA08" & df_PPN$Session == 'M9'] = "SHAM"
+df_PPN$GoNogo = as.factor(df_PPN$GoNogo)
+
+df_PPN$is_FOG[is.na(df_PPN$is_FOG)] = 99
+if (nrow(df_PPN) == sum(is.na(df_PPN$Pat_Foggeur))) df_PPN$Pat_Foggeur = as.factor(df_PPN$GoNogo)
+df_PPN$Meta_FOG[is.na(df_PPN$Meta_FOG)] = 99
+
+df_PPN %<>%
+#  filter(Subject != "GILNA05") %>%
+  select(-Session)
+
+qualvar_names <- df %>% dplyr::select(Group:TrialName) %>% names()
+quantvar_names <- df %>% dplyr::select(-all_of(qualvar_names)) %>% names()
+
+#df %<>% filter(!(Subject == "FRa")) # No LFP data (Rouen patient with different recording)
+#df %<>% mutate(VML_absolue = log(VML_absolue))
+```
+
+
+```{r, echo = FALSE}
+df_cor <- df_PPN %>% # filter(!is_FOG) %>%
+  dplyr::select(-all_of(qualvar_names)) %>%
+  tidyr::drop_na()
+cor.mat <- round(cor(df_cor), 2)
+p <- ggcorrplot(cor.mat, hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") +
+  theme_pubr(legend = "right") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "corrplot1.png"), plot = p, width = 35, height = 30, units = "cm")
+```
+
+Take a quick look at the correlation matrix of the gait variables we can consider (FOG trials dropped, complete cases only). We can immediately identify some variables we can eliminate due to near or perfect collinearity (t_V1, t_V2, t_VyFO1, t_cycle_marche).
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "corrplot1.png"))
+```
+
+Take a quick look at the distribution of each gait variable, split by levodopa condition, freezer status, and FOG presence. The variables Freinage and t_freinage seem problematic, either due to extremely heavy tails or outliers. 
+
+Vm and Vy_FO1 deserve closer attention. Note the bimodality in OFF.F.TRUE, but especially that Vy_FO1 seems to yield negative values on some trials? Should this even be possible?
+
+We can also see that there is an odd bimodality in the variables t_V1:t_VyFO1.
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp <- df_PPN %>% 
+  tidyr::drop_na() %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG))
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p <- ggplot(df_temp, aes(Factor, value, fill = Pat_Foggeur)) +
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75))  +
+  facet_wrap(~name, scales = "free", ncol = 7) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", 'quantvar_violin1.png'), p, width = 35, height = 25, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "quantvar_violin1.png"))
+```
+
+The bimodality apppears to be Group-dependent, possibly due to measuring a temporal variable from a different reference time. We'll deal with this below by group-mean subtraction.
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp <- df_PPN %>% 
+  tidyr::drop_na() %>%
+  group_by(Group, Subject, Pat_Foggeur, Condition, is_FOG) %>%
+  mutate(n = n()) %>%
+  summarise(across(t_APA:n, ~mean(.x, na.rm = T))) %>%
+  mutate(Factor = interaction(Pat_Foggeur, Condition, is_FOG))
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p <- ggplot(df_temp, aes(Factor, value, group = Subject, color = Subject)) +  
+  geom_beeswarm(aes(size = n), alpha = 0.7) +
+  geom_line() +
+  facet_wrap(~name, scales = "free", ncol = 7) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", 'quantvar_groupXsubject.png'), width = 35, height = 25, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "quantvar_groupXsubject.png"))
+```
+
+```{r}
+df_ctl %<>% as_tibble() %>%
+  mutate(Group = "C") %>%
+  mutate(Pat_Foggeur = "SS") %>%
+  mutate(is_FOG = FALSE) %>%
+  mutate(Condition = "Sain") %>%
+  mutate(GoNogo = "Sain") %>%
+  mutate(Meta_FOG = 3) %>%
+  mutate(Subject = as.character(ifelse(!grepl('GBMOV',TrialName),
+                                       str_extract(TrialName, "(?<=GOGAIT_T[123]_)(.*?)(?=_O)"),
+                                       str_extract(TrialName, "(?<=_20[012][0123456789]_[01][0123456789]_[0123][0123456789]_)(.*?)(?=_GBMOV_T)")))) %>%
+  mutate(Subject2 = ifelse(nchar(Subject) == 3,
+                           paste0(substr(Subject,1,2), tolower(substr(Subject,3,3))),
+                           paste0(substr(Subject,1,2), tolower(substr(Subject,4,4))))) %>%
+  select(Group, Subject, Subject2, Pat_Foggeur, Condition, TrialNum, GoNogo, Cote, is_FOG, Meta_FOG, TrialName, t_APA, APA_antpost, APA_lateral, StepWidth, t_swing1, t_DA, t_swing2, Longueur_pas, V_swing1, Vy_FO1, Vm, t_Vm, VML_absolue, Cadence, VZmin_APA, V2, Diff_V) %>%
+  drop_na()
+ 
+```
+
+## Working variables
+Let's drop some of the problematic or highly correlated variables.
+```{r, echo=T}
+
+df %<>% dplyr::select(-Freinage, -t_chute, -t_freinage, -t_V1, -t_V2, -t_VyFO1, -t_cycle_marche, -V1)
+df_PPN %<>% dplyr::select(-Freinage, -t_chute, -t_freinage, -t_V1, -t_V2, -t_VyFO1, -t_cycle_marche, -V1)
+
+# Update names
+qualvar_names <- df %>% dplyr::select(Group:TrialName) %>% names()
+quantvar_names <- df %>% dplyr::select(-all_of(qualvar_names)) %>% names()
+```
+
+## Missing data
+
+There is missing data, almost entirely APA variables, which constitutes about 150 trials in total.
+```{r, echo = F, out.width = '100%', message = FALSE, warning = FALSE}
+df %<>% tidyr::drop_na()
+df_clean = df_PPN %>% tidyr::drop_na()
+df_PPN = df_clean
+df_missing <- df_PPN %>% dplyr::anti_join(df_clean)
+
+visdat::vis_dat(df_missing)
+```
+
+The missing data comes from the following subjects. From the table, we can see that most of the subjects have a decent number of trials with complete measurements, and we don't lose too many FOG trials. Should eventually go back and fix these trials (as MLW suspects the APAs can be determined using both AP and ML components).
+```{r, echo = F, out.width = '100%', message = FALSE, warning = FALSE}
+df_temp <- df_missing %>% 
+  group_by(Group, Pat_Foggeur, Subject, Condition, is_FOG) %>% 
+  summarise(n_missing = n(), .groups = "drop")
+
+df_temp2 <- df_clean %>% 
+  group_by(Group, Pat_Foggeur, Subject, Condition, is_FOG) %>% 
+  summarise(n_complete = n(), .groups = "drop")
+
+df_temp %<>% left_join(df_temp2)
+
+df_temp %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                full_width = F, position = "center", font_size = 10) %>%
+  scroll_box(width = "100%", height = "200px")
+```
+
+## Imputation
+So for the moment, I will simply drop trials with missing data.
+```{r, echo = T}
+
+nrow(df)
+```
+
+## Group normalization
+Let's adjust the remaining temporal variable that differs between groups.
+```{r}
+# extract the group-specific means
+df_temp <- df %>% 
+  group_by(Group) %>%
+  summarise(across(c("t_Vm"), ~mean(.x, na.rm = T))) %>%
+  ungroup()
+
+df_ctl %<>% mutate(t_Vm = t_Vm - df_temp$t_Vm[df_temp$Group == "M"])
+df_PPN %<>% mutate(t_Vm = t_Vm - df_temp$t_Vm[df_temp$Group == "A"])
+
+df %<>%
+  group_by(Group) %>%
+  mutate(across(c("t_Vm"), ~scale(.x, scale = F))) %>%
+  #mutate(across(quantvar_names, ~scale(.x, scale = F))) %>%
+  ungroup()
+
+```
+
+Have a look at the violin plots and subject-specific averages,
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp = rbind(df, df_PPN, df_ctl)
+df_temp %<>% 
+  tidyr::drop_na() %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG)) %>%
+  mutate(Factor = forcats::fct_relevel(Factor, c("Sain.SS.FALSE", "OFF.NF.FALSE", "ON.NF.FALSE", "OFF.F.FALSE", "ON.F.FALSE", "OFF.F.TRUE", "ON.F.TRUE", "OFF.CnF.99", "ON.CnF.99", "OFF.PPN.99", "ON.PPN.99", "OFF.SHAM.99", "ON.SHAM.99")))
+
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p <- ggplot(df_temp, aes(Factor, value, fill = Condition)) +
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75))  +
+  facet_wrap(~name, scales = "free", ncol = 6) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", 'quantvar_violin_clean.png'), p, width = 55, height = 35, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "quantvar_violin_clean.png"))
+```
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp = rbind(df, df_ctl, df_PPN)
+df_temp %<>% 
+  group_by(Group, Subject, Pat_Foggeur, Condition, is_FOG) %>%
+  mutate(n = n()) %>%
+  summarise(across(c(quantvar_names, "n"), ~mean(.x, na.rm = T))) %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG)) %>%
+  mutate(Factor = forcats::fct_relevel(Factor, c("Sain.SS.FALSE", "OFF.NF.FALSE", "ON.NF.FALSE", "OFF.F.FALSE", "ON.F.FALSE", "OFF.F.TRUE", "ON.F.TRUE", "OFF.CnF.99", "ON.CnF.99", "OFF.PPN.99", "ON.PPN.99", "OFF.SHAM.99", "ON.SHAM.99")))
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p <- ggplot(df_temp, aes(Factor, value, group = Subject, color = Group)) +  
+  geom_beeswarm(aes(size = n), alpha = 0.7) +
+  geom_line() +
+  facet_wrap(~name, scales = "free", ncol = 7) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", 'quantvar_groupXsubject_clean.png'), width = 65, height = 25, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "quantvar_groupXsubject_clean.png"))
+```
+
+And take a look at the correlations for the reduced variable set
+```{r, echo = FALSE}
+df_cor <- df_PPN %>% # filter(!is_FOG) %>%
+  tidyr::drop_na() %>%
+  dplyr::select(-all_of(qualvar_names))
+cor.mat <- round(cor(df_cor), 2)
+p <- ggcorrplot(cor.mat, hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") + 
+  theme_pubr(legend = "right") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "corrplot2.png"), plot = p, width = 35, height = 20, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "corrplot2.png"))
+```
+
+## PCA
+Parallel analysis indicates 5 components will work
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+IndActive <- which(!df$is_FOG)
+if (nrow(df_ctl) == 0)  {
+  IndSup = c(which(df$is_FOG), nrow(df) + (1:nrow(df_PPN)))  
+} else {
+  IndSup = c(which(df$is_FOG), nrow(df) + (1:nrow(df_PPN)), nrow(df)+nrow(df_PPN) + (1:nrow(df_ctl)))
+}
+
+# Don't need to index active rows here since IndSup is passed to PCA
+df_pca = rbind(df, df_PPN, df_ctl) %>% select(-TrialNum, -GoNogo, -Cote, -is_FOG, -Meta_FOG, -TrialName, -Subject2)
+set.seed(1234)
+psych::fa.parallel(df_pca %>% dplyr::select(-c(1:4)), fa = "pc", error.bars = T, n.iter = 50)
+res.pca <- FactoMineR::PCA(df_pca, graph = F, scale.unit = T, quali.sup = 1:4, ind.sup = IndSup)
+
+# Aggregate to subject-level and run PCA
+df_pca_mean <- df[IndActive,] %>%
+  select(-TrialNum, -GoNogo, -Cote, -is_FOG, -Meta_FOG, -TrialName) %>%
+  group_by(Group, Pat_Foggeur, Condition, Subject) %>%
+  summarise(across(quantvar_names, ~mean(.x, na.rm = T)), .groups = "drop") 
+res.pca.mean <- FactoMineR::PCA(df_pca_mean, graph = F, scale.unit = T, quali.sup = 1:4)
+```
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+varnames_sort_unrot <- psych::fa.sort(res.pca$var$cor) %>% rownames()
+
+varcos2 <- as_tibble(res.pca$var$cos2, rownames = "var") %>%
+    rename(PC.1 = Dim.1, PC.2 = Dim.2, PC.3 = Dim.3, PC.4 = Dim.4, PC.5 = Dim.5)
+varcos2 %<>% pivot_longer(cols = contains("PC.")) %>%
+  mutate(var = factor(var, levels = varnames_sort_unrot))
+
+e <- ggplot(varcos2, aes(name, forcats::fct_rev(var), fill = value)) +
+  geom_tile() +
+  ylab("") + xlab("") + 
+  ggtitle("PCA cos2") + 
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "white",
+                       high = "#FF0000") +
+  theme_pubr(legend = "bottom")
+
+#loadings.pca <- sweep(res.pca$var$coord,2,sqrt(res.pca$eig[1:ncol(res.pca$var$coord),1]),FUN="/")
+loadings.pca <- res.pca$var$cor
+
+loadings <- loadings.pca %>%
+  as_tibble(rownames = "var") %>%
+  rename(PC.1 = Dim.1, PC.2 = Dim.2, PC.3 = Dim.3, PC.4 = Dim.4, PC.5 = Dim.5) %>%
+  pivot_longer(cols = contains("PC.")) %>%
+  mutate(var = factor(var, levels = varnames_sort_unrot))
+
+f <- ggplot(loadings, aes(name, forcats::fct_rev(var), fill = value)) +
+  geom_tile() +
+  ylab("") + xlab("") + 
+  ggtitle("PCA loadings") + 
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "white",
+                       high = "#FF0000") +
+  theme_pubr(legend = "bottom")
+
+l <- varimax(loadings.pca)$loadings
+loadings.varimax <- data.frame(
+  matrix(as.numeric(l), attributes(l)$dim, dimnames=attributes(l)$dimnames)
+  ) %>%
+  rename(RPC.1 = Dim.1, RPC.2 = Dim.2, RPC.3 = Dim.3, RPC.4 = Dim.4, RPC.5 = Dim.5)
+varnames_sort_rot <- psych::fa.sort(loadings.varimax) %>% rownames()
+loadings <- loadings.varimax %>%
+  as_tibble(rownames = "var") %>%
+  pivot_longer(cols = contains("PC.")) %>%
+  mutate(var = factor(var, levels = varnames_sort_rot))
+
+g <- ggplot(loadings, aes(name, forcats::fct_rev(var), fill = value)) +
+  geom_tile() +
+  ylab("") + xlab("") + 
+  ggtitle("Varimax loadings") + 
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "white",
+                       high = "#FF0000") +
+  theme_pubr(legend = "bottom")
+
+ggplot(loadings, aes(name, forcats::fct_rev(var), fill = value)) + theme_dark_black_classiclegend() +
+  geom_tile() +
+  ylab("") + xlab("") + 
+  ggtitle("Varimax loadings") + 
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "black",
+                       high = "#FF0000")  + 
+  scale_x_discrete(guide = guide_axis(angle = 45), labels = c("Pace (RPC 1)", "Rhythm (RPC 2)", "Vertical (RPC 3)", "Balance (RPC 4)", "Lateral (RPC 5)")) 
+
+p <- e + f + g
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "pca_loadings.png"), plot = p, width = 30, height = 25, units = "cm")
+```
+
+Let's look at the loadings to see if we can interpret anything.
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "pca_loadings.png"))
+```
+
+## RPC
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+# Rotated scores
+df_pat = df
+df     = rbind(df, df_PPN, df_ctl)
+
+rawLoadings     <- res.pca$var$cor
+rotatedLoadings <- varimax(rawLoadings)$loadings
+invLoadings     <- t(pracma::pinv(rotatedLoadings))
+
+# Extract Proportion of Variance
+print(rotatedLoadings)
+
+meanLocal = df[IndActive,] %>% select(quantvar_names) %>% summarise_all(mean, na.rm = T) 
+sd__Local = df[IndActive,] %>% select(quantvar_names) %>% summarise_all(sd, na.rm = T)
+for (var in quantvar_names) df[, var] = (df[, var] - as.numeric(meanLocal[var])) / as.numeric(sd__Local[var])
+scores           <- df[IndActive,] %>% select(quantvar_names) %>% as.matrix() %*% invLoadings
+colnames(scores) <- c("RPC.1", "RPC.2", "RPC.3", "RPC.4", "RPC.5")
+df1 <- df[IndActive,] %>% bind_cols(as_tibble(scores))
+
+scores           <- df[IndSup,] %>% select(quantvar_names) %>% as.matrix() %*% invLoadings
+colnames(scores) <- c("RPC.1", "RPC.2", "RPC.3", "RPC.4", "RPC.5")
+df2 <- df[IndSup,] %>% bind_cols(as_tibble(scores))
+
+df_ind <- df1 %>% bind_rows(df2) %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG)) %>% 
+  mutate(Factor = forcats::fct_relevel(Factor, c("Sain.SS.FALSE", "OFF.NF.FALSE", "ON.NF.FALSE", "OFF.F.FALSE", "ON.F.FALSE", "OFF.F.TRUE", "ON.F.TRUE", "OFF.CnF.99", "ON.CnF.99", "OFF.PPN.99", "ON.PPN.99", "OFF.SHAM.99", "ON.SHAM.99")))
+df_ind$RPC.5 = - df_ind$RPC.5
+print("RPC.5 is -RPC.5")
+
+
+# Unrotated scores
+df_ind2 <- (df[IndActive,] %>% bind_cols(res.pca$ind$coord     %>% as_tibble())) %>%
+  bind_rows(df[IndSup,]    %>% bind_cols(res.pca$ind.sup$coord %>% as_tibble())) %>%
+  select(TrialName, Dim.1:Dim.5) %>%
+  rename(PC.1 = Dim.1, PC.2 = Dim.2, PC.3 = Dim.3, PC.4 = Dim.4, PC.5 = Dim.5)
+
+df_scores <- df_ind %>% left_join(df_ind2)
+# df_scores$RPC.5 = -df_scores$RPC.5
+# save(df_scores, file = here("Data", "df_scores.RData"))
+
+df_mean = df_scores %>%
+  select(Subject, Factor, contains("PC.")) %>%
+  group_by(Subject, Factor) %>%
+  summarise(across(contains("PC."), ~mean(.x, na.rm = T))) %>%
+  pivot_longer(cols = contains("PC."))
+
+df_mean_of_means <- df_mean %>%
+  pivot_wider(names_from = name, values_from = value) %>%
+  group_by(Factor) %>%
+  summarise(across(contains("PC."), ~mean(.x, na.rm = T))) %>%
+  mutate(Subject = "Average", .before = Factor) %>%
+  pivot_longer(cols = contains("PC."))
+
+colors <- c(pals::alphabet(26), pals::alphabet2(12), pals::cubicl(length(unique(df$Subject))-12-26))
+names(colors) <- unique(df$Subject)
+p <- ggplot(df_mean, aes(Factor, value, group = Subject, color = Subject)) +
+  geom_hline(yintercept = 0, size = .5) +
+  geom_hline(data = df_mean_of_means %>% filter(Factor == "Sain.SS.FALSE"),  aes(yintercept = value), color = "#AADAFF", size = 3, alpha = 0.5) +
+  geom_beeswarm() +
+  geom_line() +
+  geom_point(data = df_mean_of_means, aes(Factor, value), color = "Red", size = 5, alpha = 0.5) +
+  geom_line(data = df_mean_of_means %>% 
+              filter(Factor %in% c("OFF.NF.FALSE", "ON.NF.FALSE")), 
+            aes(Factor, value), color = "Red", size = 3, alpha = 0.25) +
+  geom_line(data = df_mean_of_means %>% 
+              filter(Factor %in% c("OFF.CnF.99", "ON.CnF.99", "OFF.PPN.99", "ON.PPN.99", "OFF.SHAM.99", "ON.SHAM.99")), 
+            aes(Factor, value), color = "Red", size = 3, alpha = 0.25) +
+  geom_line(data = df_mean_of_means%>% 
+              filter(!Factor %in% c("Sain.SS.FALSE", "OFF.NF.FALSE", "ON.NF.FALSE", "OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")), 
+            aes(Factor, value), color = "Red", size = 3, alpha = 0.25)  +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  scale_color_manual(values = colors) +
+  ylab("") + xlab("") + 
+  theme_pubr(legend = "bottom") +
+  scale_x_discrete(guide = guide_axis(angle = 90))
+
+# cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax.png"), plot = p, width = 35, height = 26, units = "cm")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax.png"), plot = p, width = 35, height = 55, units = "cm")
+```
+
+Let's look at subject-level mean scores (unrotated [PC] and varimax rotated [RPC]),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax.png"))
+```
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+
+colors <- c(pals::tol(length(unique(df_PPN$Subject))))
+names(colors) <- unique(df_PPN$Subject)
+
+df_mean2 = df_scores %>%
+  select(Subject, Factor, contains("PC.")) %>%
+  group_by(Subject, Factor) %>%
+  summarise(across(contains("PC."), ~mean(.x, na.rm = T))) %>%
+  pivot_longer(cols = contains("PC."))
+df_sizen = df_scores %>%
+  select(Subject, Factor) %>% count(Subject, Factor) 
+df_mean2 %<>% left_join(df_sizen)
+
+p <- ggplot(df_mean2 %>% filter(Factor %in% c("OFF.CnF.99", "ON.CnF.99", "OFF.PPN.99", "ON.PPN.99", "OFF.SHAM.99", "ON.SHAM.99")), aes(Factor, value, group = Subject, color = Subject)) +
+  geom_hline(yintercept = 0, size = .5) +
+  geom_hline(data = df_mean_of_means %>% filter(Factor == "Sain.SS.0"),  aes(yintercept = value), color = "#0070FF", size = 1, alpha = 0.75) +
+ # geom_point(data = df_mean_of_means %>% filter(Factor %in% c("OFF.CnF.99", "ON.CnF.99", "OFF.PPN.99", "ON.PPN.99", "OFF.SHAM.99", "ON.SHAM.99")), aes(Factor, value), color = "Red", size = 5, alpha = 0.5) +
+ geom_line(data = df_mean_of_means %>% 
+              filter(Factor %in% c("OFF.CnF.99", "ON.CnF.99", "OFF.PPN.99", "ON.PPN.99", "OFF.SHAM.99", "ON.SHAM.99")), 
+            aes(Factor, value), color = "Red", size = 3, alpha = 1) +
+  geom_point(aes(size = n)) +
+  geom_line() +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  scale_color_manual(values = colors) +
+  ylab("") + xlab("") + 
+  theme_pubr(legend = "bottom") +
+  scale_x_discrete(guide = guide_axis(angle = 90))
+
+# cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax.png"), plot = p, width = 35, height = 26, units = "cm")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax_PPN.png"), plot = p, width = 35, height = 30, units = "cm")
+```
+
+Let's look at subject-level mean scores (unrotated [PC] and varimax rotated [RPC]),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax_PPN.png"))
+```
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+
+df_mean4 = df_scores %>% 
+  select(Subject, Factor, contains("RPC.")) %>%
+  group_by(Factor) %>%
+  summarise(across(contains("PC."), ~mean(.x, na.rm = T))) %>%
+  pivot_longer(cols = contains("PC."))
+df_se4 = df_scores %>%
+  select(Subject, Factor, contains("RPC.")) %>%
+  group_by(Factor) %>%
+  summarise(across(contains("PC."), ~sd(.x, na.rm = T)) / sqrt(n()), .groups = "drop") %>%
+  pivot_longer(cols = contains("PC."), values_to = "SE")
+df_mean4 %<>% left_join(df_se4) %>% 
+  filter(Factor %in% c("OFF.CnF.99",  "OFF.PPN.99", "OFF.SHAM.99")) 
+df_mean4$Factor %<>% recode("OFF.CnF.99" = "CnF", "OFF.PPN.99" = "PPN", "OFF.SHAM.99" = "SHAM")
+df_mean4$name   %<>% recode_factor("RPC.1" = "Pace (RPC 1)", "RPC.2" = "Rhythm (RPC 2)", "RPC.3" = "Vertical (RPC 3)", "RPC.4" = "Balance (RPC 4)", "RPC.5" = "Lateral (RPC 5)")
+df_mean_of_means4 = df_mean_of_means
+df_mean_of_means4$name %<>% recode_factor("RPC.1" = "Pace (RPC 1)", "RPC.2" = "Rhythm (RPC 2)", "RPC.3" = "Vertical (RPC 3)", "RPC.4" = "Balance (RPC 4)", "RPC.5" = "Lateral (RPC 5)")
+
+p <- ggplot(df_mean4, aes(Factor, value, group = name)) +
+  geom_hline(yintercept = 0, size = .5) +
+  geom_hline(data = df_mean_of_means4 %>% filter(Factor == "Sain.SS.0", grepl("RPC", name)),  aes(yintercept = value), color = "#0070FF", size = 1, alpha = 0.75) +
+ #geom_line(data = df_mean4, 
+ #          aes(Factor, value), color = "#4ca5a5", size = 3, alpha = 1) +
+    geom_ribbon(aes(ymin = value - SE, ymax = value + SE, color = NULL), alpha = 0.5, fill = "#6ad1d1") +
+  geom_point(color = "#4ca5a5", size = 3) +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  scale_color_manual(values = colors) +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) + 
+  theme_Publication() +
+  theme(strip.background = element_rect(color="white", fill="white"))
+  
+
+# cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax.png"), plot = p, width = 35, height = 26, units = "cm")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax_PPN_light.png"), plot = p, width = 35, height = 30, units = "cm")
+```
+
+Let's look at subject-level mean scores (unrotated [PC] and varimax rotated [RPC]),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "scores_varimax_PPN_light.png"))
+```
+
+### Repres. Ellipse confiance
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+Todo_FigSup = FALSE
+df_scores_local = df_scores %>% filter(Factor != "ON.F.TRUE")
+if(!Todo_FigSup) df_scores_local %<>% filter(Factor != "OFF.F.TRUE")
+colors = c("OFF.NF.FALSE" = "#a9569570", "ON.NF.FALSE" = "#00808070", "OFF.F.FALSE" = "#a95695", "ON.F.FALSE" = "#008080", "Sain.SS.FALSE" = "black", "OFF.PPN.FALSE" = "#FF0000", "ON.PPN.FALSE" = "#FF5555", "OFF.PPN.TRUE" = "#FF9999", "ON.PPN.TRUE" = "#FFCCCC")
+if(Todo_FigSup) colors = c(colors, "OFF.F.TRUE" = "#ec5a0070") 
+
+# RPC 1 to 2
+p = ggplot(df_scores_local, aes(x = RPC.1, y = RPC.2, color = NULL, fill = Factor)) +
+  stat_conf_ellipse(level = 0.95, geom = "polygon") +
+  theme_Publication() +
+  scale_fill_manual(values = colors) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  coord_fixed(ratio = 1) +
+  labs(x = "RPC1", y = "RPC2") +
+  theme(legend.position = "none")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "ellipse_conf_RPC12.svg"), plot = p, width = 40, height = 40, units = "cm")
+
+# RPC 1 to 5
+p = ggplot(df_scores_local, aes(x = RPC.1, y = RPC.5, color = NULL, fill = Factor)) +
+  stat_conf_ellipse(level = 0.95, geom = "polygon") +
+  theme_Publication() +
+  scale_fill_manual(values = colors) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  coord_fixed(ratio = 1) +
+  labs(x = "RPC1", y = "RPC5") +
+  theme(legend.position = "none")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "ellipse_conf_RPC15.svg"), plot = p, width = 40, height = 40, units = "cm")
+
+# RPC 2 to 5
+p = ggplot(df_scores_local, aes(x = RPC.2, y = RPC.5, color = NULL, fill = Factor)) +
+  stat_conf_ellipse(level = 0.95, geom = "polygon") +
+  theme_Publication() +
+  scale_fill_manual(values = colors) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  coord_fixed(ratio = 1) +
+  labs(x = "RPC2", y = "RPC5") +
+  theme(legend.position = "none")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "ellipse_conf_RPC25.svg"), plot = p, width = 40, height = 40, units = "cm")
+
+
+#Dark for paper 
+colors[["Sain.SS.FALSE"]] = "grey70"
+p = ggplot(df_scores_local, aes(x = RPC.1, y = RPC.2, color = NULL, fill = Factor)) +
+  stat_conf_ellipse(level = 0.95, geom = "polygon") +
+  theme_dark_black_classiclegend() +
+  scale_fill_manual(values = colors) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  coord_fixed(ratio = 1) +
+  labs(x = "Pace (RPC 1)", y = "Rhythm (RPC 2)") +
+  theme(legend.position = "none")
+
+
+```
+
+### Planned comparisons
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+TodoComparisons = "FOG" # "FOG" or "FNF"
+  
+if (TodoComparisons == "FOG") {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) %>% # , "OFF.F.TRUE", "ON.F.TRUE", "Sain.SS.FALSE"
+    mutate(Pat_Foggeur = factor(is_FOG, levels = c("TRUE", "FALSE")))
+} else {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.NF.FALSE", "ON.NF.FALSE", "OFF.F.FALSE", "ON.F.FALSE")) %>% 
+    mutate(Pat_Foggeur = factor(Pat_Foggeur, levels = c("NF", "F")))
+}
+
+  
+control <- lmerControl(
+  calc.derivs = T,
+  optimizer="nloptwrap", 
+  optCtrl = list(algorithm = "NLOPT_LN_BOBYQA"))
+  
+superdf = data.frame()
+
+P = list()
+vars <- c(paste(rep("RPC",5), 1:5, sep = "."))
+for (i in vars) {
+  f <- as.formula(paste0(i,"~ 1 + Pat_Foggeur*Condition + (1+Condition||Subject)"))
+  m <- lmerTest::lmer(f, data = df_mod, control = control)
+  emm <- emmeans::emmeans(m, ~Pat_Foggeur*Condition)
+  emmpairs <- summary(emm %>% pairs(), infer = c(T,T), adjust = "fdr") %>% 
+    as_tibble()
+  emm <- summary(emm, infer = c(T,T))  %>%
+    mutate(Factor = paste0(Pat_Foggeur, " ", Condition))%>% 
+    as_tibble()
+  emsuperC = emmeans::emmeans(m, ~Condition)   %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15) 
+  emsuperF = emmeans::emmeans(m, ~Pat_Foggeur) %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15)
+  
+  tooutput = rbind(emmpairs, emsuperC, emsuperF, emm %>% mutate(contrast = paste0(Factor, " seul"), estimate = emmean) %>% select(contrast, estimate, SE, df, lower.CL, upper.CL, t.ratio, p.value)) %>% select(contrast, estimate, SE, df, p.value)
+  tooutput$df = i
+  tooutput$p.value = p.adjust(tooutput$p.value, method = "fdr")
+  
+  superdf = rbind(superdf, tooutput)
+  print(rbind(emsuperC, emsuperF) %>% select(contrast, estimate, SE, p.value))
+  
+  print(emmpairs %>% select(contrast, estimate, SE, p.value))
+  emmpairs %<>% filter(p.value < 0.15) 
+  comparisons <- stringr::str_split(emmpairs$contrast, pattern = " - ")
+  p <- sprintf("p = %.4f", emmpairs$p.value)
+  
+  ctl_mean <- df_scores %>% filter(Factor %in% c("Sain.SS.FALSE")) %>% select(!!sym(i)) %>% pull() %>% mean()
+  
+  P[[i]] <- ggplot(emm, aes(Factor, emmean)) + 
+    geom_hline(yintercept = 0) + 
+    geom_hline(yintercept = ctl_mean, color = "#1ACAEF") + 
+    geom_linerange(aes(ymin = lower.CL, ymax = upper.CL), linewidth = 1.5) +
+    geom_point(size = 4)
+
+  if (nrow(emmpairs)>1) {
+    P[[i]] <- P[[i]] + geom_signif(
+      comparisons = comparisons,
+      step_increase = 0.2,
+      annotations = p,
+      color = "black",
+    )
+  }
+  
+  ymax = max(max(emm$upper.CL), ctl_mean) + 0.03 * (max(emm$upper.CL) - min(emm$lower.CL))
+  if (nrow(emsuperC)>0) {
+    P[[i]] <- P[[i]] + geom_text(data = emsuperC, aes(x = length(emm$Factor)/2-1, y = ymax, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax2 = ymax + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax2 = ymax
+  }
+  if (nrow(emsuperF)>0) {
+    P[[i]] <- P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2-1, y = ymax2, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax3 = ymax2 + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax3 = ymax2
+  }
+  P[[i]] = P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2, y = ymax3, label = " "), hjust = 0, vjust = 0)
+  
+  P[[i]] <- P[[i]] +
+    ylab("") + xlab("") + 
+    ggtitle(i) +
+    theme_pubr(legend = "bottom") +
+    theme(panel.grid.major.x = element_line(color = "grey",
+                                            size = 0.25)) + 
+    # theme_Publication()+
+    scale_x_discrete(guide = guide_axis(angle = 90)) 
+  
+  #Niceplot
+  P[[i]] <- P[[i]] + theme_dark_dark_classiclegend()
+}
+
+
+p <- wrap_plots(P, nrow = 1) + plot_layout(guides = "collect")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "lmer_varimax_red_FOG.png"), plot = p, width = 45, height = 20, units = "cm")
+```
+
+Marginal means, CIs, p-values for varimax rotated (RPC), for FOG+/*,
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "lmer_varimax_red_FOG.png"))
+```
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+TodoComparisons = "FOG" # "FOG" or "FNF"
+  
+if (TodoComparisons == "FOG") {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) %>% # , "OFF.F.TRUE", "ON.F.TRUE", "Sain.SS.FALSE"
+    mutate(Pat_Foggeur = factor(is_FOG, levels = c("TRUE", "FALSE")))
+} else {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.NF.FALSE", "ON.NF.FALSE", "OFF.F.FALSE", "ON.F.FALSE")) %>% 
+    mutate(Pat_Foggeur = factor(Pat_Foggeur, levels = c("NF", "F")))
+}
+
+  
+control <- lmerControl(
+  calc.derivs = T,
+  optimizer="nloptwrap", 
+  optCtrl = list(algorithm = "NLOPT_LN_BOBYQA"))
+  
+superdf = data.frame()
+
+P = list()
+vars <- c(paste(rep("RPC",5), 1:5, sep = "."))
+for (i in vars) {
+  f <- as.formula(paste0(i,"~ 1 + Pat_Foggeur*Condition + (1+Condition||Subject)"))
+  m <- lmerTest::lmer(f, data = df_mod, control = control)
+  emm <- emmeans::emmeans(m, ~Pat_Foggeur*Condition)
+  emmpairs <- summary(emm %>% pairs(), infer = c(T,T), adjust = "fdr") %>% 
+    as_tibble()
+  emm <- summary(emm, infer = c(T,T))  %>%
+    mutate(Factor = paste0(Pat_Foggeur, " ", Condition))%>% 
+    as_tibble()
+  emsuperC = emmeans::emmeans(m, ~Condition)   %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15) 
+  emsuperF = emmeans::emmeans(m, ~Pat_Foggeur) %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15)
+  
+  tooutput = rbind(emmpairs, emsuperC, emsuperF, emm %>% mutate(contrast = paste0(Factor, " seul"), estimate = emmean) %>% select(contrast, estimate, SE, df, lower.CL, upper.CL, t.ratio, p.value)) %>% select(contrast, estimate, SE, df, p.value)
+  tooutput$df = i
+  tooutput$p.value = p.adjust(tooutput$p.value, method = "fdr")
+  
+  superdf = rbind(superdf, tooutput)
+  print(rbind(emsuperC, emsuperF) %>% select(contrast, estimate, SE, p.value))
+  
+  print(emmpairs %>% select(contrast, estimate, SE, p.value))
+  emmpairs %<>% filter(p.value < 0.15) 
+  comparisons <- stringr::str_split(emmpairs$contrast, pattern = " - ")
+  p <- sprintf("p = %.4f", emmpairs$p.value)
+  
+  ctl_mean <- df_scores %>% filter(Factor %in% c("Sain.SS.FALSE")) %>% select(!!sym(i)) %>% pull() %>% mean()
+  
+  P[[i]] <- ggplot(emm, aes(Factor, emmean)) + theme_dark_black_classiclegend() + 
+    geom_hline(yintercept = 0, color = "white") + 
+    geom_hline(yintercept = ctl_mean, color = "#1ACAEF") + 
+    geom_linerange(aes(ymin = lower.CL, ymax = upper.CL), linewidth = 1.5, color = "white") +
+    geom_point(size = 4, color = "white")
+
+  if (nrow(emmpairs)>1) {
+    P[[i]] <- P[[i]] + geom_signif(
+      comparisons = comparisons,
+      step_increase = 0.2,
+      annotations = p,
+      color = "white",
+    )
+  }
+  
+  ymax = max(max(emm$upper.CL), ctl_mean) + 0.03 * (max(emm$upper.CL) - min(emm$lower.CL))
+  if (nrow(emsuperC)>0) {
+    P[[i]] <- P[[i]] + geom_text(data = emsuperC, aes(x = length(emm$Factor)/2-1, y = ymax, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax2 = ymax + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax2 = ymax
+  }
+  if (nrow(emsuperF)>0) {
+    P[[i]] <- P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2-1, y = ymax2, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax3 = ymax2 + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax3 = ymax2
+  }
+  P[[i]] = P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2, y = ymax3, label = " "), hjust = 0, vjust = 0)
+  
+  P[[i]] <- P[[i]] +
+    ylab("") + xlab("") + 
+    ggtitle(ifelse(i=="RPC.1", "Pace", ifelse(i=="RPC.2", "Rhythm", ifelse(i=="RPC.3", "Vertical", ifelse(i=="RPC.4", "Balance", ifelse(i=="RPC.5", "Lateral","Erreur")))))) +
+    theme(panel.grid.major.x = element_line(color = "grey20", size = 0.25)) + 
+    theme(panel.grid.major.y = element_blank()) + 
+    scale_x_discrete(guide = guide_axis(angle = 45), labels = c("OFF FOG+/- (sans)", "ON FOG+/- (sans)", "OFF FOG+/+ (avec)", "ON FOG+/+ (avec)")) + 
+    theme(axis.text.x = element_text(color = "white"))
+}
+
+
+p <- wrap_plots(P, nrow = 1) + plot_layout(guides = "collect")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "lmer_varimax_red_FOG.png"), plot = p, width = 45, height = 20, units = "cm")
+```
+
+
+## Correlation entre les variables
+```{r}
+p = list()
+
+# IndActive
+df_scores  %>% filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) %>%
+  select(contains("RPC")) %>% 
+  cor() %>% 
+  round(2) %>% 
+  kable()
+
+p[[1]] = df_scores %>% filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) %>%
+  select(contains("RPC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           insig = "blank",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC ")
+  
+
+p[[2]] = df_scores %>% filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE")) %>%
+  select(contains("PC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           insig = "blank",
+           lab = T) +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC sans Freezing")
+
+
+## All pat + SS
+df_scores %>% 
+  select(contains("RPC")) %>% 
+  cor() %>% 
+  round(2) %>% 
+  kable()
+
+
+p[[3]] = df_scores %>%
+  filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE", "Sain.SS.FALSE")) %>%
+  select(contains("RPC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           insig = "blank",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC - PPN & ctrl") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+
+p[[4]] = df_scores %>%
+  filter(Factor %in% c("OFF.PPN.FALSE", "OFF.PPN.TRUE")) %>%
+  select(contains("PC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           insig = "blank",
+           lab = T) +
+  ylab("") + xlab("") +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC et PC - OFF ppn") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+q = wrap_plots(p, nrow = 2) + plot_layout(guides = "collect") 
+
+invLoadings %>% cor() %>% round(2) %>% kable()
+
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "cor_pc.png"), plot = q, width = 45, height = 45, units = "cm")
+```
+
+Marginal means, CIs, p-values (FDR-corrected) for varimax rotated (RPC),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "cor_pc.png"))
+```
+
+## Corr par gp
+```{r}
+
+p = list()
+TestsImportants = data.frame()
+df_scores %>% group_by(Factor) %>% count()
+for(fact in c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) {
+  
+  pval = df_scores  %>% filter(Factor == fact) %>% select(contains("RPC")) %>% cor_pmat()
+    
+  plot1 = df_scores  %>% filter(Factor == fact) %>%
+    select(contains("RPC")) %>% 
+    cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T,
+           p.mat = pval, insig = "pch") +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication()  + ggtitle(fact)
+  
+  pval = df_scores  %>% filter(Factor == fact) %>% select(contains("PC")) %>% cor_pmat()
+    
+  plot2 = df_scores  %>% filter(Factor == fact) %>%
+    select(contains("PC")) %>% 
+    cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T,
+           p.mat = pval, insig = "pch") +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() 
+  
+  LocalDf = data.frame() %>% add_row()
+  test1 = cor.test(df_scores  %>% filter(Factor == fact) %>% pull("RPC.1"),df_scores  %>% filter(Factor == fact) %>% pull("RPC.5") )
+  LocalDf$RPCtest[1] = "RPC.1 vs RPC.5"
+  LocalDf$cor[1] = test1$estimate
+  LocalDf$pval[1] = test1$p.value
+  LocalDf$df[1] = test1$parameter
+  LocalDf$t[1] = test1$statistic
+  
+  LocalDf %<>% add_row()
+  test1 = cor.test(df_scores  %>% filter(Factor == fact) %>% pull("RPC.2"),df_scores  %>% filter(Factor == fact) %>% pull("RPC.5") )
+  LocalDf$RPCtest[2] = "RPC.2 vs RPC.5"
+  LocalDf$cor[2] = test1$estimate
+  LocalDf$pval[2] = test1$p.value
+  LocalDf$df[2] = test1$parameter
+  LocalDf$t[2] = test1$statistic
+  
+  LocalDf %<>% add_row()
+  test1 = cor.test(df_scores  %>% filter(Factor == fact) %>% pull("RPC.2"),df_scores  %>% filter(Factor == fact) %>% pull("RPC.1") )
+  LocalDf$RPCtest[3] = "RPC.2 vs RPC.1"
+  LocalDf$cor[3] = test1$estimate
+  LocalDf$pval[3] = test1$p.value
+  LocalDf$df[3] = test1$parameter
+  LocalDf$t[3] = test1$statistic
+
+  LocalDf$Facteur = fact
+  TestsImportants = rbind(TestsImportants, LocalDf %>% relocate(Facteur, .before = RPCtest))
+  
+  p[[length(p)+1]] = wrap_plots(list(plot1, plot2), ncol = 1, nrow = 2) + plot_layout(guides = "collect")
+}
+
+q = wrap_plots(p, nrow = 1) + plot_layout(guides = "collect") 
+TestsImportants$p.adjust = round(p.adjust(TestsImportants$pval, method = "fdr"), digits = 5)
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "cor_pc_perGP.png"), plot = q, width = 90, height = 30, units = "cm")
+TestsImportants %>% kable()
+```
+
+Marginal means, CIs, p-values (FDR-corrected) for varimax rotated (RPC),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "cor_pc_perGP.png"))
+```
+
+```{r}
+
+p = list()
+TestsImportants = data.frame()
+df_scores %>% group_by(Factor) %>% count()
+for(fact in c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) {
+  
+  pval = df_scores  %>% filter(Factor == fact) %>% select(contains("RPC")) %>% cor_pmat()
+    
+  plot1 = df_scores  %>% filter(Factor == fact) %>%
+    select(contains("RPC")) %>% 
+    cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "black",
+           colors = c("blue", "black", "red"),
+           ggtheme = theme_dark_black_classiclegend,
+           lab = T,
+           p.mat = pval, 
+           insig = "pch",
+           pch.col = "white",
+           lab_col = "gray70"
+           ) +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+    ggtitle(ifelse(fact=="OFF.PPN.FALSE", "OFF FOG+/- (sans)", ifelse(fact=="ON.PPN.FALSE", "ON FOG+/- (sans)", ifelse(fact=="OFF.PPN.TRUE", "OFF FOG+/+ (avec)", ifelse(fact=="ON.PPN.TRUE", "ON FOG+/+ (avec)", "Erreur")))))
+  
+  pval = df_scores  %>% filter(Factor == fact) %>% select(contains("PC")) %>% cor_pmat()
+  
+  p[[length(p)+1]] = plot1
+}
+
+q = wrap_plots(p, nrow = 2) + plot_layout(guides = "collect")
+# cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "cor_pc_perGP.png"), plot = q, width = 90, height = 30, units = "cm")q
+```
+
+
+### Correlations plots
+
+
+## LFP beta
+Let's use look at how this correlates with beta power. There are only 27 patients with usable LFP recordings.
+```{r, eval=FALSE, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+load(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","Data/", beta_filename))
+
+df_beta <- DATA %>% 
+  dplyr::select(TrialName, value, Loc) %>% 
+  left_join(df_scores, by = "TrialName")
+
+# The loaded data also includes Antoine's PCA dimensions, could join to double-check here
+# df_beta <- DATA %>% 
+#   dplyr::select(TrialName, value, Loc, Dim.1:Dim.5) %>% 
+#   left_join(df_ind %>% dplyr::select(-c(Dim.1:Dim.5)), by = "TrialName")
+
+P <- NULL
+marginal_r2 <- NULL
+for (i in quantvar_names) {
+  f = formula(paste0(i, "~ Loc*Pat_Foggeur*Condition*value + (1|Subject)"))
+  m = lmer(f, data = df_beta)
+  marginal_r2[[i]] <- performance::r2_nakagawa(m)$R2_marginal
+  df_trends <- ggemmeans(m, terms = c("Condition", "value [-10:10]", "Loc", "Pat_Foggeur")) %>% 
+    as_tibble()
+  df_trends %<>% rename(Condition = x, value = group, Loc = facet, Pat_Foggeur = panel) %>%
+    mutate(value = as.numeric(as.character(value)))
+
+  P[[i]] <- ggplot(df_beta %>% filter(!is_FOG, value >-10), aes_string("value", i, color = "Condition")) +
+    geom_point(aes(shape = Loc), alpha = 0.2, size = 1) +
+    geom_smooth(aes(linetype = Loc), method = "lm", se = F, size = .5) +
+    geom_ribbon(data = df_trends, aes(value, y = NULL, ymin = conf.low, ymax = conf.high, fill = Condition, linetype = Loc), color = NA, alpha = 0.25) +
+    geom_line(data = df_trends, aes(value, predicted, color = Condition, linetype = Loc), size = 2) +
+    ggtitle(paste0(i, ", mR2 = ", round(marginal_r2[[i]], digits = 2))) +
+    facet_wrap(~Pat_Foggeur)
+}
+
+p <- cowplot::plot_grid(plotlist = P[str_replace(names(sort(unlist(marginal_r2), decreasing = T)), ".Marginal R2", "")], nrow = 4, ncol = 5)
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_vars.png"), plot = p, width = 55, height = 26, units = "cm")
+
+P = NULL
+marginal_r2 <- NULL
+for (i in 1:5) {
+  f = formula(paste0("PC.", i, "~ Loc*Pat_Foggeur*Condition*value + (1|Subject)"))
+  m = lmer(f, data = df_beta)
+  marginal_r2[[i]] <- performance::r2_nakagawa(m)$R2_marginal
+  df_trends <- ggemmeans(m, terms = c("Condition", "value [-10:10]", "Loc", "Pat_Foggeur")) %>% 
+    as_tibble()
+  df_trends %<>% rename(Condition = x, value = group, Loc = facet, Pat_Foggeur = panel) %>%
+    mutate(value = as.numeric(as.character(value)))
+
+  P[[i]] <- ggplot(df_beta %>% filter(!is_FOG, value >-10), aes_string("value", paste0("PC.",i), color = "Condition")) +
+    geom_point(aes(shape = Loc), alpha = 0.2, size = 1) +
+    geom_smooth(aes(linetype = Loc), method = "lm", se = F, size = .5) +
+    geom_ribbon(data = df_trends, aes(value, y = NULL, ymin = conf.low, ymax = conf.high, fill = Condition, linetype = Loc), color = NA, alpha = 0.25) +
+    geom_line(data = df_trends, aes(value, predicted, color = Condition, linetype = Loc), size = 2) +
+    ggtitle(paste0("PC.", i, ", mR2 = ", round(marginal_r2[[i]], digits = 2))) +
+    facet_wrap(~Loc*Pat_Foggeur)
+}
+
+p <- cowplot::plot_grid(plotlist = P, nrow = 1, ncol = 5)
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_PC_scores.png"), plot = p, width = 55, height = 15, units = "cm")
+
+P = NULL
+marginal_r2 <- NULL
+for (i in 1:5) {
+  f = formula(paste0("RPC.", i, "~ Loc*Pat_Foggeur*Condition*value + (1|Subject)"))
+  m = lmer(f, data = df_beta)
+  marginal_r2[[i]] <- performance::r2_nakagawa(m)$R2_marginal
+  df_trends <- ggemmeans(m, terms = c("Condition", "value [-10:10]", "Loc", "Pat_Foggeur")) %>% 
+    as_tibble()
+  df_trends %<>% rename(Condition = x, value = group, Loc = facet, Pat_Foggeur = panel) %>%
+    mutate(value = as.numeric(as.character(value)))
+
+  P[[i]] <- ggplot(df_beta %>% filter(!is_FOG, value >-10), aes_string("value", paste0("RPC.",i), color = "Condition")) +
+    geom_point(aes(shape = Loc), alpha = 0.2, size = 1) +
+    geom_smooth(aes(linetype = Loc), method = "lm", se = F, size = .5) +
+    geom_ribbon(data = df_trends, aes(value, y = NULL, ymin = conf.low, ymax = conf.high, fill = Condition, linetype = Loc), color = NA, alpha = 0.25) +
+    geom_line(data = df_trends, aes(value, predicted, color = Condition, linetype = Loc), size = 2) +
+    ggtitle(paste0("RPC.", i, ", mR2 = ", round(marginal_r2[[i]], digits = 2))) +
+    facet_wrap(~Loc*Pat_Foggeur)
+}
+
+p <- cowplot::plot_grid(plotlist = P, nrow = 1, ncol = 5)
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_RPC_scores.png"), plot = p, width = 55, height = 15, units = "cm")
+```
+
+```{r, eval=FALSE, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+# Same thing with random intercept for Condition
+P <- NULL
+marginal_r2 <- NULL
+for (i in quantvar_names) {
+  f = formula(paste0(i, "~ Loc*Pat_Foggeur*Condition*value + (1 + Condition|Subject)"))
+  m = lmer(f, data = df_beta)
+  marginal_r2[[i]] <- performance::r2_nakagawa(m)$R2_marginal
+  df_trends <- ggemmeans(m, terms = c("Condition", "value [-10:10]", "Loc", "Pat_Foggeur")) %>% 
+    as_tibble()
+  df_trends %<>% rename(Condition = x, value = group, Loc = facet, Pat_Foggeur = panel) %>%
+    mutate(value = as.numeric(as.character(value)))
+
+  P[[i]] <- ggplot(df_beta %>% filter(!is_FOG, value >-10), aes_string("value", i, color = "Condition")) +
+    geom_point(aes(shape = Loc), alpha = 0.2, size = 1) +
+    geom_smooth(aes(linetype = Loc), method = "lm", se = F, size = .5) +
+    geom_ribbon(data = df_trends, aes(value, y = NULL, ymin = conf.low, ymax = conf.high, fill = Condition, linetype = Loc), color = NA, alpha = 0.25) +
+    geom_line(data = df_trends, aes(value, predicted, color = Condition, linetype = Loc), size = 2) +
+    ggtitle(paste0(i, ", mR2 = ", round(marginal_r2[[i]], digits = 2))) +
+    facet_wrap(~Pat_Foggeur)
+}
+
+p <- cowplot::plot_grid(plotlist = P[str_replace(names(sort(unlist(marginal_r2), decreasing = T)), ".Marginal R2", "")], nrow = 4, ncol = 5)
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_vars_w_condition.png"), plot = p, width = 55, height = 26, units = "cm")
+
+P = NULL
+marginal_r2 <- NULL
+for (i in 1:5) {
+  f = formula(paste0("PC.", i, "~ Loc*Pat_Foggeur*Condition*value + (1 + Condition|Subject)"))
+  m = lmer(f, data = df_beta)
+  marginal_r2[[i]] <- performance::r2_nakagawa(m)$R2_marginal
+  df_trends <- ggemmeans(m, terms = c("Condition", "value [-10:10]", "Loc", "Pat_Foggeur")) %>% 
+    as_tibble()
+  df_trends %<>% rename(Condition = x, value = group, Loc = facet, Pat_Foggeur = panel) %>%
+    mutate(value = as.numeric(as.character(value)))
+
+  P[[i]] <- ggplot(df_beta %>% filter(!is_FOG, value >-10), aes_string("value", paste0("PC.",i), color = "Condition")) +
+    geom_point(aes(shape = Loc), alpha = 0.2, size = 1) +
+    geom_smooth(aes(linetype = Loc), method = "lm", se = F, size = .5) +
+    geom_ribbon(data = df_trends, aes(value, y = NULL, ymin = conf.low, ymax = conf.high, fill = Condition, linetype = Loc), color = NA, alpha = 0.25) +
+    geom_line(data = df_trends, aes(value, predicted, color = Condition, linetype = Loc), size = 2) +
+    ggtitle(paste0("PC.", i, ", mR2 = ", round(marginal_r2[[i]], digits = 2))) +
+    facet_wrap(~Loc*Pat_Foggeur)
+}
+
+p <- cowplot::plot_grid(plotlist = P, nrow = 1, ncol = 5)
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_PC_scores_w_condition.png"), plot = p, width = 55, height = 15, units = "cm")
+
+P = NULL
+marginal_r2 <- NULL
+for (i in 1:5) {
+  f = formula(paste0("RPC.", i, "~ Loc*Pat_Foggeur*Condition*value + (1 + Condition|Subject)"))
+  m = lmer(f, data = df_beta)
+  marginal_r2[[i]] <- performance::r2_nakagawa(m)$R2_marginal
+  df_trends <- ggemmeans(m, terms = c("Condition", "value [-10:10]", "Loc", "Pat_Foggeur")) %>% 
+    as_tibble()
+  df_trends %<>% rename(Condition = x, value = group, Loc = facet, Pat_Foggeur = panel) %>%
+    mutate(value = as.numeric(as.character(value)))
+
+  P[[i]] <- ggplot(df_beta %>% filter(!is_FOG, value >-10), aes_string("value", paste0("RPC.",i), color = "Condition")) +
+    geom_point(aes(shape = Loc), alpha = 0.2, size = 1) +
+    geom_smooth(aes(linetype = Loc), method = "lm", se = F, size = .5) +
+    geom_ribbon(data = df_trends, aes(value, y = NULL, ymin = conf.low, ymax = conf.high, fill = Condition, linetype = Loc), color = NA, alpha = 0.25) +
+    geom_line(data = df_trends, aes(value, predicted, color = Condition, linetype = Loc), size = 2) +
+    ggtitle(paste0("RPC.", i, ", mR2 = ", round(marginal_r2[[i]], digits = 2))) +
+    facet_wrap(~Loc*Pat_Foggeur)
+}
+
+p <- cowplot::plot_grid(plotlist = P, nrow = 1, ncol = 5)
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_RPC_scores_w_condition.png"), plot = p, width = 55, height = 15, units = "cm")
+```
+
+## Random intercept only
+
+Variables
+```{r, eval=FALSE, echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_vars.png"))
+```
+
+PCs
+```{r echo=FALSE, eval=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_PC_scores.png"))
+```
+
+RPCs
+```{r echo=FALSE, eval=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_RPC_scores.png"))
+```
+
+## W/ random slope for Condition
+
+Variables
+```{r echo=FALSE, eval=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_vars_w_condition.png"))
+```
+
+PCs
+```{r echo=FALSE, eval=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_PC_scores_w_condition.png"))
+```
+
+RPCs
+```{r echo=FALSE, eval=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresStimPPN/", "beta_RPC_scores_w_condition.png"))
+```

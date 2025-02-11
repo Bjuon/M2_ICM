@@ -1,0 +1,1271 @@
+---
+title: "PreSTOC2"
+author: "Brian Lau"
+date: "01/30/2020"
+output:
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    number_sections: false
+    collapsed: false
+---
+
+
+```{r setup, include=FALSE, echo=FALSE}
+# https://philmikejones.me/tutorials/2015-05-20-set-root-directory-knitr/
+require("knitr")
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+#basedir = getwd()
+#opts_knit$set(root.dir = basedir)
+opts_knit$set(root.dir = "~/ownCloud/2019_PreSTOC2")
+```
+
+# Data
+
+```{r data, echo=FALSE, message=FALSE}
+source("Code/setup.R")
+data <- read.csv('Data/data_All.csv')
+
+data$Id <- as.factor(data$Id)
+data$Visit <- factor(data$Visit, levels = c("M-1", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14", "M+14"))
+data$Condition <- factor(data$Condition, levels = c("baseline", "preNC", "NC1", "NC2", "NC3", "preNA", "NA1", "NA2", "NA3", "preNST", "NST1", "NST2", "NST3", "open"))
+data$Treatment <- factor(data$Treatment, levels = c("OFF","OFFPS", "PS", "SHAM", "NC", "NAc", "NST", "OPT"))
+data$Treatment[data$Visit=="M3"] = as.factor("PS")
+data$Treatment[data$Treatment=="OFFPS"] = "SHAM"
+data$Treatment = droplevels(data$Treatment)
+data$P1 = data$Period=="1"
+data$P2 = data$Period=="2"
+data$P23 = data$Period=="2" | data$Period=="3"
+data$Period = as.factor(data$Period)
+
+#mutate_all(data, funs(na_if(.,"NaN")))
+#mutate_all(df, funs(na_if(.,"")))
+
+# Display selected columns
+df = data.frame(Id=data$Id,Visit=data$Visit,MonthReBaseline=data$MonthReBaseline,Condition=data$Condition,Period=data$Period,Treatment=data$Treatment,
+                YBOCS=data$YBOCS,OBSESSION=data$YBOCS_OBSESSION,COMPULSION=data$YBOCS_COMPULSION,
+                MADRS=data$MADRS,BAS=data$BAS,L_VOLT_ENTRY=data$PEAMPGG,L_VOLT_EXIT=data$PSAMPGG,
+                R_VOLT_ENTRY=data$PEAMPGD,R_VOLT_EXIT=data$PSAMPGD)
+kable(df) %>%
+  kable_styling(bootstrap_options = c("striped","hover","condensed"), font_size = 8, full_width=T, position = "center") %>%
+  scroll_box(height = "250px")
+```
+
+Eight patients underwent a randomized double-blind sham-controlled protocol examining deep brain stimulation of three different basal ganglia targets (nucleus accumbens [NA], caudate nucleus [NC], subthalamic nucleus [NST]). Patients were randomly assigned to one of six treatment sequences. NA-NST-NC and NA-NC-NST are repeated sequences, with two patients each.
+```{r tabulateSeq, echo=FALSE}
+#d = xtabs(~Arm + Id,data=data)
+d = tabular(Arm ~ Id,data=data)
+toKable(d) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 10, full_width=F, position = "center")
+```
+Patient #6 did not complete the study and is missing 6 of 14 expected visits.
+```{r, echo=FALSE}
+d = tabular(Treatment ~ Id,data=data)
+toKable(d) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 10, full_width=F, position = "center")
+```
+
+Due to the repeats, the data is unbalanced. NA treatment is biased towards period one, and NC treatment is biased towards period three.
+```{r tabulateTreatPer, echo=FALSE}
+#xtabs(~Treatment + Period,data=data)
+d = tabular(Treatment ~ as.factor(Period),data=data)
+toKable(d) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 10, full_width=F, position = "center")
+```
+
+# Visualization
+
+```{r basicPlots, echo=FALSE, message=FALSE, eval=TRUE}
+yn = c("YBOCS","MADRS","YBOCS_OBSESSION","BAS","YBOCS_COMPULSION","SF36")
+
+fp = list()
+for (i in 1:6) {
+  fp[[i]] = ggplot(data=data, aes_string(x="Visit", y=yn[i], group="Id")) +
+    stat_sum_df("mean_cl_boot", mapping = aes(group = Visit)) +
+    geom_line(aes(color=Id)) + geom_point(aes(color=Id)) + xlab("")
+  }
+p = plot_grid(plotlist = fp,nrow=3)
+ggsave2("Figures/Ordered_grouped.pdf",plot=p,width=297,height=210,units="mm")
+ggsave2("Figures/Ordered_grouped.png",plot=p,width=297,height=210,units="mm")
+
+fp = list()
+for (i in 1:6) {
+  fp[[i]] = ggplot(data=data, aes_string(x="MonthReBaseline", y=yn[i], group="Id")) +
+    geom_line(aes(color=Id)) + geom_point(aes(color=Id)) + xlab("Months re. baseline")
+}
+p = plot_grid(plotlist = fp,nrow=3)
+ggsave2("Figures/Ordered_grouped_time.pdf",plot=p,width=297,height=210,units="mm")
+ggsave2("Figures/Ordered_grouped_time.png",plot=p,width=297,height=210,units="mm")
+
+c = ggplotColours(8)
+ymin = c(5,0,0,0,0,0)
+ymax = c(45,35,20,25,20,100)
+
+for (j in 1:6) {
+  fp = list()
+  for (i in 1:8) {
+    df = data[data$Id==i,]
+    fp[[i]] <- ggplot(df, aes_string(x="Visit", y=yn[j], group=1, color="Id")) + 
+      geom_hline(yintercept=df[[yn[j]]][1]*.65, linetype="dashed") +
+      geom_line() + 
+      scale_color_manual(values=c[i]) +
+      geom_text_repel(aes(label=Condition),
+                      nudge_y      = ymax[j],
+                      angle        = 45,
+                      direction    = "x",
+                      vjust        = 0,
+                      size        = 3,
+                      segment.size = 0.2) +
+      labs(title = paste('Id',i)) + xlab("") +
+      theme(legend.position = "none") + ylim(ymin[j],ymax[j])
+  }
+  
+  p = plot_grid(plotlist = fp,nrow=4)
+  ggsave2(paste("Figures/Ordered_byPatient_",yn[j],".pdf",sep=""),plot=p,width=297,height=210,units="mm")
+  ggsave2(paste("Figures/Ordered_byPatient_",yn[j],".png",sep=""),plot=p,width=297,height=210,units="mm")
+}
+```
+
+## Grouped outcomes by visit
+Visit M-1 corresponds to pre-randomization baseline (pre-surgical). M3 corresponds to the first post-surgical (PS) visit. M7 and M11 correspond to period baselines (SHAM). Boxplots in background show the mean ± 95% confidence intervals (bootstrapped).
+```{r allOutcomes_group, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_grouped.png",sep=""))
+```
+
+## Grouped outcomes by time
+Plot visits according to months relative to baseline visit. This may be better to do relative to surgery? Patient #2 is delayed relative to the rest of the group due to adverse event requiring re-implantation.
+```{r allOutcomes_group_time, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_grouped_time.png",sep=""))
+```
+
+## YBOCS by visit
+```{r YBOCS_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_YBOCS.png",sep=""))
+```
+
+## YBOCS_OBSESSION by visit
+```{r YBOCS_OBSESSION_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_YBOCS_OBSESSION.png",sep=""))
+```
+
+## YBOCS_COMPULSION by visit
+```{r YBOCS_COMPULSION_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_YBOCS_COMPULSION.png",sep=""))
+```
+
+## MADRS by visit
+```{r MADRS_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_MADRS.png",sep=""))
+```
+
+## BAS by visit
+```{r BAS_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_BAS.png",sep=""))
+```
+
+# Analyses
+
+## Comparisons with baseline
+Let's start by looking at how scores change between the pre-randomization baseline (M-1) and the post-surgical baseline (M3) as well as the open label follow-up (M+14). Here, I'm ignoring the actual treatment target because it doesn't affect M-1 or M3, and M+14 is the optimal target (all patients ended up with NST stimulation). The figures include a paired t-test for each comparison (uncorrected). Lines connect scores for visits of individual patients, and colors match plots in the preceding section.
+
+```{r pairwiseComarisons_baseline_post, echo=FALSE, message=FALSE, eval=TRUE}
+yn = c("YBOCS","YBOCS_OBSESSION","YBOCS_COMPULSION","MADRS","BAS","SF36")
+ymin = c(5,0,0,0,0,0)
+ymax = c(40,20,20,30,25,100)
+
+fp = list()
+for (i in 1:length(yn)) {
+  str = yn[i]
+  df = data.frame(Id = as.factor(c(data$Id[data$Visit=="M-1"],data$Id[data$Visit=="M3"])), 
+                  y = c(data[[str]][data$Visit=="M-1"],data[[str]][data$Visit=="M3"]), 
+                  Visit = unlist(list(data$Visit[data$Visit=="M-1"],data$Visit[data$Visit=="M3"])))
+  
+  t = t.test(df$y[df$Visit=="M-1"],df$y[df$Visit!="M-1"],paired=T)
+  
+  fp[[i]] = ggplot(df) +
+    geom_boxplot(aes(x = Visit, y = y, group = Visit, fill=Visit), alpha=0.65)+
+    geom_line(aes(x  = Visit, y = y, group = Id, color=Id)) +
+    scale_fill_brewer(palette="Paired") + 
+    theme_bw() + xlab("") + ylab(yn[i]) + theme(legend.position = "none") + ylim(ymin[i],ymax[i]) +
+    ggtitle(paste("t=",format(t$statistic,digits=3),', ','p=',format(t$p.value,digits=3),sep=""))
+}
+
+for (i in 1:length(yn)) {
+  str = yn[i]
+  df = data.frame(Id = as.factor(c(data$Id[data$Visit=="M-1"],data$Id[data$Visit=="M+14"])), 
+                  y = c(data[[str]][data$Visit=="M-1"],data[[str]][data$Visit=="M+14"]), 
+                  Visit = unlist(list(data$Visit[data$Visit=="M-1"],data$Visit[data$Visit=="M+14"])))
+  
+  # Remove patient #6, who is missing M+14 visit
+  df = df[-c(6),]
+  
+  t = t.test(df$y[df$Visit=="M-1"],df$y[df$Visit!="M-1"],paired=T)
+  
+  fp[[6+i]] = ggplot(df) +
+    geom_boxplot(aes(x = Visit, y = y, group = Visit, fill=Visit), alpha=0.65)+
+    geom_line(aes(x  = Visit, y = y, group = Id, color=Id)) +
+    scale_fill_brewer(palette="Paired") + 
+    theme_bw() + xlab("") + ylab(yn[i]) + theme(legend.position = "none") + ylim(ymin[i],ymax[i]) +
+    ggtitle(paste("t=",format(t$statistic,digits=3),', ','p=',format(t$p.value,digits=3),sep=""))
+}
+
+for (i in 1:length(yn)) {
+  str = yn[i]
+  df = data.frame(Id = as.factor(c(data$Id[data$Visit=="M3"],data$Id[data$Visit=="M+14"])), 
+                  y = c(data[[str]][data$Visit=="M3"],data[[str]][data$Visit=="M+14"]), 
+                  Visit = unlist(list(data$Visit[data$Visit=="M3"],data$Visit[data$Visit=="M+14"])))
+  
+  # Remove patient #6, who is missing M+14 visit
+  df = df[-c(6),]
+  
+  t = t.test(df$y[df$Visit=="M3"],df$y[df$Visit!="M3"],paired=T)
+  
+  fp[[12+i]] = ggplot(df) +
+    geom_boxplot(aes(x = Visit, y = y, group = Visit, fill=Visit), alpha=0.65)+
+    geom_line(aes(x  = Visit, y = y, group = Id, color=Id)) +
+    scale_fill_brewer(palette="Paired") + 
+    theme_bw() + xlab("") + ylab(yn[i]) + theme(legend.position = "none") + ylim(ymin[i],ymax[i]) +
+    ggtitle(paste("t=",format(t$statistic,digits=3),', ','p=',format(t$p.value,digits=3),sep=""))
+}
+
+p = plot_grid(plotlist = fp,nrow=3)
+ggsave2(paste("Figures/BaselineComparisons.pdf",sep=""),plot=p,width=297,height=210,units="mm")
+ggsave2(paste("Figures/BaselineComparisons.png",sep=""),plot=p,width=297,height=210,units="mm")
+```
+
+```{r baselineComparisons, echo = FALSE, message=FALSE, fig.align='center', fig.cap='', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/BaselineComparisons.png",sep=""))
+```
+
+```{r lmmSimple, echo=FALSE, message=FALSE, eval=TRUE}
+source("Code/models.R")
+yn = c("YBOCS","YBOCS_OBSESSION","YBOCS_COMPULSION","MADRS","BAS","SF36")
+
+# Only last month of each treatment
+df = data[data$Condition=='baseline' | data$Condition=='NST3' | data$Condition=='NA3' | data$Condition=='NC3',]
+fp = list()
+summSimple = list()
+for (i in 1:length(yn)) {
+  temp = lmModel(df = df,score=yn[i],model=1)
+  fp = c(fp,temp[[1]])
+  summSimple = c(summSimple,temp[2])
+}
+p = plot_grid(plotlist = fp,nrow=length(yn))
+ggsave2(paste("Figures/lmmSimple.pdf",sep=""),plot=p,width=210,height=297,units="mm")
+ggsave2(paste("Figures/lmmSimple.png",sep=""),plot=p,width=210,height=297,units="mm")
+
+# All data
+df = data
+fp = list()
+summFull = list()
+for (i in 1:length(yn)) {
+  temp = lmModel(df = df,score=yn[i],model=2)
+  fp = c(fp,temp[[1]])
+  summFull = c(summFull,temp[2])
+}
+p = plot_grid(plotlist = fp,nrow=length(yn))
+ggsave2(paste("Figures/lmmFull.pdf",sep=""),plot=p,width=210,height=297,units="mm")
+ggsave2(paste("Figures/lmmFull.png",sep=""),plot=p,width=210,height=297,units="mm")
+```
+
+## Linear mixed model
+Let's look more closely at the treatment target. Recall that we have repeated measurements (4) during each period of the double-blind phase. I'll use a linear mixed-model to model each outcome, including random intercepts by patient. To allow contrasts between the double-blind periods and the baseline and open-label phase, I will include the post-surgical visit (PS) and period-specific baselines (SHAM), which are pooled here (no Period interaction), as well as the open-label phase (OPT) as dependent variables. This assumes joint multivariate normality (REF).
+
+### Model selection
+The primary outcome score is the YBOCS. I will select a model based on this outcome, which I will also apply to model all other secondary outcomes. I'll compare four different models:
+
+1. Consider only treatment conditions.
+2. Add effects for period. Note that we drop one level of period since it is aliased into some combination of treatment. 
+3. Add effects for sequence.
+4. Adds a covariate for time (months relative to the baseline visit).
+
+<div style="margin-bottom:20px;">
+</div>
+```{r, echo=FALSE,message=FALSE}
+#htmltools::tags$iframe(title = "My embedded document", src = "test.html", width = '100%', height = '720px')
+score = "YBOCS"
+df = data
+
+f = as.formula(paste(score,"~","Treatment + (1|Id)"))
+m1 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + (1|Id)"))
+m2 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + Arm + (1|Id)"))
+m3 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + Arm + MonthReBaseline + (1|Id)"))
+m4 = lmer(f,data = df)
+
+library(sjPlot)
+tab_model(
+  m1,m2,m3,m4,
+  show.df=TRUE,
+  show.aic=FALSE,
+  show.ci = FALSE,
+  #collapse.ci = TRUE,
+  show.se = TRUE, 
+  #collapse.se = TRUE,
+  string.se = "SE",
+  dv.labels = c("M1", "M2", "M3", "M4"),
+  CSS = list(
+    css.table = 'font-size: small; border: 1px solid;'
+  )
+)
+detach("package:sjPlot")
+```
+<div style="margin-bottom:20px;">
+</div>
+
+The models above were fit with restricted maximum likelihood (REML). To compare the models I refit the models using maximum likelihood (MLE),
+```{r echo=FALSE, message=FALSE}
+a = anova(m1,m2,m3,m4)
+kable(a,digits=3) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(a$AIC == min(a$AIC)), bold = T, color = "black", background = "lightgreen")
+```
+Model 2 appears most appropriate, both by AIC and F-test. In addition to the Treatment effect, there is a significant effect of Period 1. 
+<div style="margin-bottom:20px;">
+</div>
+```{r echo=FALSE}
+kable(anova(m2,ddf="Kenward-Roger"),digits=3) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center")
+```
+```{r echo=FALSE, eval=FALSE}
+kable(anova(m3,ddf="Kenward-Roger"),digits=3) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center")
+```
+
+Let's visualize the treatment effects using conditional and contrast plots (visreg). The first column plots the individual visit data by treatment condition, on the raw score scale. The second column plots the same data, but contrasted with the estimated mean score in the OFF condition (pre-randomization baseline). This allows us to add 95% confidence intervals (random-effects cancel), which are uncorrected for multiple comparisons. The third column is a quantile-quantile plot of the model residuals (Normal distribution), with tail-sensitive 95% confidence intervals. 
+<div style="margin-bottom:20px;">
+</div>
+```{r fig_lmmFull, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Mixed model on full data', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/lmmFull.png",sep=""))
+```
+Some noteworthy points:
+
+* There appears to be an effect of surgery (PS compared to OFF).
+* Stimulation of any target yield marginal improvements relative to the surgery effect (PS) or to sham stimulation (SHAM)
+* NC stimulation does seem to worsen depression (MADRS), anxiety (BAS), and quality of life (SF36)
+
+<div style="margin-bottom:20px;">
+</div>
+The following summaries correspond to the models for the previous figure (Model 2). 95% confidence intervals are Bonferroni-corrected. P-values are FDR-adjusted with Kenward-Roger DOF.
+```{r lmmFullSummaries, echo=FALSE, message=FALSE, results = "asis"}
+for (i in 1:length(yn)) {
+  kable(summFull[[i]], digits=3, caption=yn[i]) %>%
+    kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+    row_spec(which(summFull[[i]]$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+    htmltools::HTML() %>% 
+  print
+}
+
+```
+
+### Model fits by subject
+```{r modelFits, echo=FALSE, message=FALSE, eval=FALSE}
+c = ggplotColours(8)
+ymin = c(5,0,0,0,0,0)
+ymax = c(45,35,20,25,20,100)
+
+fp = list()
+for (j in 1:length(yn)) {
+  f = as.formula(paste(yn[j],"~","Treatment + P1 + P2 + Arm + (1|Id)"))
+  m = lmer(f,data = data)
+  yhat = predict(m,newdata=data)
+  data$yhat = yhat
+  
+  for (i in 1:8) {
+    df = data[data$Id==i,]
+    fp[[i]] <- ggplot(df, aes_string(x="Visit", y=yn[j], group=1, color="Id")) + 
+      geom_point() + 
+      geom_line(aes(y=yhat)) + 
+      scale_color_manual(values=c[i]) +
+      geom_text_repel(aes(label=Condition),
+                      nudge_y      = ymax[j],
+                      angle        = 45,
+                      direction    = "x",
+                      vjust        = 0,
+                      size        = 3,
+                      segment.size = 0.2) +
+      labs(title = paste('Id',i)) + xlab("") +
+      theme(legend.position = "none") + ylim(ymin[j],ymax[j])
+  }
+  
+  p = plot_grid(plotlist = fp,nrow=4)
+  ggsave2(paste("Figures/Ordered_byPatient_",yn[j],"_PREDICTION.pdf",sep=""),plot=p,width=297,height=210,units="mm")
+  ggsave2(paste("Figures/Ordered_byPatient_",yn[j],"_PREDICTION.png",sep=""),plot=p,width=297,height=210,units="mm")
+}
+```
+
+#### YBOCS
+```{r YBOCS_fit_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_YBOCS_PREDICTION.png",sep=""))
+```
+
+#### YBOCS_OBSESSION
+```{r YBOCS_fit_OBSESSION_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_YBOCS_OBSESSION_PREDICTION.png",sep=""))
+```
+
+#### YBOCS_COMPULSION
+```{r YBOCS_fit_COMPULSION_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_YBOCS_COMPULSION_PREDICTION.png",sep=""))
+```
+
+#### MADRS
+```{r MADRS_fit_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_MADRS_PREDICTION.png",sep=""))
+```
+
+#### BAS
+```{r BAS_fit_byPatient, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Ordered_byPatient_BAS_PREDICTION.png",sep=""))
+```
+
+### Diagnostics
+
+#### Fixed-effects model
+Since we are primarily interested in making marginal inferences from our models, the machinery (and assumptions) of mixed-effects models are not really necessary. Let's compare to a simpler fixed-effects model, replacing the random effects with a patient factor,
+<div style="margin-bottom:20px;">
+</div>
+```{r echo=FALSE, message=FALSE, eval=TRUE}
+score = "YBOCS"
+df = data
+f = as.formula(paste(score,"~","Id + Treatment + P1 + P2"))
+m = lm(f,data = df)
+kable(Anova(m,type="III",test.statistic="F"),digits=3) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center")
+```
+
+The following contrasts summarize the fixed-effects model. 95% confidence intervals are Bonferroni-corrected. P-values are FDR-adjusted.
+```{r echo=FALSE, message=FALSE, results = "asis"}
+m.emm = emmeans(m,~Treatment)
+s.emm = summary(pairs(m.emm),adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, fixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+Compare this to the contrasts from mixed-effects Model 2,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summFull[[1]]
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+Finally, here are the conditional and contrast plots for both models
+```{r echo=FALSE, message=FALSE, eval=TRUE}
+  fp = list()
+  fp[[1]] = visreg(m,"Treatment",gg=TRUE,ylab=score,xlab="") + theme_bw() + ggtitle("YBOCS, fixed-effects model") + ylim(10,47)
+  fp[[2]] = visreg(m,"Treatment",gg=TRUE,type="contrast",ylab=paste("Δ",score,sep=""),xlab="") + theme_bw() + geom_hline(yintercept = 0,alpha=0.5, linetype="dashed") + ggtitle("ΔYBOCS, fixed-effects model") + ylim(-25,10)
+  
+  temp = lmModel(df = data,score=score,model=2)
+  fp = c(fp,temp[[1]][1:2])
+  fp[[3]] = fp[[3]] + ggtitle("YBOCS, mixed-effects model") + ylim(10,47)
+  fp[[4]] = fp[[4]] + ggtitle("ΔYBOCS, mixed-effects model") + ylim(-25,10)
+  p = plot_grid(plotlist = fp,nrow=2)
+  ggsave2(paste("Figures/FixedVsMixed_",score,".pdf",sep=""),plot=p,width=297,height=210,units="mm")
+  ggsave2(paste("Figures/FixedVsMixed_",score,".png",sep=""),plot=p,width=297,height=210,units="mm")
+```
+
+```{r FixedVsMixed, echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/FixedVsMixed_YBOCS.png",sep=""))
+```
+
+The results are very similar, suggesting that there is nothing horribly wrong with out mixed-effects model (REF).
+
+#### Period effect
+Let's look more closely at the significant positive effect of the first period using model residuals, which should be zero-mean iid normal variates. Below I plot these residuals sorted by visit. The left column replots the raw YBOCS score by period. The middle column are the residuals of Model 1 (no period effect), and the right column plots the residuals of Model 2. The top row shows the pre-randomization baseline (M-1) and open-label (M+14) visits along with the non-stimulated visits (M3, M7, and M11). The bottom row is the same, but shows the stimulation visits rather than the period-specific baseline visits.
+```{r echo=FALSE, message=FALSE, eval=TRUE}
+score = "YBOCS"
+df = data[c("Id","Arm","Treatment","Visit","Period","P1","P2","MonthReBaseline",score)]
+df = df[complete.cases(df),]
+
+f = as.formula(paste(score,"~","Treatment + (1|Id)"))
+m1 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + (1|Id)"))
+m2 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + Arm + (1|Id)"))
+m3 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + Arm + MonthReBaseline + (1|Id)"))
+m4 = lmer(f,data = df)
+
+df$res1 = resid(m1)
+df$res2 = resid(m2)
+df$res3 = resid(m3)
+df$res4 = resid(m4)
+df2 = df[df$Treatment=="OFF" | df$Treatment=="PS" | df$Treatment=="SHAM" | df$Treatment=="OPT",]
+
+fp = list()
+fp[[1]] = ggplot(data=df2,aes(x=Visit,y=YBOCS,color=Id,group=Id)) + 
+  stat_sum_df("mean_cl_boot", mapping = aes(group = Visit)) + 
+  geom_point() + geom_line() +
+  ylim(5,45) + theme_bw() + xlab("") + theme(legend.position = "none")
+fp[[2]] = ggplot(data=df2,aes(x=Visit,y=res1,color=Id,group=Id)) + 
+  stat_sum_df("mean_cl_boot", mapping = aes(group = Visit)) + 
+  geom_point() + geom_line() +
+  ylim(-20,20) + theme_bw() + xlab("") + ylab("Model 1 residuals") + theme(legend.position = "none")
+fp[[3]] = ggplot(data=df2,aes(x=Visit,y=res2,color=Id,group=Id)) + 
+  stat_sum_df("mean_cl_boot", mapping = aes(group = Visit)) + 
+  geom_point() + geom_line() +
+  ylim(-20,20) + theme_bw() + xlab("") + ylab("Model 2 residuals") + theme(legend.position = "none")
+
+
+df3 = df[df$Treatment=="OFF" | df$Treatment=="NC" | df$Treatment=="NAc" | df$Treatment=="NST" | df$Treatment=="OPT",]
+
+fp[[4]] = ggplot(data=df3,aes(x=Visit,y=YBOCS,color=Id,group=Id)) + 
+  stat_sum_df("mean_cl_boot", mapping = aes(group = Visit)) + 
+  geom_point() + geom_line() +
+  ylim(5,45) + theme_bw() + xlab("") + theme(legend.position = "none")
+fp[[5]] = ggplot(data=df3,aes(x=Visit,y=res1,color=Id,group=Id)) + 
+  stat_sum_df("mean_cl_boot", mapping = aes(group = Visit)) + 
+  geom_point() + geom_line() +
+  ylim(-20,20) + theme_bw() + xlab("") + ylab("Model 1 residuals") + theme(legend.position = "none")
+fp[[6]] = ggplot(data=df3,aes(x=Visit,y=res2,color=Id,group=Id)) + 
+  stat_sum_df("mean_cl_boot", mapping = aes(group = Visit)) + 
+  geom_point() + geom_line() +
+  ylim(-20,20) + theme_bw() + xlab("") + ylab("Model 2 residuals") + theme(legend.position = "none")
+
+p = plot_grid(plotlist = fp,nrow=2)
+ggsave2(paste("Figures/PeriodDiagnostic.pdf",sep=""),plot=p,width=297,height=180,units="mm")
+ggsave2(paste("Figures/PeriodDiagnostic.png",sep=""),plot=p,width=297,height=180,units="mm")
+```
+```{r echo = FALSE, message=FALSE, fig.align='center', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/PeriodDiagnostic.png",sep=""))
+```
+
+#### Crossover
+I didn't explicitly account for crossover effects since results from Mallet et al. suggest that a one month washout was sufficient. We can address crossover indirectly if we assume that these effects dissipate with time. I consider this by restricting the analysis to the last visit in each double-blind period. I'll only look at four conditions; pre-surgical baseline (OFF), and the 3rd month of each treatment condition. Note that patient #6 does not have any 3rd-month evaluations, but I've included their baseline data here. Removing this patient does not substantially change the results.
+
+I'll do the same kind of model selection as above for the full dataset.
+<div style="margin-bottom:20px;">
+</div>
+```{r, echo=FALSE, message=FALSE}
+#htmltools::tags$iframe(title = "My embedded document", src = "test.html", width = '100%', height = '720px')
+score = "YBOCS"
+df = data[data$Condition=='baseline' | data$Condition=='NST3' | data$Condition=='NA3' | data$Condition=='NC3',]
+
+f = as.formula(paste(score,"~","Treatment + (1|Id)"))
+m1 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + (1|Id)"))
+m2 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + Arm + (1|Id)"))
+m3 = lmer(f,data = df)
+f = as.formula(paste(score,"~","Treatment + P1 + P2 + Arm + MonthReBaseline + (1|Id)"))
+m4 = lmer(f,data = df)
+
+library(sjPlot)
+tab_model(
+  m1,m2,m3,m4,
+  show.df=TRUE,
+  show.aic=FALSE,
+  show.ci = FALSE,
+  #collapse.ci = TRUE,
+  show.se = TRUE, 
+  #collapse.se = TRUE,
+  string.se = "SE",
+  dv.labels = c("M1", "M2", "M3", "M4"),
+  CSS = list(
+    css.table = 'font-size: small; border: 1px solid;'
+  )
+)
+detach("package:sjPlot")
+```
+<div style="margin-bottom:20px;">
+</div>
+
+The models above were fit with restricted maximum likelihood (REML). To compare the models I refit the models using maximum likelihood (MLE),
+```{r echo=FALSE, message=FALSE}
+a = anova(m1,m2,m3,m4)
+kable(a,digits=3) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(a$AIC == min(a$AIC)), bold = T, color = "black", background = "lightgreen")
+```
+Model 1 appears most appropriate, which is probably not that surprising considering we are now fitting models using only 29 observations. Despite this, Model 1 yields a significant effect for treatment,
+<div style="margin-bottom:20px;">
+</div>
+```{r echo=FALSE}
+kable(anova(m1,ddf="Kenward-Roger"),digits=3) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center")
+```
+```{r echo=FALSE, eval=FALSE}
+kable(anova(m2,ddf="Kenward-Roger"),digits=3) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center")
+```
+
+We'll visualize the treatment effects and their estimated means as we did for the full data above.
+<div style="margin-bottom:20px;">
+</div>
+```{r fig_lmmSimple, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Mixed model on data subset', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/lmmSimple.png",sep=""))
+```
+
+<div style="margin-bottom:20px;">
+</div>
+The following summaries correspond to the models for the previous figure (Model 1). 95% confidence intervals are Bonferroni-corrected. P-values are FDR-adjusted with Kenward-Roger DOF.
+```{r lmmSimpleSummaries, echo=FALSE, message=FALSE, results = "asis"}
+for (i in 1:length(yn)) {
+  kable(summSimple[[i]], digits=3, caption=yn[i]) %>%
+    kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+    row_spec(which(summSimple[[i]]$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+    htmltools::HTML() %>% 
+  print
+     
+}
+```
+
+# Proposed results and figure
+Contrasts of estimated marginal means for mixed-effects Model 2,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summFull[[1]]
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+```{r proposedFigure, echo=FALSE, message=FALSE}
+source("Code/runFit.R")
+
+score = "YBOCS"
+l = runFit(score)
+df = l[[1]]
+s = l[[2]]
+
+p = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+  geom_beeswarm(cex=1.5,size=3) +
+  theme_pubr() + xlab("")
+
+ggsave2(paste("Figures/ProposedFigureFixed.pdf",sep=""),plot=p,width=225,height=175,units="mm")
+ggsave2(paste("Figures/ProposedFigureFixed.png",sep=""),plot=p,width=225,height=175,units="mm")
+```
+<div style="margin-bottom:20px;">
+</div>
+Corresponding figure for mixed-effects Model 2,
+```{r fig_proposedFigureMixed, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Proposed figure (mixed effects)', out.width='60%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/ProposedFigureMixed.png",sep=""))
+```
+
+# Alternative proposed results and figure
+For 3 patients there are some extra YBOCS scores available
+```{r altFigure, echo=FALSE, message=FALSE}
+source("Code/runFit.R")
+
+score = "YBOCS"
+l = runFit(score,extradata=T)
+df = l[[1]]
+s = l[[2]]
+m.emm = l[[3]]
+df2 = l[[4]]
+
+temp =  read.csv('Data/data_extra2.csv')
+tempOFF = temp[(temp$Voltage==0)|(temp$Voltage=="NaN"),]
+tempOFF$Treatment = "Open (Off)"
+tempOFF$P1 = FALSE
+tempOFF$P2 = FALSE
+tempOFF = tempOFF[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+tempNC = temp[temp$Treatment=="NC",]
+tempNC$Treatment = "Open (CN)"
+tempNC$P1 = FALSE
+tempNC$P2 = FALSE
+tempNC = tempNC[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+tempNAc = temp[temp$Treatment=="NAc",]
+tempNAc$Treatment = "Open (AcN)"
+tempNAc$P1 = FALSE
+tempNAc$P2 = FALSE
+tempNAc = tempNAc[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+df = rbind(df,tempOFF)
+df = rbind(df,tempNC)
+df = rbind(df,tempNAc)
+
+df$Treatment <- factor(df$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)", "Open (AcN)", "Open (Off)", "Open"))
+
+temp = data.frame(Treatment="Open (Off)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (CN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (AcN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+s$Treatment <- factor(s$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)","Open (AcN)", "Open (Off)", "Open"))
+
+ppp = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+  geom_beeswarm(cex=1.5,size=3) +
+  theme_pubr() + xlab("") + scale_x_discrete(labels=function(x){sub("\\s", "\n", x)})
+
+ggsave2(paste("Figures/AltProposedFigureMixed.pdf",sep=""),plot=ppp,width=225,height=175,units="mm")
+ggsave2(paste("Figures/AltProposedFigureMixed.png",sep=""),plot=ppp,width=225,height=175,units="mm")
+
+ppp = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+  geom_beeswarm(cex=1.5,size=1.25) +
+  theme_pubr() + xlab("") + theme(legend.position = "none")
+
+kable(df2) %>%
+  kable_styling(bootstrap_options = c("striped","hover","condensed"), font_size = 8, full_width=T, position = "center")
+```
+
+Contrasts of estimated marginal means for mixed-effects Model 2 with extra data,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summary(pairs(m.emm),adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+<div style="margin-bottom:20px;">
+</div>
+Corresponding figure for mixed-effects Model 2 with extra data,
+```{r fig_altProposedFigureMixed, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Alternative proposed figure (mixed effects)', out.width='60%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/AltProposedFigureMixed.png",sep=""))
+```
+There are a few extra YBOCS exams during the open-label phase. These all preceded the final open-label exam (where all remaining patients were under STN stimulation).
+
+# Extra pre-baseline measurements
+```{r extraBaseline, echo=FALSE, message=FALSE}
+source("Code/runFit.R")
+
+score = "YBOCS"
+l = runFit(score,extradata=T,extrabaseline=T)
+df = l[[1]]
+s = l[[2]]
+m.emm = l[[3]]
+df2 = l[[4]] 
+df3 = l[[5]] 
+
+temp =  read.csv('Data/data_extra2.csv')
+tempOFF = temp[(temp$Voltage==0)|(temp$Voltage=="NaN"),]
+tempOFF$Treatment = "Open (Off)"
+tempOFF$P1 = FALSE
+tempOFF$P2 = FALSE
+tempOFF = tempOFF[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+tempNC = temp[temp$Treatment=="NC",]
+tempNC$Treatment = "Open (CN)"
+tempNC$P1 = FALSE
+tempNC$P2 = FALSE
+tempNC = tempNC[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+tempNAc = temp[temp$Treatment=="NAc",]
+tempNAc$Treatment = "Open (AcN)"
+tempNAc$P1 = FALSE
+tempNAc$P2 = FALSE
+tempNAc = tempNAc[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+df = rbind(df,tempOFF)
+df = rbind(df,tempNC)
+df = rbind(df,tempNAc)
+
+#df3$Treatment = "Baseline"
+#df = rbind(df,df3)
+
+df$Treatment <- factor(df$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)", "Open (AcN)", "Open (Off)", "Open"))
+
+temp = data.frame(Treatment="Open (Off)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (CN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (AcN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+s$Treatment <- factor(s$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)","Open (AcN)", "Open (Off)", "Open"))
+
+ppp = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+  geom_beeswarm(cex=1.5,size=3) +
+  theme_pubr() + xlab("") + scale_x_discrete(labels=function(x){sub("\\s", "\n", x)})
+
+ggsave2(paste("Figures/AltProposedFigureMixed2.pdf",sep=""),plot=ppp,width=225,height=175,units="mm")
+ggsave2(paste("Figures/AltProposedFigureMixed2.png",sep=""),plot=ppp,width=225,height=175,units="mm")
+
+kable(df3) %>%
+  kable_styling(bootstrap_options = c("striped","hover","condensed"), font_size = 8, full_width=T, position = "center")
+```
+
+Contrasts of estimated marginal means for mixed-effects Model 2 with extra baseline data,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summary(pairs(m.emm),adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+<div style="margin-bottom:20px;">
+</div>
+Corresponding figure for mixed-effects Model 2 with extra data,
+```{r fig_altProposedFigureMixed2, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Alternative proposed figure (mixed effects)', out.width='60%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/AltProposedFigureMixed2.png",sep=""))
+```
+
+# Extra pre-baseline measurements, keeping only last visit
+```{r extraBaseline2, echo=FALSE, message=FALSE}
+source("Code/runFit.R")
+
+score = "YBOCS"
+l = runFit(score,extradata=T,extrabaseline=T)
+df = l[[1]]
+s = l[[2]]
+m.emm = l[[3]]
+df2 = l[[4]] 
+df3 = l[[5]] 
+
+temp =  read.csv('Data/data_extra2.csv')
+tempOFF = temp[(temp$Voltage==0)|(temp$Voltage=="NaN"),]
+tempOFF$Treatment = "Open (Off)"
+tempOFF$P1 = FALSE
+tempOFF$P2 = FALSE
+tempOFF = tempOFF[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+tempNC = temp[temp$Treatment=="NC",]
+tempNC$Treatment = "Open (CN)"
+tempNC$P1 = FALSE
+tempNC$P2 = FALSE
+tempNC = tempNC[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+tempNAc = temp[temp$Treatment=="NAc",]
+tempNAc$Treatment = "Open (AcN)"
+tempNAc$P1 = FALSE
+tempNAc$P2 = FALSE
+tempNAc = tempNAc[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+
+df = rbind(df,tempOFF)
+df = rbind(df,tempNC)
+df = rbind(df,tempNAc)
+
+#df3$Treatment = "Baseline"
+#df = rbind(df,df3)
+
+df$Treatment <- factor(df$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)", "Open (AcN)", "Open (Off)", "Open"))
+
+temp = data.frame(Treatment="Open (Off)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (CN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (AcN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+s$Treatment <- factor(s$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)","Open (AcN)", "Open (Off)", "Open"))
+
+ppp = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+  geom_beeswarm(cex=1.5,size=3) +
+  theme_pubr() + xlab("") + scale_x_discrete(labels=function(x){sub("\\s", "\n", x)})
+
+ggsave2(paste("Figures/AltProposedFigureMixed2.pdf",sep=""),plot=ppp,width=225,height=175,units="mm")
+ggsave2(paste("Figures/AltProposedFigureMixed2.png",sep=""),plot=ppp,width=225,height=175,units="mm")
+
+kable(df3) %>%
+  kable_styling(bootstrap_options = c("striped","hover","condensed"), font_size = 8, full_width=T, position = "center")
+```
+
+Contrasts of estimated marginal means for mixed-effects Model 2 with extra baseline data,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summary(pairs(m.emm),adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+<div style="margin-bottom:20px;">
+</div>
+Corresponding figure for mixed-effects Model 2 with extra data,
+```{r fig_altProposedFigureMixed2, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Alternative proposed figure (mixed effects)', out.width='60%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/AltProposedFigureMixed2.png",sep=""))
+```
+# Change scores (difference)
+Re-run using difference from baseline as outcome variable
+```{r changeDiff, echo=FALSE, message=FALSE}
+source("Code/runFit_b.R")
+
+score = "YBOCS"
+l = runFit_b(score,extradata=T,chg="diff")
+df = l[[1]]
+s = l[[2]]
+m.emm = l[[3]]
+df2 = l[[4]]
+
+temp =  read.csv('Data/data_extra2.csv')
+tempOFF = temp[(temp$Voltage==0)|(temp$Voltage=="NaN"),]
+tempOFF$Treatment = "Open (Off)"
+tempOFF$P1 = FALSE
+tempOFF$P2 = FALSE
+tempOFF = tempOFF[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+tempOFF = add_column(tempOFF, YBOCS_bdiff = NA, .after = "YBOCS")
+tempOFF = add_column(tempOFF, YBOCS_bperc = NA, .after = "YBOCS_bdiff")
+for (i in 1:nrow(tempOFF)) {
+  bl = df$YBOCS[(df$Id==tempOFF$Id[i]) & (df$Condition=="baseline")]
+  tempOFF$YBOCS_bdiff[i] = tempOFF$YBOCS[i] - bl
+  tempOFF$YBOCS_bperc[i] = 100*(bl - tempOFF$YBOCS[i]) / bl
+}
+tempOFF = add_column(tempOFF, Condition = "open", .after = "Arm")
+
+tempNC = temp[temp$Treatment=="NC",]
+tempNC$Treatment = "Open (CN)"
+tempNC$P1 = FALSE
+tempNC$P2 = FALSE
+tempNC = tempNC[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+tempNC = add_column(tempNC, YBOCS_bdiff = NA, .after = "YBOCS")
+tempNC = add_column(tempNC, YBOCS_bperc = NA, .after = "YBOCS_bdiff")
+for (i in 1:nrow(tempNC)) {
+  bl = df$YBOCS[(df$Id==tempNC$Id[i]) & (df$Condition=="baseline")]
+  tempNC$YBOCS_bdiff[i] = tempNC$YBOCS[i] - bl
+  tempNC$YBOCS_bperc[i] = 100*(bl - tempNC$YBOCS[i]) / bl
+}
+tempNC = add_column(tempNC, Condition = "open", .after = "Arm")
+
+tempNAc = temp[temp$Treatment=="NAc",]
+tempNAc$Treatment = "Open (AcN)"
+tempNAc$P1 = FALSE
+tempNAc$P2 = FALSE
+tempNAc = tempNAc[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+tempNAc = add_column(tempNAc, YBOCS_bdiff = NA, .after = "YBOCS")
+tempNAc = add_column(tempNAc, YBOCS_bperc = NA, .after = "YBOCS_bdiff")
+for (i in 1:nrow(tempNAc)) {
+  bl = df$YBOCS[(df$Id==tempNAc$Id[i]) & (df$Condition=="baseline")]
+  tempNAc$YBOCS_bdiff[i] = tempNAc$YBOCS[i] - bl
+  tempNAc$YBOCS_bperc[i] = 100*(bl - tempNAc$YBOCS[i]) / bl
+}
+tempNAc = add_column(tempNAc, Condition = "open", .after = "Arm")
+
+df = rbind(df,tempOFF)
+df = rbind(df,tempNC)
+df = rbind(df,tempNAc)
+
+df = df[ !(df$Condition %in% c("baseline")), ]
+df$Treatment <- factor(df$Treatment, levels = c("M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)", "Open (AcN)", "Open (Off)", "Open"))
+
+temp = data.frame(Treatment="Open (Off)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (CN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (AcN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+s$Treatment <- factor(s$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)","Open (AcN)", "Open (Off)", "Open"))
+
+score = "YBOCS_bdiff"
+ppp = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+  geom_beeswarm(cex=1.5,size=3) +
+  theme_pubr() + xlab("") + scale_x_discrete(labels=function(x){sub("\\s", "\n", x)})
+
+ggsave2(paste("Figures/Change_diff_Mixed.pdf",sep=""),plot=ppp,width=225,height=175,units="mm")
+ggsave2(paste("Figures/Change_diff_Mixed.png",sep=""),plot=ppp,width=225,height=175,units="mm")
+```
+
+Estimated marginal means for mixed-effects Model 2 with extra data,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summary(m.emm,adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+Contrasts of estimated marginal means for mixed-effects Model 2 with extra data,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summary(pairs(m.emm),adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+<div style="margin-bottom:20px;">
+</div>
+Corresponding figure for mixed-effects Model 2 with extra data,
+```{r fig_changeDiff, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Alternative proposed figure (mixed effects)', out.width='60%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Change_diff_Mixed.png",sep=""))
+```
+
+# Change scores (percentage)
+Re-run using percentage improvement from baseline as outcome variable
+```{r changePerc, echo=FALSE, message=FALSE}
+source("Code/runFit_b.R")
+
+score = "YBOCS"
+l = runFit_b(score,extradata=T,chg="perc")
+df = l[[1]]
+s = l[[2]]
+m.emm = l[[3]]
+df2 = l[[4]]
+
+temp =  read.csv('Data/data_extra2.csv')
+tempOFF = temp[(temp$Voltage==0)|(temp$Voltage=="NaN"),]
+tempOFF$Treatment = "Open (Off)"
+tempOFF$P1 = FALSE
+tempOFF$P2 = FALSE
+tempOFF = tempOFF[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+tempOFF = add_column(tempOFF, YBOCS_bdiff = NA, .after = "YBOCS")
+tempOFF = add_column(tempOFF, YBOCS_bperc = NA, .after = "YBOCS_bdiff")
+for (i in 1:nrow(tempOFF)) {
+  bl = df$YBOCS[(df$Id==tempOFF$Id[i]) & (df$Condition=="baseline")]
+  tempOFF$YBOCS_bdiff[i] = tempOFF$YBOCS[i] - bl
+  tempOFF$YBOCS_bperc[i] = 100*(bl - tempOFF$YBOCS[i]) / bl
+}
+tempOFF = add_column(tempOFF, Condition = "open", .after = "Arm")
+
+tempNC = temp[temp$Treatment=="NC",]
+tempNC$Treatment = "Open (CN)"
+tempNC$P1 = FALSE
+tempNC$P2 = FALSE
+tempNC = tempNC[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+tempNC = add_column(tempNC, YBOCS_bdiff = NA, .after = "YBOCS")
+tempNC = add_column(tempNC, YBOCS_bperc = NA, .after = "YBOCS_bdiff")
+for (i in 1:nrow(tempNC)) {
+  bl = df$YBOCS[(df$Id==tempNC$Id[i]) & (df$Condition=="baseline")]
+  tempNC$YBOCS_bdiff[i] = tempNC$YBOCS[i] - bl
+  tempNC$YBOCS_bperc[i] = 100*(bl - tempNC$YBOCS[i]) / bl
+}
+tempNC = add_column(tempNC, Condition = "open", .after = "Arm")
+
+tempNAc = temp[temp$Treatment=="NAc",]
+tempNAc$Treatment = "Open (AcN)"
+tempNAc$P1 = FALSE
+tempNAc$P2 = FALSE
+tempNAc = tempNAc[c("Id","Arm","Treatment","Visit","Period","P1","P2",score)]
+tempNAc = add_column(tempNAc, YBOCS_bdiff = NA, .after = "YBOCS")
+tempNAc = add_column(tempNAc, YBOCS_bperc = NA, .after = "YBOCS_bdiff")
+for (i in 1:nrow(tempNAc)) {
+  bl = df$YBOCS[(df$Id==tempNAc$Id[i]) & (df$Condition=="baseline")]
+  tempNAc$YBOCS_bdiff[i] = tempNAc$YBOCS[i] - bl
+  tempNAc$YBOCS_bperc[i] = 100*(bl - tempNAc$YBOCS[i]) / bl
+}
+tempNAc = add_column(tempNAc, Condition = "open", .after = "Arm")
+
+df = rbind(df,tempOFF)
+df = rbind(df,tempNC)
+df = rbind(df,tempNAc)
+
+df = df[ !(df$Condition %in% c("baseline")), ]
+df$Treatment <- factor(df$Treatment, levels = c("M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)", "Open (AcN)", "Open (Off)", "Open"))
+
+temp = data.frame(Treatment="Open (Off)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (CN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+temp = data.frame(Treatment="Open (AcN)", emmean=NA,SE=NA,df=NA, lower.CL = NA,upper.CL=NA,t.ratio=NA,p.value=NA)
+s = rbind(s,temp)
+s$Treatment <- factor(s$Treatment, levels = c("Baseline","M3", "Sham", "CN", "AcN", "amSTN", "Open (CN)","Open (AcN)", "Open (Off)", "Open"))
+
+score = "YBOCS_bperc"
+ppp = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+  geom_beeswarm(cex=1.5,size=3) +
+  theme_pubr() + xlab("") + scale_x_discrete(labels=function(x){sub("\\s", "\n", x)})
+
+ggsave2(paste("Figures/Change_perc_Mixed.pdf",sep=""),plot=ppp,width=225,height=175,units="mm")
+ggsave2(paste("Figures/Change_perc_Mixed.png",sep=""),plot=ppp,width=225,height=175,units="mm")
+```
+
+Estimated marginal means for mixed-effects Model 2 with extra data,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summary(m.emm,adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+Contrasts of estimated marginal means for mixed-effects Model 2 with extra data,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+s.emm = summary(pairs(m.emm),adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+<div style="margin-bottom:20px;">
+</div>
+Corresponding figure for mixed-effects Model 2 with extra data,
+```{r fig_changePerc, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Alternative proposed figure (mixed effects)', out.width='60%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/Change_perc_Mixed.png",sep=""))
+```
+
+# Supplementary figure
+```{r suppFigure, echo=FALSE, message=FALSE}
+source("Code/runFit.R")
+
+yn = c("YBOCS_OBSESSION","MADRS","YBOCS_COMPULSION","BAS","SF36")
+
+fp = list()
+for (i in 1:length(yn)) {
+  score = yn[i]
+  l = runFit(score,extradata=T)
+  df = l[[1]]
+  s = l[[2]]
+  m.emm = l[[3]]
+  df2 = l[[4]]
+  
+  fp[[i]] = ggplot(data=df,aes_string(x="Treatment",y=score,color="Id")) + 
+    geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=lower.CL,ymax=upper.CL),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+    geom_crossbar(data=s,aes(x=Treatment, y=emmean, ymin=emmean,ymax=emmean),color="black",fill=NA,alpha=0.95,fatten=3, width=0.75) + 
+    geom_beeswarm(cex=1.5,size=1.25) +
+    theme_pubr() + xlab("") + theme(legend.position = "none")
+}
+
+fp[[6]] = fp[[5]]
+fp[[5]] = NA
+  
+p = plot_grid(plotlist = fp,nrow=3)
+
+ggsave2(paste("Figures/SuppFigureMixed.pdf",sep=""),plot=p,width=225,height=225,units="mm")
+ggsave2(paste("Figures/SuppFigureMixed.png",sep=""),plot=p,width=225,height=225,units="mm")
+
+#fpp = list()
+#fpp[[1]] = ppp
+#fpp[[2]] = fp[[2]]
+#p = plot_grid(plotlist = fpp,nrow=1)
+
+#ggsave2(paste("Figures/AltProposedFigureMixed2.pdf",sep=""),plot=p,width=225,height=100,units="mm")
+#ggsave2(paste("Figures/AltProposedFigureMixed2.png",sep=""),plot=p,width=225,height=100,units="mm")
+```
+
+<div style="margin-bottom:20px;">
+</div>
+Figure for secondary outcomes mixed-effects Model 2,
+```{r fig_suppFigureMixed, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Alternative proposed figure (mixed effects)', out.width='100%', fig.pos='H'}
+knitr::include_graphics(paste(FIGURE_DIR,"/SuppFigureMixed.png",sep=""))
+```
+
+Corresponding ontrasts of estimated marginal means for mixed-effects Model 2,
+```{r echo=FALSE, message=FALSE, results = "asis"}
+# yn = c("YBOCS","YBOCS_OBSESSION","YBOCS_COMPULSION","MADRS","BAS","SF36")
+s.emm = summFull[[2]]
+kable(s.emm, digits=3, caption="YBOCS_OBSESSION, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+
+s.emm = summFull[[3]]
+kable(s.emm, digits=3, caption="YBOCS_COMPULSION, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+
+s.emm = summFull[[4]]
+kable(s.emm, digits=3, caption="MADRS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+
+s.emm = summFull[[5]]
+kable(s.emm, digits=3, caption="BAS, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+
+s.emm = summFull[[6]]
+kable(s.emm, digits=3, caption="SF36, mixed-effects model") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+
+```
+
+# Appendix: Tyagi et al. analysis
+Six patients with treatment-refractory OCD (5 men; Yale-Brown Obsessive Compulsive Scale score >32) entered double-blind counterbalanced phases of 12-week amSTN or VC/VS DBS, followed by 12-week open phases when amSTN and VC/VS were stimulated together, in which optimal stimulation parameters were achieved and adjunctive inpatient cognitive behavioral therapy was delivered. Note that there were no washout periods.
+
+## Data
+```{r, echo=FALSE}
+data <- read.csv('Data/TYAGI.csv')
+data$Patient <- as.factor(data$Patient)
+data$Condition <- factor(data$Condition, levels = c("Baseline","amSTN", "VCVS", "COMB", "OPT", "AdCBT"))
+```
+Here is the YBOCS data from Tyagi et al. (Table 2). Crossover period is not indicated for each patient, nor is it analysed in the paper. Note that the baseline condition refers to outcomes measured at the pre-surgical visit.
+```{r, echo=FALSE}
+kable(data) %>%
+  kable_styling(bootstrap_options = c("striped","hover","condensed"), font_size = 8, full_width=F, position = "center")
+```
+All patients contributed data for all conditions, although the data from patient #1 is carried forward from the last available visit. This is an unreplicated complete block design, where each block (Patient) has one and only one observation of each treatment (Condition).
+```{r  echo=FALSE}
+d = tabular(Condition ~ Patient,data=data)
+toKable(d) %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 10, full_width=F, position = "center")
+```
+## Non-parametric analysis
+The authors use an omnibus Friedman test (non-parametric version of a one way ANOVA with repeated measures) with stimulation target (Condition) as the treatment or grouping variable and patient as the blocking factor. The conditions COMB, OPT, and AdCBT were dropped from this particular analysis. 
+```{r, echo=TRUE, message=FALSE}
+df = data[(data$Condition=="Baseline")|(data$Condition=="amSTN")|(data$Condition=="VCVS"),]
+df$Condition = droplevels(df$Condition)
+
+require(PMCMRplus)
+d = friedmanTest(df$YBOCS,df$Condition,df$Patient)
+cat(capture.output(d),sep="\n")
+```
+This p-value is slightly lower than in the paper (p = 0.017), presumably because they FDR-corrected across outcomes (YBOCS, MADRS, EDL).
+
+Post-hoc tests were performed using pairwise Conover tests. The appropriate test would have been the following, since groups are not independent (i.e., each patient receives each treatment),
+```{r, echo=TRUE, message=FALSE}
+d = frdAllPairsConoverTest(df$YBOCS,df$Condition,df$Patient,p.adjust.method = c("fdr"))
+cat(capture.output(d),sep="\n")
+```
+Since they reported p-values < 0.001, this is clearly not the test used by Tyagi et al.
+
+They might have used the following test, which assumes independent groups (note that the Patient factor is not passed to the function),
+```{r, echo=TRUE, message=FALSE}
+d = kwAllPairsConoverTest(df$YBOCS,df$Condition,p.adjust.method = c("fdr"))
+cat(capture.output(d),sep="\n")
+```
+Note, however, that the p-value for the VCVS-amSTN comparison is reported as 1.0 in the paper, so this isn't the exact test used. 
+
+## Mixed-model analysis
+Let's perform an analysis that is closer to what I do for the PRESTOC2 data. I'll use a mixed model with random intercepts by patient, and I'll include all YBOCS measures under all conditions as dependent variables.
+```{r}
+df = data
+m = lmer(YBOCS ~ Condition + (1|Patient),data=df)
+Anova(m,type="III",test.statistic="F")
+```
+The following contrasts summarize the model above. 95% confidence intervals are Bonferroni-corrected. P-values are FDR-adjusted with Kenward-Roger DOF.
+```{r echo=FALSE, message=FALSE, results = "asis"}
+m.emm = emmeans(m,~Condition, lmer.df = "kenward-roger")
+s.emm = summary(pairs(m.emm),adjust="fdr",infer=T)
+#summary(pairs(m.emm),adjust="fdr",infer=T)
+kable(s.emm, digits=3, caption="YBOCS") %>%
+  kable_styling(bootstrap_options = c("hover","condensed"), font_size = 12, full_width=F, position = "center") %>%
+  row_spec(which(s.emm$p.value<.05), bold = T, color = "black", background = "lightgreen") %>%
+  htmltools::HTML() %>% 
+  print
+```
+
+```{r, echo=FALSE}
+v = visreg(m,"Condition",gg=TRUE,type="contrast",plot=F)
+df$res = v$res$visregRes
+
+ggplot(data=df,aes(x=Condition,y=res,color=Patient)) + 
+  geom_hline(yintercept = 0,alpha=0.5, linetype="dashed") +
+  geom_crossbar(data=v$fit,aes(x=Condition, y=visregFit, ymin=visregLwr,ymax=visregUpr),color=NA,fill="grey",alpha=0.5, width=0.6) + 
+  geom_crossbar(data=v$fit,aes(x=Condition, y=visregFit, ymin=visregFit,ymax=visregFit),color="black",fill=NA,alpha=0.95,fatten=3) + 
+  geom_beeswarm(cex=1.5) +
+  theme_pubr() + scale_colour_brewer(palette = "Set2") + ylab("ΔYBOCS") + xlab("")
+```

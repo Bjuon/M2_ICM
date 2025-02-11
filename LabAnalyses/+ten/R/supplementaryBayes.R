@@ -1,0 +1,13 @@
+library(coda)
+library(mcmcse)
+
+print("====================Effective sample size ==========================================")
+print(fitJB1$EffectiveSize)
+print("==================== Monte carlo standard errors ===================================")
+print(mcse(fitJB1$mcmc$alphas))
+m = mcmc(fitJB1$mcmc$betas)
+print("===================== Geweke =======================================================")
+print(geweke.diag(m))
+print("===================== Heidel =======================================================")
+print(heidel.diag(m))
+print("====================================================================================")

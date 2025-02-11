@@ -1,0 +1,605 @@
+---
+title: "GI-SNN"
+author: "Mathieu Yèche"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Prepare the data
+
+## Parameters
+
+```{r}
+pq_path = "C:/LustreSync/LAU Brian - 2024_GBMOV/Data/pq_wide/T0/"
+save_path = "C:/LustreSync/LAU Brian - 2024_GBMOV/Data/AI/dataset/"
+gait_data_file = "C:/LustreSync/DATA/ResAPA_32Pat_forPCA.xlsx" 
+freqs_to_fit = 1:100
+time_window = 0:1.51
+locs_to_include = c("AS","SM")
+DOPA_to_include = c("OFF")
+Ratio12 = 1
+Ratio01 = 1
+```
+
+
+## Load
+
+```{r}
+
+Load_utils = try(source(paste0(sub("/[^/]*$", "", rstudioapi::getActiveDocumentContext()$path), "/utils.R")), silent = TRUE)
+if (inherits(Load_utils, "try-error")) {ifelse((Sys.info()["nodename"] == "UMR-LAU-WP011" || Sys.info()["nodename"] == "ICM-LAU-WF006"), source("C:/Users/mathieu.yeche/Desktop/GitHub/LabAnalyses/+MAGIC/r/utils.R"), source("/network/lustre/iss02/home/mathieu.yeche/Cluster/Matlab/LabAnalyses/+MAGIC/r/utils.R")) ; print("Using MAGIC utils.R !!! Be sure to update")}
+LoadLibraries()
+if (Sys.info()[['sysname']] == "Windows") source("C:/Users/mathieu.yeche/Documents/Toolbox/ggplot_theme_Publication-2.R") else theme_Publication = theme_minimal
+ 
+
+```
+
+```{r}
+
+
+if (!dir.exists(save_path)) {dir.create(save_path)}
+
+tfdata  = arrow::open_dataset(pq_path)
+df_gait = suppressWarnings(read_gait_data(gait_data_file, drop_missing = T, keep_RT = F))
+df_gait %<>%
+    group_by(Group) %>%
+    mutate(across(c("t_Vm"), ~scale(.x, scale = F))) %>%
+    ungroup()
+df_gait = augment_gait_w_pca(df_gait, keep_RT = F)
+  
+# timebins are in wide format, with names indicating bin centers
+# create a vector of names to drop when loading data
+cnames = tfdata$schema$names
+time_col_names = cnames[str_ends(cnames, "0")]
+times = time_col_names %>% as.numeric()
+ind = times < time_window[1] | times > time_window[2]
+times_to_drop = time_col_names[ind]
+
+```
+
+### Case 2
+```{r}
+
+query = tfdata %>% 
+  select(-all_of(times_to_drop)) %>%
+  filter(Freq %in% freqs_to_fit) %>%
+  filter(Loc %in% locs_to_include) %>%
+  filter(Condition %in% DOPA_to_include) %>%
+  filter(Meta_FOG %in% c(2)) %>%
+  collect()
+
+query %<>% 
+  mutate(Side_channel = ifelse(stringr::str_detect(Channel, "D"), "R", "L")) %>%
+  mutate(Side_firststep_ipsi_contra = ifelse(Side_channel==Side_firststep, "ipsi", "contra")) %>%
+  mutate( Loc = as.factor(Loc),
+         Condition = as.factor(Condition),
+         GoNogo = as.factor(GoNogo),
+         Side_channel = as.factor(Side_channel),
+         Side_firststep_ipsi_contra = as.factor(Side_firststep_ipsi_contra),
+         Meta_FOG = as.factor(Meta_FOG))
+      
+# query %<>% 
+#   pivot_longer(
+#     cols = ends_with("0"),
+#     names_to = "Time",
+#     values_to = "Power"
+#   ) %>% 
+#   filter(!is.na(Power)) %>%
+#   mutate(Time = as.numeric(Time))
+
+query %<>% remove_artifacts(verbose = F)  %>% 
+  mutate_at(vars(ends_with("0")), ~10*log10(.)) %>%
+  join_tf_and_gait(df_gait, keep_RT = F, forClassif = T) 
+  
+nTrial2 = length(unique(query$index))
+print(nTrial2)
+
+qtest2 = query
+
+
+```
+
+### Case 1
+
+```{r}
+
+query = tfdata %>% 
+  select(-all_of(times_to_drop)) %>%
+  filter(Freq %in% freqs_to_fit) %>%
+  filter(Loc %in% locs_to_include) %>%
+  filter(Condition %in% DOPA_to_include) %>%
+  filter(Meta_FOG %in% c(1)) %>%
+  collect()
+
+query %<>% 
+  mutate(Side_channel = ifelse(stringr::str_detect(Channel, "D"), "R", "L")) %>%
+  mutate(Side_firststep_ipsi_contra = ifelse(Side_channel==Side_firststep, "ipsi", "contra")) %>%
+  mutate( Loc = as.factor(Loc),
+         Condition = as.factor(Condition),
+         GoNogo = as.factor(GoNogo),
+         Side_channel = as.factor(Side_channel),
+         Side_firststep_ipsi_contra = as.factor(Side_firststep_ipsi_contra),
+         Meta_FOG = as.factor(Meta_FOG))
+      
+# query %<>% 
+#   pivot_longer(
+#     cols = ends_with("0"),
+#     names_to = "Time",
+#     values_to = "Power"
+#   ) %>% 
+#   filter(!is.na(Power)) %>%
+#   mutate(Time = as.numeric(Time))
+
+query %<>% remove_artifacts(verbose = F) %>%
+  mutate_at(vars(ends_with("0")), ~10*log10(.)) %>%
+  join_tf_and_gait(df_gait, keep_RT = F, forClassif = TRUE) 
+  
+nTrial1 = length(unique(query$index))
+print(nTrial1)
+
+# Get random nTrial2 number of trials
+rdnList  = sample(1:nTrial1, round(nTrial2*Ratio12), replace = F)
+Trainset = unique(query$index)[-rdnList]
+Testset  = unique(query$index)[ rdnList]
+qtest    = query %>% filter(index %in% Testset)  
+qtrain   = query %>% filter(index %in% Trainset)
+
+
+```
+
+### Case 0
+
+```{r}
+
+query = tfdata %>% 
+  select(-all_of(times_to_drop)) %>%
+  filter(Freq %in% freqs_to_fit) %>%
+  filter(Loc %in% locs_to_include) %>%
+  filter(Condition %in% DOPA_to_include) %>%
+  filter(Meta_FOG %in% c(0)) %>%
+  collect()
+
+query %<>% 
+  mutate(Side_channel = ifelse(stringr::str_detect(Channel, "D"), "R", "L")) %>%
+  mutate(Side_firststep_ipsi_contra = ifelse(Side_channel==Side_firststep, "ipsi", "contra")) %>%
+  mutate( Loc = as.factor(Loc),
+         Condition = as.factor(Condition),
+         GoNogo = as.factor(GoNogo),
+         Side_channel = as.factor(Side_channel),
+         Side_firststep_ipsi_contra = as.factor(Side_firststep_ipsi_contra),
+         Meta_FOG = as.factor(Meta_FOG))
+      
+# query %<>% 
+#   pivot_longer(
+#     cols = ends_with("0"),
+#     names_to = "Time",
+#     values_to = "Power"
+#   ) %>% 
+#   filter(!is.na(Power)) %>%
+#   mutate(Time = as.numeric(Time))
+
+query %<>% remove_artifacts(verbose = F) %>%
+  mutate_at(vars(ends_with("0")), ~10*log10(.)) %>%
+  join_tf_and_gait(df_gait, keep_RT = F, forClassif = TRUE) 
+  
+nTrial0 = length(unique(query$index))
+print(nTrial0)
+
+
+# Get random nTrial2 number of trials
+rdnList  = sample(1:nTrial0, round((nTrial1-nTrial2)*Ratio01), replace = F)
+Trainset0 = unique(query$index)[rdnList]
+query %<>% filter(index %in% Trainset0)
+
+```
+
+## Normalize
+
+```{r}
+GaitVar = c("t_APA", "APA_antpost", "APA_lateral", "StepWidth", "t_swing1", "t_DA", "t_swing2", "Longueur_pas", "V_swing1", "Vy_FO1", "Vm", "t_Vm", "VML_absolue", "Cadence", "VZmin_APA", "V2", "Diff_V")
+
+T1 = query %>% group_by(index)  %>% select(index, t_APA, APA_antpost, APA_lateral, StepWidth, t_swing1, t_DA, t_swing2, Longueur_pas, V_swing1, Vy_FO1, Vm, t_Vm, VML_absolue, Cadence, VZmin_APA, V2, Diff_V) %>% summarise_all(mean, na.rm = TRUE)
+
+T2 = qtrain %>% group_by(index) %>% select(index, t_APA, APA_antpost, APA_lateral, StepWidth, t_swing1, t_DA, t_swing2, Longueur_pas, V_swing1, Vy_FO1, Vm, t_Vm, VML_absolue, Cadence, VZmin_APA, V2, Diff_V) %>% summarise_all(mean, na.rm = TRUE)
+
+TMean = rbind(T1, T2) %>% select(-index) %>% summarise_all(mean, na.rm = TRUE)
+TSD   = rbind(T1, T2) %>% select(-index) %>% summarise_all(sd, na.rm = TRUE)
+
+for (i in GaitVar) {
+  qtrain[[i]] = (qtrain[[i]] - TMean[[i]]) / TSD[[i]]
+  qtest[[i]]  = (qtest[[i]]  - TMean[[i]]) / TSD[[i]]
+  qtest2[[i]] = (qtest2[[i]] - TMean[[i]]) / TSD[[i]]
+  query[[i]]  = (query[[i]]  - TMean[[i]]) / TSD[[i]]
+}
+
+```
+
+## Export
+
+```{r}
+
+feather::write_feather(qtest2, paste0(save_path, "Test2.feather"))
+feather::write_feather(qtest , paste0(save_path, "Test1.feather"))
+feather::write_feather(qtrain, paste0(save_path, "Train1.feather"))
+feather::write_feather(query , paste0(save_path, "Train0.feather"))
+
+```
+
+# Switch to python
+
+####### NEW VERSION #######
+
+# DESjo
+
+```{r}
+
+query = tfdata %>% 
+  select(-all_of(times_to_drop)) %>%
+  filter(Freq %in% freqs_to_fit) %>%
+  filter(Loc %in% locs_to_include) %>%
+  filter(Condition %in% DOPA_to_include) %>%
+  filter(Subject %in% c("DEj")) %>%
+  collect()
+
+query %<>% 
+  mutate(Side_channel = ifelse(stringr::str_detect(Channel, "D"), "R", "L")) %>%
+  mutate(Side_firststep_ipsi_contra = ifelse(Side_channel==Side_firststep, "ipsi", "contra")) %>%
+  mutate( Loc = as.factor(Loc),
+         Condition = as.factor(Condition),
+         GoNogo = as.factor(GoNogo),
+         Side_channel = as.factor(Side_channel),
+         Side_firststep_ipsi_contra = as.factor(Side_firststep_ipsi_contra),
+         Meta_FOG = as.factor(Meta_FOG))
+
+query %<>%
+  pivot_longer(
+    cols = ends_with("0"),
+    names_to = "Time",
+    values_to = "Power"
+  ) %>%
+  filter(!is.na(Power)) %>%
+  mutate(Time = as.numeric(Time)) %>%
+  mutate(Power = 10*log10(Power))
+
+query %<>% remove_artifacts(verbose = F)  %>% 
+  # mutate_at(vars(ends_with("0")), ~10*log10(.)) %>%
+  join_tf_and_gait(df_gait, keep_RT = F, forClassif = T) 
+  
+nTrial2 = length(unique(query$index))
+print(nTrial2)
+
+Desjo = query
+
+## Normalize
+
+
+for (i in GaitVar) {
+  Desjo[[i]] = (Desjo[[i]] - TMean[[i]]) / TSD[[i]]
+}
+
+```
+
+```{r}
+
+# Select timepoints and frequencies
+
+SelectTimeAndFreq = function(query, option, LocSelect) {
+  if (option == "stat" | option == "emm") {
+    emmean = qs::qread(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/Data/model_fits/FOG_pro-ra/model_1_", "RPC.2", "_at_0_emm",".qs"))
+    emmean$p.value = p.adjust(emmean$p.value, method = "fdr")
+    emmean %<>% filter(p.value < 0.05) %>% filter(contrast %in% c("Meta_FOG1 AS OFF - Meta_FOG2 AS OFF", "Meta_FOG1 SM OFF - Meta_FOG2 SM OFF"))
+    if (option == "stat") emmean %<>% filter(!is.na(emslope)) 
+    if (option == "emm")  emmean %<>% filter(!is.na(emmean)) 
+
+    if (LocSelect == "AS") {
+      emmean %<>% filter(contrast == "Meta_FOG1 AS OFF - Meta_FOG2 AS OFF")
+    } else if (LocSelect == "SM") {
+      emmean %<>% filter(contrast == "Meta_FOG1 SM OFF - Meta_FOG2 SM OFF")
+    }
+    
+    emmean$Comb = paste0(emmean$Time, "_", emmean$Freq)
+    query$Comb  = paste0(query$Time, "_", query$Freq)
+    query %<>% filter(Comb %in% unique(emmean$Comb))
+    query$Comb = NULL
+  } else if (option == "beta_05-15") {
+    query %<>% filter(Time >= 0.5 & Time <= 1.5) %>% filter(Freq >= 13 & Freq <= 35)
+  } else if (option == "highbeta_05-15") {
+    query %<>% filter(Time >= 0.5 & Time <= 1.5) %>% filter(Freq >= 21 & Freq <= 35)
+  } else if (option == "lowbeta_05-15") {
+    query %<>% filter(Time >= 0.5 & Time <= 1.5) %>% filter(Freq >= 13 & Freq <= 20)
+  } else if (option == "bothbeta_05-15-diff-chan") {
+    query %<>% filter(Time >= 0.5 & Time <= 1.5) %>% filter(Freq >= 13 & Freq <= 35)
+    query$Channel = paste0(query$Channel, ifelse(query$Freq >= 21, "_hB", "_lB"))
+  }  else if (option == "bothbeta_05-15-meanchan-but-use-diff-in-next-func") {
+    query %<>% filter(Time >= 0.5 & Time <= 1.5) %>% filter(Freq >= 13 & Freq <= 35)
+    query$Channel = ifelse(query$Freq >= 21, "high Beta", "low Beta")
+  } 
+  if (LocSelect != "all") query %<>% filter(Loc == LocSelect) 
+  suppressWarnings( query %<>% select(-Time, -Freq) %>% group_by(index, Channel) %>% summarise_all(mean, na.rm = TRUE))
+}
+
+AjustChannel = function(query, option) {
+  if (option == "mean") {
+    suppressWarnings( query %<>% group_by(index) %>% summarise_all(mean, na.rm = TRUE)) %>% select(-Channel) 
+  } else if (option == "diff-channel") {
+    query %<>% pivot_wider(names_from = Channel, values_from = Power) 
+  }
+}
+
+```
+
+```{r}
+MetaFogList = Desjo %>% select(Meta_FOG, index) %>% unique()
+QualVarToDrop = c("Loc", "Protocol" , "Condition", "GoNogo", "Side_channel", "Side_firststep", "Side_firststep_ipsi_contra", "Meta_FOG", "Subject", "TrialNum")
+
+DEj_stat_SM_diff_channel = Desjo %>% SelectTimeAndFreq("stat", "SM") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+DEj_stat_AS_diff_channel = Desjo %>% SelectTimeAndFreq("stat", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+DEj_stat_all_diff_channel = Desjo %>% SelectTimeAndFreq("stat", "all") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+DEj_stat_SM_meanCh = Desjo %>% SelectTimeAndFreq("stat", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+DEj_stat_AS_meanCh = Desjo %>% SelectTimeAndFreq("stat", "AS") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+DEj_beta_SM_diff_channel = Desjo %>% SelectTimeAndFreq("beta_05-15", "SM") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+DEj_lowbeta_SM_diff_channel = Desjo %>% SelectTimeAndFreq("lowbeta_05-15", "SM") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+DEj_highbeta_SM_diff_channel = Desjo %>% SelectTimeAndFreq("highbeta_05-15", "SM") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+DEj_beta_SM_meanCh = Desjo %>% SelectTimeAndFreq("beta_05-15", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+DEj_lowbeta_SM_meanCh = Desjo %>% SelectTimeAndFreq("lowbeta_05-15", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+DEj_highbeta_SM_meanCh = Desjo %>% SelectTimeAndFreq("highbeta_05-15", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+DEj_bothbeta_SM_meanCh = Desjo %>% SelectTimeAndFreq("bothbeta_05-15-meanchan-but-use-diff-in-next-func", "SM") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+DEj_stat_all_meanCh = Desjo %>% SelectTimeAndFreq("stat", "all") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+
+```
+
+```{r}
+
+feather::write_feather(DEj_stat_SM_diff_channel, paste0(save_path, "DEj_stat_SM_diff_channel.feather"))
+feather::write_feather(DEj_stat_AS_diff_channel, paste0(save_path, "DEj_stat_AS_diff_channel.feather"))
+feather::write_feather(DEj_stat_all_diff_channel, paste0(save_path, "DEj_stat_all_diff_channel.feather"))
+feather::write_feather(DEj_stat_SM_meanCh, paste0(save_path, "DEj_stat_SM_meanCh.feather"))
+feather::write_feather(DEj_stat_AS_meanCh, paste0(save_path, "DEj_stat_AS_meanCh.feather"))
+
+feather::write_feather(DEj_beta_SM_diff_channel, paste0(save_path, "DEj_beta_SM_diff_channel.feather"))
+feather::write_feather(DEj_lowbeta_SM_diff_channel, paste0(save_path, "DEj_lowbeta_SM_diff_channel.feather"))
+feather::write_feather(DEj_highbeta_SM_diff_channel, paste0(save_path, "DEj_highbeta_SM_diff_channel.feather"))
+feather::write_feather(DEj_beta_SM_meanCh, paste0(save_path, "DEj_beta_SM_meanCh.feather"))
+feather::write_feather(DEj_lowbeta_SM_meanCh, paste0(save_path, "DEj_lowbeta_SM_meanCh.feather"))
+feather::write_feather(DEj_highbeta_SM_meanCh, paste0(save_path, "DEj_highbeta_SM_meanCh.feather"))
+
+feather::write_feather(DEj_bothbeta_SM_meanCh, paste0(save_path, "DEj_bothbeta_SM_meanCh.feather"))
+feather::write_feather(DEj_stat_all_meanCh, paste0(save_path, "DEj_stat_all_meanCh.feather"))
+
+
+```
+
+## All Pat with similar treatment
+
+```{r}
+
+
+query = tfdata %>% 
+  select(-all_of(times_to_drop)) %>%
+  filter(Freq %in% freqs_to_fit) %>%
+  filter(Loc %in% locs_to_include) %>%
+  filter(Condition %in% DOPA_to_include) %>%
+  filter(Meta_FOG %in% c(1,2)) %>%
+  collect()
+
+query %<>% 
+  mutate(Side_channel = ifelse(stringr::str_detect(Channel, "D"), "R", "L")) %>%
+  mutate(Side_firststep_ipsi_contra = ifelse(Side_channel==Side_firststep, "ipsi", "contra")) %>%
+  mutate( Loc = as.factor(Loc),
+         Condition = as.factor(Condition),
+         GoNogo = as.factor(GoNogo),
+         Side_channel = as.factor(Side_channel),
+         Side_firststep_ipsi_contra = as.factor(Side_firststep_ipsi_contra),
+         Meta_FOG = as.factor(Meta_FOG))
+
+query %<>%
+  pivot_longer(
+    cols = ends_with("0"),
+    names_to = "Time",
+    values_to = "Power"
+  ) %>%
+  filter(!is.na(Power)) %>%
+  mutate(Time = as.numeric(Time)) %>%
+  mutate(Power = 10*log10(Power))
+
+query %<>% remove_artifacts(verbose = F)  %>% 
+  # mutate_at(vars(ends_with("0")), ~10*log10(.)) %>%
+  join_tf_and_gait(df_gait, keep_RT = F, forClassif = T) 
+  
+print(paste0('FoG = 1 : ', length(unique(query %>% filter(Meta_FOG == 1) %>% pull(index)))))
+print(paste0('FoG = 2 : ', length(unique(query %>% filter(Meta_FOG == 2) %>% pull(index)))))
+
+AllPat = query
+
+## Normalize
+
+
+for (i in GaitVar) {
+  AllPat[[i]] = (AllPat[[i]] - TMean[[i]]) / TSD[[i]]
+}
+
+```
+
+```{r}
+MetaFogList = AllPat %>% select(Meta_FOG, index) %>% unique()
+QualVarToDrop = c("Loc", "Protocol" , "Condition", "GoNogo", "Side_channel", "Side_firststep", "Side_firststep_ipsi_contra", "Meta_FOG", "Subject", "TrialNum")
+
+AllPat_stat_SM_diff_channel = AllPat %>% SelectTimeAndFreq("stat", "SM") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+AllPat_stat_AS_diff_channel = AllPat %>% SelectTimeAndFreq("stat", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+AllPat_stat_all_diff_channel = AllPat %>% SelectTimeAndFreq("stat", "all") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+AllPat_stat_SM_meanCh = AllPat %>% SelectTimeAndFreq("stat", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+AllPat_stat_AS_meanCh = AllPat %>% SelectTimeAndFreq("stat", "AS") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+AllPat_beta_SM_meanCh = AllPat %>% SelectTimeAndFreq("beta_05-15", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+AllPat_lowbeta_SM_meanCh = AllPat %>% SelectTimeAndFreq("lowbeta_05-15", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+AllPat_highbeta_SM_meanCh = AllPat %>% SelectTimeAndFreq("highbeta_05-15", "SM") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+AllPat_stat_all_meanCh = AllPat %>% SelectTimeAndFreq("stat", "all") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+AllPat_bothbeta_SM_meanCh = AllPat %>% SelectTimeAndFreq("bothbeta_05-15-meanchan-but-use-diff-in-next-func", "SM") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+AllPat_bothbeta_all_meanCh = AllPat %>% SelectTimeAndFreq("bothbeta_05-15-meanchan-but-use-diff-in-next-func", "all") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+```
+
+```{r}
+
+feather::write_feather(AllPat_stat_SM_diff_channel, paste0(save_path, "AllPat_stat_SM_diff_channel.feather"))
+feather::write_feather(AllPat_stat_AS_diff_channel, paste0(save_path, "AllPat_stat_AS_diff_channel.feather"))
+feather::write_feather(AllPat_stat_all_diff_channel, paste0(save_path, "AllPat_stat_all_diff_channel.feather"))
+feather::write_feather(AllPat_stat_SM_meanCh, paste0(save_path, "AllPat_stat_SM_meanCh.feather"))
+feather::write_feather(AllPat_stat_AS_meanCh, paste0(save_path, "AllPat_stat_AS_meanCh.feather"))
+
+feather::write_feather(AllPat_beta_SM_meanCh, paste0(save_path, "AllPat_beta_SM_meanCh.feather"))
+feather::write_feather(AllPat_lowbeta_SM_meanCh, paste0(save_path, "AllPat_lowbeta_SM_meanCh.feather"))
+feather::write_feather(AllPat_highbeta_SM_meanCh, paste0(save_path, "AllPat_highbeta_SM_meanCh.feather"))
+
+feather::write_feather(AllPat_stat_all_meanCh, paste0(save_path, "AllPat_stat_all_meanCh.feather"))
+feather::write_feather(AllPat_bothbeta_SM_meanCh, paste0(save_path, "AllPat_bothbeta_SM_meanCh.feather"))
+feather::write_feather(AllPat_bothbeta_all_meanCh, paste0(save_path, "AllPat_bothbeta_all_meanCh.feather"))
+
+
+
+```
+
+## CLani
+
+
+```{r}
+
+query = tfdata %>% 
+  select(-all_of(times_to_drop)) %>%
+  filter(Freq %in% freqs_to_fit) %>%
+  filter(Loc %in% locs_to_include) %>%
+  filter(Condition %in% DOPA_to_include) %>%
+  filter(Subject %in% c("CLn")) %>%
+  collect()
+
+query %<>% 
+  mutate(Side_channel = ifelse(stringr::str_detect(Channel, "D"), "R", "L")) %>%
+  mutate(Side_firststep_ipsi_contra = ifelse(Side_channel==Side_firststep, "ipsi", "contra")) %>%
+  mutate( Loc = as.factor(Loc),
+         Condition = as.factor(Condition),
+         GoNogo = as.factor(GoNogo),
+         Side_channel = as.factor(Side_channel),
+         Side_firststep_ipsi_contra = as.factor(Side_firststep_ipsi_contra),
+         Meta_FOG = as.factor(Meta_FOG))
+
+query %<>%
+  pivot_longer(
+    cols = ends_with("0"),
+    names_to = "Time",
+    values_to = "Power"
+  ) %>%
+  filter(!is.na(Power)) %>%
+  mutate(Time = as.numeric(Time)) %>%
+  mutate(Power = 10*log10(Power))
+
+query %<>% remove_artifacts(verbose = F)  %>% 
+  # mutate_at(vars(ends_with("0")), ~10*log10(.)) %>%
+  join_tf_and_gait(df_gait, keep_RT = F, forClassif = T) 
+  
+nTrial2 = length(unique(query$index))
+print(nTrial2)
+
+Clani = query
+
+## Normalize
+
+
+for (i in GaitVar) {
+  Clani[[i]] = (Clani[[i]] - TMean[[i]]) / TSD[[i]]
+}
+
+```
+
+```{r}
+MetaFogList = Clani %>% select(Meta_FOG, index) %>% unique()
+QualVarToDrop = c("Loc", "Protocol" , "Condition", "GoNogo", "Side_channel", "Side_firststep", "Side_firststep_ipsi_contra", "Meta_FOG", "Subject", "TrialNum")
+
+CLn_stat_AS_diff_channel = Clani %>% SelectTimeAndFreq("stat", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+CLn_stat_all_diff_channel = Clani %>% SelectTimeAndFreq("stat", "all") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+CLn_stat_AS_meanCh = Clani %>% SelectTimeAndFreq("stat", "AS") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+CLn_stat_all_meanCh = Clani %>% SelectTimeAndFreq("stat", "all") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+CLn_beta_AS_diff_channel = Clani %>% SelectTimeAndFreq("beta_05-15", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+CLn_lowbeta_AS_diff_channel = Clani %>% SelectTimeAndFreq("lowbeta_05-15", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+CLn_highbeta_AS_diff_channel = Clani %>% SelectTimeAndFreq("highbeta_05-15", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+CLn_beta_AS_meanCh = Clani %>% SelectTimeAndFreq("beta_05-15", "AS") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+CLn_lowbeta_AS_meanCh = Clani %>% SelectTimeAndFreq("lowbeta_05-15", "AS") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+CLn_highbeta_AS_meanCh = Clani %>% SelectTimeAndFreq("highbeta_05-15", "AS") %>% AjustChannel("mean") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+CLn_bothbeta_AS_meanCh = Clani %>% SelectTimeAndFreq("bothbeta_05-15-meanchan-but-use-diff-in-next-func", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+CLn_emm_AS_diff_channel = Clani %>% SelectTimeAndFreq("emm", "AS") %>% AjustChannel("diff-channel") %>% select( -all_of(QualVarToDrop)) %>% left_join(MetaFogList, by = "index")
+
+
+```
+
+```{r}
+
+feather::write_feather(CLn_stat_AS_diff_channel, paste0(save_path, "CLn_stat_AS_diff_channel.feather"))
+feather::write_feather(CLn_stat_all_diff_channel, paste0(save_path, "CLn_stat_all_diff_channel.feather"))
+
+feather::write_feather(CLn_stat_AS_meanCh, paste0(save_path, "CLn_stat_AS_meanCh.feather"))
+feather::write_feather(CLn_stat_all_meanCh, paste0(save_path, "CLn_stat_all_meanCh.feather"))
+
+feather::write_feather(CLn_beta_AS_diff_channel, paste0(save_path, "CLn_beta_AS_diff_channel.feather"))
+feather::write_feather(CLn_lowbeta_AS_diff_channel, paste0(save_path, "CLn_lowbeta_AS_diff_channel.feather"))
+feather::write_feather(CLn_highbeta_AS_diff_channel, paste0(save_path, "CLn_highbeta_AS_diff_channel.feather"))
+
+feather::write_feather(CLn_beta_AS_meanCh, paste0(save_path, "CLn_beta_AS_meanCh.feather"))
+feather::write_feather(CLn_lowbeta_AS_meanCh, paste0(save_path, "CLn_lowbeta_AS_meanCh.feather"))
+feather::write_feather(CLn_highbeta_AS_meanCh, paste0(save_path, "CLn_highbeta_AS_meanCh.feather"))
+
+feather::write_feather(CLn_bothbeta_AS_meanCh, paste0(save_path, "CLn_bothbeta_AS_meanCh.feather"))
+feather::write_feather(CLn_emm_AS_diff_channel, paste0(save_path, "CLn_emm_AS_diff_channel.feather"))
+
+```
+
+
+
+# GGPLOT
+
+
+```{r}
+# GGPlot
+
+a = ggplot(data = DEj_bothbeta_SM_meanCh, aes(x = DEj_bothbeta_SM_meanCh[["high Beta"]] , y = DEj_bothbeta_SM_meanCh[["low Beta"]], color = Meta_FOG)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "DEj_bothbeta_SM_meanCh")
+
+b = ggplot(data = DEj_stat_SM_meanCh, aes(Meta_FOG, Power , color = Meta_FOG)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "DEj_stat_SM_meanCh")
+
+c = ggplot(data = AllPat_bothbeta_SM_meanCh, aes(x = AllPat_bothbeta_SM_meanCh[["high Beta"]] , y = AllPat_bothbeta_SM_meanCh[["low Beta"]], color = Meta_FOG)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "AllPat_bothbeta_SM_meanCh")
+
+AllPat_stat_all_meanCh_plot = AllPat_stat_all_meanCh %>% mutate(index = substr(index, 1, 3)) 
+d = ggplot(data = AllPat_stat_all_meanCh_plot, aes(x = Meta_FOG, y = Power , color = index)) +
+  ggbeeswarm::geom_beeswarm() +
+  theme_minimal() +
+  labs(title = "AllPat_stat_all_meanCh")
+
+a + b + c + d
+
+
+
+
+```
+

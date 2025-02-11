@@ -1,0 +1,1 @@
+Check that duration is disease duration at time of surgery : YES

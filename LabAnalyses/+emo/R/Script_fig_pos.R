@@ -1,0 +1,65 @@
+plot(Power.x,Power.y,xlim=c(0,2),ylim=c(-0.5,0.5),xlab="",ylab="", cex.lab=1.7,axes=F,type="n")
+
+## lsmeansTreat
+rect(0.25,0,0.45,lsmeansEmoTreat[4,1],border=NA,lwd=1,col='darkgreen',density=100)
+rect(0.5,0,0.7,lsmeansEmoTreat[3,1],border=NA,lwd=1,col='darkgreen',density=100)
+
+rect(0.85,0,1.05,lsmeansEmoTreat[8,1],border=NA,lwd=1,col='yellowgreen',density=100)
+rect(1.1,0,1.3,lsmeansEmoTreat[7,1],border=NA,lwd=1,col='yellowgreen',density=100)
+
+rect(1.45,0,1.65,lsmeansEmoTreat[12,1],border=NA,lwd=1,col='gold',density=100)
+rect(1.70,0,1.90,lsmeansEmoTreat[11,1],border=NA,lwd=1,col='gold',density=100)
+
+# neg off
+segments(0.25,0,0.25,lsmeansEmoTreat[4,1],col='darkgreen',lwd=3)
+segments(0.45,0,0.45,lsmeansEmoTreat[4,1],col='darkgreen',lwd=3)
+segments(0.25,0,0.45,0,col='darkgreen',lwd=3)
+segments(0.25,lsmeansEmoTreat[4,1],0.45,lsmeansEmoTreat[4,1],col='darkgreen',lwd=3)
+segments(0.35,lsmeansEmoTreat[4,1]-lsmeansEmoTreat[4,2],0.35,lsmeansEmoTreat[4,1]+lsmeansEmoTreat[4,2],col='black',lwd=2)
+# neuneg off
+segments(0.5,0,0.5,lsmeansEmoTreat[3,1],col='darkgreen',lwd=3)
+segments(0.7,0,0.7,lsmeansEmoTreat[3,1],col='darkgreen',lwd=3)
+segments(0.5,0,0.7,0,col='darkgreen',lwd=3)
+segments(0.5,lsmeansEmoTreat[3,1],0.7,lsmeansEmoTreat[3,1],col='darkgreen',lwd=3)
+segments(0.6,lsmeansEmoTreat[3,1]-lsmeansEmoTreat[3,2],0.6,lsmeansEmoTreat[3,1]+lsmeansEmoTreat[3,2],col='black',lwd=2)
+
+#segments(0.35,lsmeansEmoTreat[3,1]-lsmeansEmoTreat[3,2]-0.1,0.6,lsmeansEmoTreat[3,1]-lsmeansEmoTreat[3,2]-0.1,col='black',lwd = 2)
+#text(0.475,lsmeansEmoTreat[3,1]-lsmeansEmoTreat[3,2]-0.05,".",pos=1,cex=4,col="black")
+
+# neg on
+segments(0.85,0,0.85,lsmeansEmoTreat[8,1],col='yellowgreen',lwd=3)
+segments(1.05,0,1.05,lsmeansEmoTreat[8,1],col='yellowgreen',lwd=3)
+segments(0.85,0,1.05,0,col='yellowgreen',lwd=3)
+segments(0.85,lsmeansEmoTreat[8,1],1.05,lsmeansEmoTreat[8,1],col='yellowgreen',lwd=3)
+segments(0.95,lsmeansEmoTreat[8,1]-lsmeansEmoTreat[8,2],0.95,lsmeansEmoTreat[8,1]+lsmeansEmoTreat[8,2],col='black',lwd=2)
+# neuneg on
+segments(1.1,0,1.1,lsmeansEmoTreat[7,1],col='yellowgreen',lwd=3)
+segments(1.3,0,1.3,lsmeansEmoTreat[7,1],col='yellowgreen',lwd=3)
+segments(1.1,0,1.3,0,col='yellowgreen',lwd=3)
+segments(1.1,lsmeansEmoTreat[7,1],1.3,lsmeansEmoTreat[7,1],col='yellowgreen',lwd=3)
+segments(1.2,lsmeansEmoTreat[7,1]-lsmeansEmoTreat[7,2],1.2,lsmeansEmoTreat[7,1]+lsmeansEmoTreat[7,2],col='black',lwd=2)
+
+#segments(0.95,lsmeansEmoTreat[7,1]-lsmeansEmoTreat[7,2]-0.1,1.2,lsmeansEmoTreat[7,1]+-lsmeansEmoTreat[7,2]-0.1,col='black',lwd = 2)
+#text(1.075,lsmeansEmoTreat[7,1]-lsmeansEmoTreat[7,2]-0.2,"***",pos=1,cex=4,col="black")
+
+# neg ocd
+segments(1.45,0,1.45,lsmeansEmoTreat[12,1],col='gold',lwd=3)
+segments(1.65,0,1.65,lsmeansEmoTreat[12,1],col='gold',lwd=3)
+segments(1.45,0,1.65,0,col='gold',lwd=3)
+segments(1.45,lsmeansEmoTreat[12,1],1.65,lsmeansEmoTreat[12,1],col='gold',lwd=3)
+segments(1.55,lsmeansEmoTreat[12,1]-lsmeansEmoTreat[12,2],1.55,lsmeansEmoTreat[12,1]+lsmeansEmoTreat[12,2],col='black',lwd=2)
+# neuneg ocd
+segments(1.70,0,1.70,lsmeansEmoTreat[11,1],col='gold',lwd=3)
+segments(1.90,0,1.90,lsmeansEmoTreat[11,1],col='gold',lwd=3)
+segments(1.70,0,1.90,0,col='gold',lwd=3)
+segments(1.70,lsmeansEmoTreat[11,1],1.90,lsmeansEmoTreat[11,1],col='gold',lwd=3)
+segments(1.8,lsmeansEmoTreat[11,1]-lsmeansEmoTreat[11,2],1.8,lsmeansEmoTreat[11,1]+lsmeansEmoTreat[11,2],col='black',lwd=2)
+
+segments(1.55,lsmeansEmoTreat[12,1]+lsmeansEmoTreat[12,2]+0.05,1.8,lsmeansEmoTreat[12,1]+lsmeansEmoTreat[12,2]+0.05,col='black',lwd = 2)
+text(1.675,lsmeansEmoTreat[12,1]+lsmeansEmoTreat[12,2]+0.05,"*",pos=3,cex=3,col="black")
+
+
+grid(lwd=1)
+axis(1,at=c(1),lab=c(''),las=1,tick=FALSE,cex.axis=2)
+axis(2,cex.axis=1.7)
+

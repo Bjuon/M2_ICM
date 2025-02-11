@@ -1,0 +1,6 @@
+.DS_Store
+*.asv
+*.xls
+*.xlsx
++MAGIC/r/.Rhistory
++MAGIC/r/PPN_GaitAnalyses_PCA.html

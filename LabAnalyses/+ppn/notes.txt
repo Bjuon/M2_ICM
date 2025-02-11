@@ -1,0 +1,24 @@
+http://r.789695.n4.nabble.com/Comparing-and-Interpreting-GAMMs-td2234209.html
+http://tolstoy.newcastle.edu.au/R/e11/help/10/07/0071.html
+http://r.789695.n4.nabble.com/Comparing-two-GAMs-using-anova-mgcv-td4676588.html#a4676732
+http://stats.stackexchange.com/questions/32730/how-to-include-an-interaction-term-in-gam
+
+http://journals.plos.org/plosone/article/asset?unique&id=info:doi/10.1371/journal.pone.0143328.s002
+
+http://www.let.rug.nl/~wieling/statscourse/lecture1/lab/
+  http://www.let.rug.nl/~wieling/statscourse/
+  
+http://www.sfs.uni-tuebingen.de/~jvanrij/Tutorial/GAMM.html
+
+http://www.fromthebottomoftheheap.net/2015/11/21/climate-change-and-spline-interactions/#fn1
+http://www.fromthebottomoftheheap.net/2014/05/09/modelling-seasonal-data-with-gam/
+http://www.fromthebottomoftheheap.net/2011/07/21/smoothing-temporally-correlated-data/
+http://www.fromthebottomoftheheap.net/2015/11/23/are-some-seasons-warming-more-than-others/
+https://github.com/noamross/mixed-effect-gams
+  
+http://rstudio-pubs-static.s3.amazonaws.com/9009_7c82e40c3c964720811391da761cf70e.html
+
+http://qcbs.ca/wiki/r_workshop7
+http://jacolienvanrij.com/tutorials.html
+
+http://www.imachordata.com/do-not-log-transform-count-data-bitches/

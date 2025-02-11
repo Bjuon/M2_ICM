@@ -1,0 +1,7 @@
+dataPD = read.table('dataPK_mov_gamma.txt', header = TRUE)
+dataTOC = read.table('dataTOC_mov_gamma.txt', header = TRUE)
+dataSTN_mov_gamma = rbind(dataPD, dataTOC)
+model_mov_gamma = lmer (Power ~ Emo + RT + Hemi + Treat + Emo:Treat + RT:Treat + Hemi:Treat + (1|Subject/Elec), data= dataSTN_mov_gamma)
+lsmeansTreat = ls_means(model_mov_gamma,'Treat')
+summary(model_mov_gamma)
+difflsmeansEmoTreat = difflsmeans(model_mov_gamma,'Emo:Treat')

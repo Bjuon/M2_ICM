@@ -1,0 +1,7 @@
+dataPD = read.table('dataPK_cue_theta.txt', header = TRUE)
+dataTOC = read.table('dataTOC_cue_theta.txt', header = TRUE)
+dataSTN_cue_theta = rbind(dataPD, dataTOC)
+model_cue_theta = lmer (Power ~ Emo + Cond + Hemi + Treat + Emo:Treat + Cond:Treat + Hemi:Treat + (1|Subject/Elec), data= dataSTN_cue_theta)
+lsmeansTreat = ls_means(model_cue_theta,'Treat')
+lsmeansCondTreat = ls_means(model_cue_theta,'Cond:Treat')
+difflsmeansEmoTreat = difflsmeans(model_cue_theta,'Emo:Treat')
