@@ -101,7 +101,7 @@ for f = 1 : numel(files)
 
     % Plot each channel
     for ch = 1:size(data.values{1,1}, 2)
-        plot(time_axis, data.values{1,1}(:, ch) + ch*4000, 'DisplayName', data.labels(ch).name); 
+        plot(time_axis, data.values{1,1}(:, ch) + ch*8000, 'DisplayName', data.labels(ch).name); 
         % Offset channels vertically for visibility
     end
 
