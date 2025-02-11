@@ -89,25 +89,36 @@ for f = 1 : numel(files)
     % keep trig_LFP corresponding to each trial
     Button_LFP     = trig_LFP(:,1);
         
-    % Plot raw LFP data
-    figure;
+    % Create 'fig' directory if it doesn't exist
+    if ~exist('fig', 'dir')
+        mkdir('fig');
+    end
+
+    % Plotting the Raw LFP Data
+    fig = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
     hold on;
     title(['Raw LFP Data for ' files(f).name], 'Interpreter', 'none');
     xlabel('Time (s)');
-    ylabel('LFP Signal (?V)');
+    ylabel('LFP Signal (?V)');  
 
-    % Assuming data.values contains the LFP signal
-    time_axis = (0:length(data.values{1,1})-1) / data.Fs;  % Create time axis
+    % Create time axis
+    time_axis = (0:length(data.values{1,1})-1) / data.Fs;
 
-    % Plot each channel
+    % Plot each channel with vertical offset
     for ch = 1:size(data.values{1,1}, 2)
-        plot(time_axis, data.values{1,1}(:, ch) + ch*8000, 'DisplayName', data.labels(ch).name); 
-        % Offset channels vertically for visibility
+        plot(time_axis, data.values{1,1}(:, ch) + ch*8000, 'DisplayName', data.labels(ch).name);
     end
 
     legend('show');
     hold off;
 
+    % Adjust figure layout for better visualization
+    set(gca, 'FontSize', 12); % Adjust font size for better readability
+    axis tight;               % Ensure the plot fits within the figure bounds
+    box on;                   % Add box around the plot
+
+    % Save the figure as PNG in the 'fig' directory with high resolution
+    saveas(fig, fullfile('fig', [files(f).name, '_Raw_LFP.png']));
 
     % event metadata
     BSL    = metadata.Label('name','BSL'); % baseline, no duration

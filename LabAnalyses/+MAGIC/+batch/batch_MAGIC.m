@@ -88,12 +88,24 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-if isunix
-    startpath = "/network/lustre/iss02/pf-marche" ;
-    feature('DefaultCharacterSet', 'CP1252') ;
-elseif ispc
-    startpath = "\\iss\pf-marche" ;
+local = false; 
+if local
+    % Mode local : chemins adaptés pour un environnement local
+    if isunix
+        startpath = "/home/user/pf-marche"; % Remplacez par le chemin local Unix
+    elseif ispc
+        startpath = "C:\local\pf-marche"; % Remplacez par le chemin local Windows
+    end
+else
+    % Mode serveur : chemins réseau
+    if isunix
+        startpath = "/network/lustre/iss02/pf-marche";
+        feature('DefaultCharacterSet', 'CP1252');
+    elseif ispc
+        startpath = "\\iss\pf-marche";
+    end
 end
+
 
 DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP');
 InputDir       = fullfile(DataDir, 'patients');
@@ -118,17 +130,17 @@ complet   = {'FRj_0610','BAg_0496','GAl_000a','DEp_0535','ALb_000a','VIj_000a',.
 
 % set patients
 if ~argin
-    subject   = {'SOh_0555','GUg_0634','FRj_0610','BAg_0496','GAl_000a','DEp_0535','ALb_000a','VIj_000a','FEp_0536',};   %#ok<NASGU>    %'DEj_000a','COm_000a',}; 
-    subject   = {'DRc_000a','DEj_000a','COm_000a','LOp_000a','SOh_0555',};
-    subject   = {'SAs_000a','BEm_000a','REa_0526'};
-    subject   = complet(1:end-1)
-    subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
+%     subject   = {'SOh_0555','GUg_0634','FRj_0610','BAg_0496','GAl_000a','DEp_0535','ALb_000a','VIj_000a','FEp_0536',};   %#ok<NASGU>    %'DEj_000a','COm_000a',}; 
+%     subject   = {'DRc_000a','DEj_000a','COm_000a','LOp_000a','SOh_0555',};
+%     subject   = {'SAs_000a','BEm_000a','REa_0526'};
+%     subject   = complet(1:end-1)
+%     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
     subject   = {'BEm_000a'}
 
 
-    fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
+ %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 event    = {'FC1' } %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
-    fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
+ %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
 else
     subject = varargin(1) ;

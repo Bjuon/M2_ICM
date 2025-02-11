@@ -266,7 +266,16 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
         warning('on','stats:dataset:ModifiedVarnames')
     else
         csvFile = strrep(csvFile, '.csv', '.parquet');
-        parquetwrite(csvFile,  cell2table(MForR(2:end,:), 'VariableNames', MForR(1,:)));
+        % Ensure all variable names start with a letter, replace invalid characters
+        validVarNames = cellfun(@(x) regexprep(x, '^-', 'x_'), MForR(1,:), 'UniformOutput', false); % Replace leading '-' with 'x_'
+        validVarNames = strrep(validVarNames, '.', '_');  % Replace '.' with '_'
+
+        % Ensure names start with a letter
+        validVarNames = cellfun(@(x) regexprep(x, '^[^a-zA-Z]', 'x_$0'), validVarNames, 'UniformOutput', false);
+
+        % Write the table with valid variable names
+        parquetwrite(csvFile, cell2table(MForR(2:end,:), 'VariableNames', validVarNames));
+
     end
 
 end
