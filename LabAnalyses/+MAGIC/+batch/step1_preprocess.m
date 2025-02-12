@@ -120,6 +120,8 @@ for f = 1 : numel(files)
     % Save the figure as PNG in the 'fig' directory with high resolution
     saveas(fig, fullfile('fig', [files(f).name, '_Raw_LFP.png']));
 
+
+
     % event metadata
     BSL    = metadata.Label('name','BSL'); % baseline, no duration
     FIX    = metadata.Label('name','FIX'); % no duration

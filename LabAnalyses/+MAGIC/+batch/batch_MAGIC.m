@@ -88,11 +88,11 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-local = true; 
+local = false; 
 if local
     % Mode local 
     startpath = "F:\Programing\M2\Data_ICM"; 
-    end
+    
 else
     % Mode serveur 
     if isunix
