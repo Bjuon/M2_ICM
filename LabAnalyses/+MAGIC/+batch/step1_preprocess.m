@@ -97,9 +97,9 @@ for f = 1 : numel(files)
     % Plotting the Raw LFP Data
     fig = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
     hold on;
-    title(['Raw LFP Data for ' files(f).name], 'Interpreter', 'none');
+    title(['Raw LFP Data for ' strrep(files(f).name, '.Poly5', '')], 'Interpreter', 'none');
     xlabel('Time (s)');
-    ylabel('LFP Signal (?V)');  
+    ylabel('LFP Signal (µV)');
 
     % Create time axis
     time_axis = (0:length(data.values{1,1})-1) / data.Fs;
@@ -148,7 +148,7 @@ for f = 1 : numel(files)
     count     =  0;
     win       = []; 
     
-    [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
+    [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection_mathys(data) ;
 
     for t = 1 : size(MAGIC_trials,1)
 
