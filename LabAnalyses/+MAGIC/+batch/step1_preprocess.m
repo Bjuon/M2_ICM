@@ -88,14 +88,31 @@ for f = 1 : numel(files)
       
     % keep trig_LFP corresponding to each trial
     Button_LFP     = trig_LFP(:,1);
-        
-    % Create 'fig' directory if it doesn't exist
-    if ~exist('fig', 'dir')
-        mkdir('fig');
+    
+    %% mathys 
+    local = false; 
+    if local
+        % Mode local 
+        startpath = "F:\Programing\M2\Data_ICM"; 
+
+    else
+        startpath = "\\iss\pf-marche";
+
     end
 
-    % Plotting the Raw LFP Data
-    fig = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
+    FigDir= fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures','Mathys');
+
+ %--- Compute global y-limits (using raw data with channel offsets) ---
+    all_raw = [];
+    for ch = 1:size(data.values{1,1}, 2)
+        offsetData = data.values{1,1}(:, ch) + ch * 8000;
+        all_raw = [all_raw; offsetData];
+    end
+    y_min = min(all_raw);
+    y_max = max(all_raw);
+
+    % Plot Raw LFP 
+    fig_raw = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
     hold on;
     title(['Raw LFP Data for ' strrep(files(f).name, '.Poly5', '')], 'Interpreter', 'none');
     xlabel('Time (s)');
@@ -106,20 +123,22 @@ for f = 1 : numel(files)
 
     % Plot each channel with vertical offset
     for ch = 1:size(data.values{1,1}, 2)
-        plot(time_axis, data.values{1,1}(:, ch) + ch*8000, 'DisplayName', data.labels(ch).name);
+        plot(time_axis, data.values{1,1}(:, ch) + ch * 8000, 'DisplayName', data.labels(ch).name);
     end
 
     legend('show');
+    set(gca, 'FontSize', 12);
+    xlim([min(time_axis), max(time_axis)]);
+    ylim([y_min, y_max]);  % Apply computed y-limits
+    box on;
     hold off;
 
-    % Adjust figure layout for better visualization
-    set(gca, 'FontSize', 12); % Adjust font size for better readability
-    axis tight;               % Ensure the plot fits within the figure bounds
-    box on;                   % Add box around the plot
-
-    % Save the figure as PNG in the 'fig' directory with high resolution
-    saveas(fig, fullfile('fig', [files(f).name, '_Raw_LFP.png']));
-
+    % Save Raw LFP figure
+    saveas(fig_raw, fullfile('fig', [files(f).name, '_Raw_LFP.png']));
+    saveas(fig_raw, fullfile(FigDir, [files(f).name, '_Raw_LFP.fig']));
+    disp(['Saving Raw LFP PNG to: ', fullfile('fig', [files(f).name, '_Raw_LFP.png'])]);
+    disp(['Saving Raw LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Raw_LFP.fig'])]);
+    close(fig_raw); 
 
 
     % event metadata
@@ -148,8 +167,36 @@ for f = 1 : numel(files)
     count     =  0;
     win       = []; 
     
-    [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection_mathys(data) ;
+    [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);
 
+    fig_cleaned = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
+    hold on;
+    title(['Cleaned LFP Data for ' strrep(files(f).name, '.Poly5', '')], 'Interpreter', 'none');
+    xlabel('Time (s)');
+    ylabel('LFP Signal (µV)');
+
+    % Create time axis using the cleaned data length
+    time_axis_cleaned = (0:length(Cleaned_Data)-1) / data.Fs;
+
+    % Plot each channel with vertical offset
+    for ch = 1:size(Cleaned_Data, 2)
+        plot(time_axis_cleaned, Cleaned_Data(:, ch) + ch * 8000, 'DisplayName', data.labels(ch).name);
+    end
+
+    legend('show');
+    set(gca, 'FontSize', 12);
+    xlim([min(time_axis_cleaned), max(time_axis_cleaned)]);
+    ylim([y_min, y_max]);  % Use the same y-limits as the raw plot
+    box on;
+    hold off;
+
+    % Save Cleaned LFP figure
+    saveas(fig_cleaned, fullfile('fig', [files(f).name, '_Cleaned_LFP.png']));
+    saveas(fig_cleaned, fullfile(FigDir, [files(f).name, '_Cleaned_LFP.fig']));
+    disp(['Saving Cleaned LFP PNG to: ', fullfile('fig', [files(f).name, '_Cleaned_LFP.png'])]);
+    disp(['Saving Cleaned LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Cleaned_LFP.fig'])]);
+    close(fig_cleaned); % Free memory
+    
     for t = 1 : size(MAGIC_trials,1)
 
         %create win, valid, trig for each step
