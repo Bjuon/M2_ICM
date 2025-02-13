@@ -193,9 +193,7 @@ for f = 1 : numel(files)
     % Save Cleaned LFP figure
     saveas(fig_cleaned, fullfile('fig', [files(f).name, '_Cleaned_LFP.png']));
     saveas(fig_cleaned, fullfile(FigDir, [files(f).name, '_Cleaned_LFP.fig']));
-    disp(['Saving Cleaned LFP PNG to: ', fullfile('fig', [files(f).name, '_Cleaned_LFP.png'])]);
-    disp(['Saving Cleaned LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Cleaned_LFP.fig'])]);
-    close(fig_cleaned); % Free memory
+    close(fig_cleaned); 
     
     for t = 1 : size(MAGIC_trials,1)
 

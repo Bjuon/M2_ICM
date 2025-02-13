@@ -36,6 +36,6 @@ for iChannel = 1:size(data.values{1,1},2)
     Cleaned_Data(:, iChannel) = clean_values;
 end
 
-%% Optional: Store sampling frequency for reference
+%% Store sampling frequency for reference
 Artefacts_Detected_per_Sample(1,1) = data.Fs;
 end
