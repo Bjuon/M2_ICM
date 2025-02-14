@@ -51,7 +51,7 @@ for f = 1 : numel(files)
     
     %filter data
     if hpFilt == 1
-        i = Fs == data.Fs;
+        i = Fs == data.Fs; % pb local 
         j = Fpass == 1;
         k = Fstop == 0.01;
         data.filter(h(i,j,k));
@@ -136,8 +136,8 @@ for f = 1 : numel(files)
     % Save Raw LFP figure
     saveas(fig_raw, fullfile('fig', [files(f).name, '_Raw_LFP.png']));
     saveas(fig_raw, fullfile(FigDir, [files(f).name, '_Raw_LFP.fig']));
-    disp(['Saving Raw LFP PNG to: ', fullfile('fig', [files(f).name, '_Raw_LFP.png'])]);
-    disp(['Saving Raw LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Raw_LFP.fig'])]);
+    %disp(['Saving Raw LFP PNG to: ', fullfile('fig', [files(f).name, '_Raw_LFP.png'])]);
+    %disp(['Saving Raw LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Raw_LFP.fig'])]);
     close(fig_raw); 
 
 
@@ -193,6 +193,8 @@ for f = 1 : numel(files)
     % Save Cleaned LFP figure
     saveas(fig_cleaned, fullfile('fig', [files(f).name, '_Cleaned_LFP.png']));
     saveas(fig_cleaned, fullfile(FigDir, [files(f).name, '_Cleaned_LFP.fig']));
+    %disp(['Saving Raw LFP PNG to: ', fullfile('fig', [files(f).name, '_Raw_LFP.png'])]);
+    %disp(['Saving Raw LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Raw_LFP.fig'])]);
     close(fig_cleaned); 
     
     for t = 1 : size(MAGIC_trials,1)
