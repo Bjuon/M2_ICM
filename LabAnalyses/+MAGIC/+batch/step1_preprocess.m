@@ -10,7 +10,8 @@
                         % What is max_dur for magic ?
 
 
-function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, rawLFPDir, cleanedLFPDir, rawTFDir)
+%function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, rawLFPDir, cleanedLFPDir, rawTFDir)
+function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent)
 clear seg
 load 'shared/FIR_highpassMAGIC.mat'
 f_count = 0;
@@ -94,53 +95,6 @@ for f = 1 : numel(files)
     % keep trig_LFP corresponding to each trial
     Button_LFP     = trig_LFP(:,1);
     
-    %% mathys 
-        
-    % Compute global y-limits 
-    all_raw = [];
-    for ch = 1:size(data.values{1,1}, 2)
-        offsetData = data.values{1,1}(:, ch) + ch * 8000;
-        all_raw = [all_raw; offsetData];
-    end
-    y_min = min(all_raw);
-    y_max = max(all_raw);
-
-    % Plot Raw LFP 
-    disp('Plotting Raw LFP...');
-    fig_raw = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
-    hold on;
-    title(['Raw LFP Data for ' strrep(files(f).name, '.Poly5', '')], 'Interpreter', 'none');
-    xlabel('Time (s)');
-    ylabel('LFP Signal (µV)');
-
-    % Create time axis
-    time_axis = (0:length(data.values{1,1})-1) / data.Fs;
-
-    % Plot each channel with vertical offset
-    for ch = 1:size(data.values{1,1}, 2)
-        plot(time_axis, data.values{1,1}(:, ch) + ch * 8000, 'DisplayName', data.labels(ch).name);
-    end
-
-    legend('show');
-    set(gca, 'FontSize', 12);
-    xlim([min(time_axis), max(time_axis)]);
-    ylim([y_min, y_max]);  % Apply computed y-limits
-    box on;
-    hold off;
-
-    % Save Raw LFP figure in the rawLFP folder
-    saveas(fig_raw, fullfile(rawLFPDir, [files(f).name, '_Raw_LFP.png']));
-    saveas(fig_raw, fullfile(rawLFPDir, [files(f).name, '_Raw_LFP.fig']));
-    close(fig_raw);
-
-    % Compute TF on raw data before artifact removal
-    disp('Computing Raw TF...');
-    [dataTF_raw, existTF_raw] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl);
-    if existTF_raw
-        save(fullfile(rawTFDir, [files(f).name '_Raw_TF.mat']), 'dataTF_raw');
-    end
-    MAGIC.batch.plot_TF()
-    
 
     % event metadata
     BSL    = metadata.Label('name','BSL'); % baseline, no duration
@@ -167,36 +121,7 @@ for f = 1 : numel(files)
     %PreStart =  3;
     count     =  0;
     win       = []; 
-    
-    [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);
-
-    disp('Plotting Clean LFP...');
-    fig_cleaned = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
-    hold on;
-    title(['Cleaned LFP Data for ' strrep(files(f).name, '.Poly5', '')], 'Interpreter', 'none');
-    xlabel('Time (s)');
-    ylabel('LFP Signal (µV)');
-
-    % Create time axis using the cleaned data length
-    time_axis_cleaned = (0:length(Cleaned_Data)-1) / data.Fs;
-
-    % Plot each channel with vertical offset
-    for ch = 1:size(Cleaned_Data, 2)
-        plot(time_axis_cleaned, Cleaned_Data(:, ch) + ch * 8000, 'DisplayName', data.labels(ch).name);
-    end
-
-    legend('show');
-    set(gca, 'FontSize', 12);
-    xlim([min(time_axis_cleaned), max(time_axis_cleaned)]);
-    ylim([y_min, y_max]);  % Use the same y-limits as the raw plot
-    box on;
-    hold off;
-
-    % Save Cleaned LFP figure
-    saveas(fig_cleaned, fullfile(cleanedTFDir, [files(f).name, '_Cleaned_LFP.png']));
-    saveas(fig_cleaned, fullfile(cleanedTFDir, [files(f).name, '_Cleaned_LFP.fig']));
-    close(fig_cleaned); 
-    
+        
     for t = 1 : size(MAGIC_trials,1)
 
         %create win, valid, trig for each step

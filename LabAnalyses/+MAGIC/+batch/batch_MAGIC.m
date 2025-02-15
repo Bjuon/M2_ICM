@@ -50,6 +50,13 @@ todo.PE              = 0;
 todo.statsTF         = 0;
 todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
+todo.plotRawLFP         = 1; % Set to 1 to enable plotting of raw LFP data.
+todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
+todo.plotCleanedLFP     = 1; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
+todo.updateSegmentation = 1; % Set to 1 to update segmentation with cleaned LFP data.
+todo.recomputeCleanedTF = 1; % Set to 1 to recompute spectral TF maps using the cleaned LFP data.
+
+
 %normalization
 % change script to add type of normalization in output name
 PreStart                  = 3;                  % time to add to before and after trigger during segmentation
@@ -306,13 +313,21 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 AlsoIncludeWrongEvent = false ;
             end
 
-            seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, rawLFPDir, cleanLFPDir, rawTFDir); %protocol, subject{s});
+            seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent); %protocol, subject{s});
             %save preprocess data
             save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
             disp('seg done')
+            
+            % --- Plot Raw LFP ---
+            if todo.plotRawLFP
+                disp('Plotting Raw LFP in', rawTFDir)
+                % Plot raw LFP using the versatile plotLFP function
+                MAGIC.batch.plotLFP(data, rawLFP_data, files(f), rawLFPDir, y_min, y_max, 'Raw');
+            end
+
+           
         end
-        
-       
+            
         
         % extractinfos to get nb run, trials, etc per patient
         if todo.extractInfos
@@ -374,6 +389,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 
                 % spectral calculation
                 if todo.TF == 1 || todo.TF == 3 || todo.TF == 4
+                    disp('Computing spectral TF maps with raw LFP data')
                     [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl);
                     if existTF
                         save([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
@@ -423,12 +439,45 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
         if todo.plotTF
             load([OutputFileName suff1 '_TF_' suff '_' event{1} '.mat'], 'dataTF')
             if todo.plotTF == 1
-                 MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], cleanTFDir, TimePlot);
+                disp('Plotting Raw TF')
+                 MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], rawTFDir, TimePlot);
+
 %             elseif todo.plotTF == 2
 %                 MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
             end
         end
- 
+        % --- Artefact Detection and Removal ---
+        if todo.detectArtifacts
+            disp('Detecting artefacts in raw LFP data...');
+            [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
+        end
+        
+        % --- Replot Cleaned LFP ---
+        if todo.plotCleanedLFP
+            disp('Plotting Cleaned LFP...');
+            MAGIC.batch.plotLFP(data, Cleaned_Data, files(f), cleanLFPDir, y_min, y_max, 'Cleaned');
+        end
+        
+        % --- Update Segmentation with Cleaned LFP ---
+        if todo.updateSegmentation
+            disp('Updating segmentation with cleaned LFP...');
+            for iTrial = 1:length(seg)
+                seg(iTrial).sampledProcess = Cleaned_Data;  
+            end
+        end
+        
+        % --- Recompute Spectral TF Maps from Cleaned Data ---
+        if todo.recomputeCleanedTF
+            disp('Recomputing spectral TF maps with cleaned LFP data...');
+            [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl);
+            if existTF_clean
+                % Save the cleaned TF data to the designated cleaned TF directory
+                save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
+        
+                % Plot the cleaned TF maps using plot_TF.m
+                MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
+            end
+        end
         
     end
     if todo.plotTF || todo.TF
