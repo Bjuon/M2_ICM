@@ -48,6 +48,10 @@ for f = 1 : numel(files)
     %load data
     load(fullfile(OutputPath, [strtok(files(f).name, '.') '_raw.mat']))
     %load(fullfile(OutputPath, [strtok(files(f).name, '.') '_ica.mat']))
+
+    disp(class(data));
+    disp(data);
+
     
     %filter data
     if hpFilt == 1
