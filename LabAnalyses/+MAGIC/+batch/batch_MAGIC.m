@@ -36,6 +36,7 @@ global hpFilt
 global reject_table
 global tasks
 
+
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
 todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
@@ -88,20 +89,14 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-local = true; 
-if local
-    % Mode local 
-    startpath = "F:\Programing\M2\Data_ICM"; 
-    
+localMode = true;  
+if localMode
+    startpath = "F:\Programing\M2\Data_ICM";
 else
-    % Mode serveur 
-    if isunix
-        startpath = "/network/lustre/iss/pf-marche";
-        feature('DefaultCharacterSet', 'CP1252');
-    elseif ispc
-        startpath = "\\iss\pf-marche";
-    end
+    startpath = "\\iss\pf-marche";
 end
+
+
 
 
 DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP');
@@ -152,7 +147,34 @@ tasks = {'GOi', 'GOc', 'NoGO'};
 FileName = '*_POSTOP_*_GNG_GAIT_*_LFP';
 
 % frequency bandes
-FqBdes = [1 4 12 13 20 21 35 36 60 61 80];                                  %#ok<NASGU> 
+FqBdes = [1 4 12 13 20 21 35 36 60 61 80];     %#ok<NASGU> 
+
+% Create Dir to save Raw/Clean LFP and Raw/CleanTF maps 
+for s = 1:numel(subject)
+    patientDir = fullfile(FigDir, subject{s});
+    MAGIC.batch.EnsureDir(patientDir);
+
+    for ev = 1:numel(event)
+        eventName = event{ev};
+        eventDir = fullfile(patientDir, eventName);
+        
+        % Assign directory variables
+        rawLFPDir = fullfile(eventDir, 'Raw_LFP');
+        cleanLFPDir = fullfile(eventDir, 'Cleaned_LFP');
+        rawTFDir = fullfile(eventDir, 'Raw_TF');
+        cleanTFDir = fullfile(eventDir, 'Cleaned_TF');
+
+        % Ensure directories exist
+        MAGIC.batch.EnsureDir(eventDir);
+        MAGIC.batch.EnsureDir(rawLFPDir);
+        MAGIC.batch.EnsureDir(cleanLFPDir);
+        MAGIC.batch.EnsureDir(rawTFDir);
+        MAGIC.batch.EnsureDir(cleanTFDir);
+    end
+end
+
+
+
 
 %%
 suff1   = [segType '_' ChannelMontage];                       %#ok<NASGU>
@@ -284,7 +306,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 AlsoIncludeWrongEvent = false ;
             end
 
-            seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent); %protocol, subject{s});
+            seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, rawLFPDir, cleanLFPDir, rawTFDir); %protocol, subject{s});
             %save preprocess data
             save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
             disp('seg done')
@@ -401,7 +423,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
         if todo.plotTF
             load([OutputFileName suff1 '_TF_' suff '_' event{1} '.mat'], 'dataTF')
             if todo.plotTF == 1
-                MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir, TimePlot)
+                 MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], cleanTFDir, TimePlot);
 %             elseif todo.plotTF == 2
 %                 MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
             end

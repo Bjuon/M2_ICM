@@ -3,9 +3,6 @@ function plot_TF(dataTF, file, FigDir,TimePlot)
 global segType
 
 % TimePlot = {'all', '10s', '05s', 'marche'};
-
-
-
 for t = 1 : numel(dataTF)
     [~, fileName] = fileparts(file);
     
@@ -24,12 +21,12 @@ for t = 1 : numel(dataTF)
         FigName = [fileName '_' TimePlot{TP} '_' med '_' sprintf('%02i', trial_num)];
         fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 29.7 21]);
         
-            
+%%            
         for ch = 1:nb_ch
             if contains(dataTF(t).spectralProcess.labels(ch).name, 'D')
-                g = subplot(nb_ch/2, 2, nb_ch - 2*(ch-1), [0.05 0.05]);
+                g = MAGIC.batch.tight_subplot(nb_ch/2, 2, nb_ch - 2*(ch-1), [0.05 0.05]);
             elseif contains(dataTF(t).spectralProcess.labels(ch).name, 'G')
-                g = subplot(nb_ch/2, 2, nb_ch - 2*(ch-(nb_ch/2))+1, [0.05 0.05]);
+                g = MAGIC.batch.tight_subplot(nb_ch/2, 2, nb_ch - 2*(ch-(nb_ch/2))+1, [0.05 0.05]);
             end
             
             % log10 transform for dNOR and RAW

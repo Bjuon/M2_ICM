@@ -10,7 +10,7 @@
                         % What is max_dur for magic ?
 
 
-function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent)
+function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, rawLFPDir, cleanedLFPDir, rawTFDir)
 clear seg
 load 'shared/FIR_highpassMAGIC.mat'
 f_count = 0;
@@ -19,6 +19,7 @@ global PreStart         %#ok<*GVMIS>
 global hpFilt
 global segType
 global max_dur
+
 
 % for each files:
 for f = 1 : numel(files)
@@ -94,19 +95,8 @@ for f = 1 : numel(files)
     Button_LFP     = trig_LFP(:,1);
     
     %% mathys 
-    local = false; 
-    if local
-        % Mode local 
-        startpath = "F:\Programing\M2\Data_ICM"; 
-
-    else
-        startpath = "\\iss\pf-marche";
-
-    end
-
-    FigDir= fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures','Mathys');
-
- %--- Compute global y-limits (using raw data with channel offsets) ---
+        
+    % Compute global y-limits 
     all_raw = [];
     for ch = 1:size(data.values{1,1}, 2)
         offsetData = data.values{1,1}(:, ch) + ch * 8000;
@@ -116,6 +106,7 @@ for f = 1 : numel(files)
     y_max = max(all_raw);
 
     % Plot Raw LFP 
+    disp('Plotting Raw LFP...');
     fig_raw = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
     hold on;
     title(['Raw LFP Data for ' strrep(files(f).name, '.Poly5', '')], 'Interpreter', 'none');
@@ -137,13 +128,19 @@ for f = 1 : numel(files)
     box on;
     hold off;
 
-    % Save Raw LFP figure
-    saveas(fig_raw, fullfile('fig', [files(f).name, '_Raw_LFP.png']));
-    saveas(fig_raw, fullfile(FigDir, [files(f).name, '_Raw_LFP.fig']));
-    %disp(['Saving Raw LFP PNG to: ', fullfile('fig', [files(f).name, '_Raw_LFP.png'])]);
-    %disp(['Saving Raw LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Raw_LFP.fig'])]);
-    close(fig_raw); 
+    % Save Raw LFP figure in the rawLFP folder
+    saveas(fig_raw, fullfile(rawLFPDir, [files(f).name, '_Raw_LFP.png']));
+    saveas(fig_raw, fullfile(rawLFPDir, [files(f).name, '_Raw_LFP.fig']));
+    close(fig_raw);
 
+    % Compute TF on raw data before artifact removal
+    disp('Computing Raw TF...');
+    [dataTF_raw, existTF_raw] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl);
+    if existTF_raw
+        save(fullfile(rawTFDir, [files(f).name '_Raw_TF.mat']), 'dataTF_raw');
+    end
+    MAGIC.batch.plot_TF()
+    
 
     % event metadata
     BSL    = metadata.Label('name','BSL'); % baseline, no duration
@@ -173,6 +170,7 @@ for f = 1 : numel(files)
     
     [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);
 
+    disp('Plotting Clean LFP...');
     fig_cleaned = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen figure
     hold on;
     title(['Cleaned LFP Data for ' strrep(files(f).name, '.Poly5', '')], 'Interpreter', 'none');
@@ -195,10 +193,8 @@ for f = 1 : numel(files)
     hold off;
 
     % Save Cleaned LFP figure
-    saveas(fig_cleaned, fullfile('fig', [files(f).name, '_Cleaned_LFP.png']));
-    saveas(fig_cleaned, fullfile(FigDir, [files(f).name, '_Cleaned_LFP.fig']));
-    %disp(['Saving Raw LFP PNG to: ', fullfile('fig', [files(f).name, '_Raw_LFP.png'])]);
-    %disp(['Saving Raw LFP FIG to: ', fullfile(FigDir, [files(f).name, '_Raw_LFP.fig'])]);
+    saveas(fig_cleaned, fullfile(cleanedTFDir, [files(f).name, '_Cleaned_LFP.png']));
+    saveas(fig_cleaned, fullfile(cleanedTFDir, [files(f).name, '_Cleaned_LFP.fig']));
     close(fig_cleaned); 
     
     for t = 1 : size(MAGIC_trials,1)
