@@ -26,11 +26,10 @@ for t = 1 : numel(dataTF)
         
             
         for ch = 1:nb_ch
-            %% NEED subplot_tight ADD-ONS
             if contains(dataTF(t).spectralProcess.labels(ch).name, 'D')
-                g = subplot_tight(nb_ch/2, 2, nb_ch - 2*(ch-1), [0.05 0.05]);
+                g = subplot(nb_ch/2, 2, nb_ch - 2*(ch-1), [0.05 0.05]);
             elseif contains(dataTF(t).spectralProcess.labels(ch).name, 'G')
-                g = subplot_tight(nb_ch/2, 2, nb_ch - 2*(ch-(nb_ch/2))+1, [0.05 0.05]);
+                g = subplot(nb_ch/2, 2, nb_ch - 2*(ch-(nb_ch/2))+1, [0.05 0.05]);
             end
             
             % log10 transform for dNOR and RAW
