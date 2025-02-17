@@ -1,4 +1,5 @@
-function plotLFP(data, LFP_data, file, outputDir, y_min, y_max, plotType)
+function [y_min, y_max] = plotLFP(data, LFP_data, file, outputDir, y_min, y_max, plotType)
+global med run
 % plotLFP - Plot and save LFP data (raw or cleaned) with vertical offsets.
 %
 % If y_min and y_max are empty, compute global y-limits from the raw LFP data.
@@ -35,12 +36,12 @@ function plotLFP(data, LFP_data, file, outputDir, y_min, y_max, plotType)
     end
 
     % Create and configure the figure
-    disp(['Plotting ', plotType, ' LFP...']);
+    disp(['Plotting ', plotType, ' LFP for ', med, ' state ', run ,]);
     fig = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]);
     hold on;
     title([plotType, ' LFP Data for ', strrep(file.name, '.Poly5', '')], 'Interpreter', 'none');
     xlabel('Time (s)');
-    ylabel('LFP Signal (µV)');
+    ylabel('LFP Signal (AU)');
 
     % Create time axis based on the length of LFP_data
     time_axis = (0:length(LFP_data)-1) / data.Fs;

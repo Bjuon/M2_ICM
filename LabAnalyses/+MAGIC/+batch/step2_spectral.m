@@ -1,13 +1,37 @@
-% function data_temp = step2_spectral(protocol, subject, data, e, norm)
-function [dataTF, existTF] = step2_spectral(seg, e, norm, Bsl)
+function [dataTF, existTF] = step2_spectral(seg, e, norm, Bsl, version)
 global tBlock
 global fqStart
 global segType
 global rest_cond
 global n_pad
 
-%% select data
-d    = linq(seg);
+% Set default to 'raw' if version is not provided.
+if nargin < 5
+    version = 'cleaned';
+end
+
+% Create a new array segData by selecting the desired field.
+for i = 1:numel(seg)
+    if strcmpi(version, 'raw')
+        if seg(i).info.isKey('raw')
+            segData(i) = seg(i).info('raw');
+        else
+            error('No raw data found in seg(%i)', i);
+        end
+    elseif strcmpi(version, 'cleaned')
+        if seg(i).info.isKey('cleaned')
+            segData(i) = seg(i).info('cleaned');
+        else
+            error('No cleaned data found in seg(%i)', i);
+        end
+    else
+        error('Invalid version specified. Use "raw" or "cleaned".');
+    end
+end
+
+
+%% select data using segData instead of seg
+d = linq(segData);
 
 if ~isempty(e)
     temp    = d.where(@(x) x.info('trial').quality == 1);

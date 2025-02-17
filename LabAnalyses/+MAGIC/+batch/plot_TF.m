@@ -24,9 +24,9 @@ for t = 1 : numel(dataTF)
 %%            
         for ch = 1:nb_ch
             if contains(dataTF(t).spectralProcess.labels(ch).name, 'D')
-                g = MAGIC.batch.tight_subplot(nb_ch/2, 2, nb_ch - 2*(ch-1), [0.05 0.05]);
+                g = subplot_tight(nb_ch/2, 2, nb_ch - 2*(ch-1), [0.05 0.05]);
             elseif contains(dataTF(t).spectralProcess.labels(ch).name, 'G')
-                g = MAGIC.batch.tight_subplot(nb_ch/2, 2, nb_ch - 2*(ch-(nb_ch/2))+1, [0.05 0.05]);
+                g = subplot_tight(nb_ch/2, 2, nb_ch - 2*(ch-(nb_ch/2))+1, [0.05 0.05]);
             end
             
             % log10 transform for dNOR and RAW

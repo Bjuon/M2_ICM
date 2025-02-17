@@ -21,6 +21,14 @@ global hpFilt
 global segType
 global max_dur
 
+global med run
+global rawLFPDir cleanLFPDir
+
+
+todo.plotRawLFP         = 1; % Set to 1 to enable plotting of raw LFP data.
+todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
+todo.plotCleanedLFP     = 1; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
+
 
 % for each files:
 for f = 1 : numel(files)
@@ -49,10 +57,7 @@ for f = 1 : numel(files)
     
     %load data
     load(fullfile(OutputPath, [strtok(files(f).name, '.') '_raw.mat']))
-    %load(fullfile(OutputPath, [strtok(files(f).name, '.') '_ica.mat']))
-
-    disp(class(data));
-    disp(data);
+    %load(fullfile(OutputPath, [strtok(files(f).name, '.') '_ica.mat'])
 
     
     %filter data
@@ -63,7 +68,9 @@ for f = 1 : numel(files)
         data.filter(h(i,j,k));
         data.fix();
     end
-    
+    % Rename data.values{1,1} to rawLFP_data
+    rawLFP_data = data.values{1,1};
+
     % detect triggers and cut the LFP signal in trials
     if strcmp(strtok(files(f).name, '.'), 'ParkPitie_2020_02_20_FEp_MAGIC_POSTOP_ON_GNG_GAIT_001_LFP')
         trig_LFP = sig.detectEvents(trig.values{1}(:,1), 1/trig.Fs, 67, max_dur, 1/trig.Fs); % ou 69
@@ -115,13 +122,36 @@ for f = 1 : numel(files)
     FOG_S  = metadata.Label('name','FOG_S'); % no duration
     FOG_E  = metadata.Label('name','FOG_E'); % no duration
     
+    
+     % --- Plot Raw LFP ---
+    if todo.plotRawLFP
+        % Calculate y_min and y_max and Plot raw LFP using the plotLFP function
+        [y_min, y_max] = MAGIC.batch.plotLFP(data, rawLFP_data, files(f), rawLFPDir, [], [], 'Raw');
+    end
+        [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
+                
+     % --- Artefact Detection and Removal ---
+    if todo.detectArtifacts
+        disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
+        [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
+    end
+
+    % --- Replot Cleaned LFP ---
+    if todo.plotCleanedLFP
+        MAGIC.batch.plotLFP(data, Cleaned_Data, files(f), cleanLFPDir, y_min, y_max, 'Cleaned');
+    end
+        
+  
+    
     % segment
     % loop on trials, separate each step 
     clear event trials
     %PreStart =  3;
     count     =  0;
     win       = []; 
-        
+    
+  
+  
     for t = 1 : size(MAGIC_trials,1)
 
         %create win, valid, trig for each step
@@ -418,7 +448,7 @@ for f = 1 : numel(files)
     end
     
     %check labels if number of files f_count > 1
-    for t = 1 : numel(trials)
+     for t = 1 : numel(trials)
         count = count + 1;
         if f_count > 1
             if isempty(setdiff({seg(1).sampledProcess.labels.name}, {data(t).labels.name}))
