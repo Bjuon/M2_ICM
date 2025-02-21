@@ -266,7 +266,8 @@ function [StartTurnValue, StartWalkValue] = refreshPlot_MAGIC(obj,h,id,all_wante
                  ch = all_wanted - 800 ;
                  win_size_for_reject = 0.25 ; % 0.5
                  times    = obj.segment.spectralProcess.times{1} + obj.segment.spectralProcess.tBlock/2 ; 
-                 idx_start = -1 + find(-win_size_for_reject + values(i).time(1) < times(:),1,"first") ;
+                 %idx_start = -1 + find(-win_size_for_reject + values(i).time(1) < times(:),1,"first") ;
+                 idx_start = max(1, -1 + find(-win_size_for_reject + values(i).time(1) < times(:), 1, "first"));
                  idx_end   = +1 + find(+win_size_for_reject + values(i).time(2) > times(:),1,"last") ;
 
                  v = obj.segment.spectralProcess.values{1, 1}  (idx_start:idx_end, 1:40, ch) ;

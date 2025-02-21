@@ -37,7 +37,7 @@ global reject_table
 global tasks
 
 global rawLFPDir cleanLFPDir rawTFDir cleanTFDir
-global med run
+global run
 
 
 
@@ -315,7 +315,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 
             seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent); %protocol, subject{s});
             %save preprocess data
-          %  save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
+            save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
             disp('seg done')
 
            
@@ -348,12 +348,15 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             %% create baseline with rest
             if ((todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.extractLFP) && norm > 0) || todo.meanTF
                 
-                try
-                    seg.reset;
-                catch
-                    seg{1}.reset;
-                    seg{2}.reset;
+               seg_complete = seg;
+               if iscell(seg)
+                    seg = seg{1};
+                else 
+                    disp('ne passe pas par step one')
                 end
+                
+                seg.reset;
+                
                 % select rest data
                 clear rest restLFP restTF restTFm idx
                 %% Initialement la valeur de r etait change ici (r et non r_bsl , or r est le compteur de la boucle), voir si cela marche mieux
@@ -376,13 +379,23 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     MAGIC.batch.step3_R([OutputFileName suff1 '_meanTF_' suff '_BSL.csv'], bslTF, {'BSL'}, protocol, [], 'meanTF', Size_around_event, Acceptable_Artefacted_Sample_In_Window);
                 end
                 
+                if iscell(seg_complete) 
+                    seg = seg_complete ;
+                end
+                
             else
                 Bsl = [];
             end
                 
                       
             for e = event % e = e{1}; e = e(1)
-                seg.reset;
+                if iscell(seg)
+                    seg{1}.reset;
+                    seg{2}.reset;
+                else 
+                    seg.reset;
+                end
+                
 %                 tic
                 disp([subject{s} ' : ' e{1} ' a ' char(datetime('now'), 'dd-MM-uuuu_HH-mm-ss')])
                 

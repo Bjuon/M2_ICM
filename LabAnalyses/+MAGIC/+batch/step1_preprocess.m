@@ -144,9 +144,6 @@ for f = 1 : numel(files)
     if todo.plotCleanedLFP
         MAGIC.batch.plotLFP(data, Cleaned_Data, files(f), cleanLFPDir, y_min, y_max, 'Cleaned');
     end
-            
-    fprintf('Original raw data size: %s\n', mat2str(size(rawLFP_data)));
-    fprintf('Original cleaned data size: %s\n', mat2str(size(Cleaned_Data)));
     
     % segment
     % loop on trials, separate each step 
@@ -471,10 +468,6 @@ for f = 1 : numel(files)
         % Similarly, for the cleaned data
         choppedCleaned(tIdx) = SampledProcess('values', Cleaned_Data(idx, :), ...
                                               'Fs', data.Fs, 'labels', data.labels);
-
-        % Print the number of samples by accessing the cell content of the values property
-       % fprintf('Manually created trial %d: raw samples = %d, cleaned samples = %d\n', ...
-                tIdx, size(choppedRaw(tIdx).values{1}, 1), size(choppedCleaned(tIdx).values{1}, 1));
     end
 
 
