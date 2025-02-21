@@ -41,6 +41,12 @@ classdef(CaseInsensitiveProperties, TruncatedProperties) Segment < hgsetget & ma
       version = '0.2.0'
    end
    
+  properties
+    rawData     % Stores raw data
+    cleanedData % Stores cleaned data
+    end
+
+   
    methods
       %% Constructor
       function self = Segment(varargin)
@@ -69,6 +75,13 @@ classdef(CaseInsensitiveProperties, TruncatedProperties) Segment < hgsetget & ma
          p.addParameter('window',[],@isnumeric);
          p.addParameter('offset',0,@isnumeric);
          p.addParameter('coordinateProcesses',false,@islogical);
+         
+        p.addParameter('rawData', [], @(x) isempty(x) || isa(x, 'Process'));
+        p.addParameter('cleanedData', [], @(x) isempty(x) || isa(x, 'Process') || isnumeric(x));
+
+       
+         
+         
          p.parse(varargin{:});
          par = p.Results;
 
@@ -123,7 +136,8 @@ classdef(CaseInsensitiveProperties, TruncatedProperties) Segment < hgsetget & ma
 %                self.offset = par.offset;
 %             end
          end
-
+         self.rawData = p.Results.rawData;
+         self.cleanedData = p.Results.cleanedData;
          self.labels = p.Results.labels;
          
          % Add Segment reference to all child processes

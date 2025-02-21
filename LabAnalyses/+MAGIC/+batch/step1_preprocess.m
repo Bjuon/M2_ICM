@@ -128,20 +128,25 @@ for f = 1 : numel(files)
         % Calculate y_min and y_max and Plot raw LFP using the plotLFP function
         [y_min, y_max] = MAGIC.batch.plotLFP(data, rawLFP_data, files(f), rawLFPDir, [], [], 'Raw');
     end
-        [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
+        rawDataProcess = data.copy();
+
+        Artefacts_Detected_per_Sample = zeros(size(data.values{1, 1}));
+        Artefacts_Detected_per_Sample(1,1) = data.Fs;
+      %  [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
                 
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts
         disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
         [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
-    end
 
+    end
     % --- Replot Cleaned LFP ---
     if todo.plotCleanedLFP
         MAGIC.batch.plotLFP(data, Cleaned_Data, files(f), cleanLFPDir, y_min, y_max, 'Cleaned');
     end
-        
-  
+            
+    fprintf('Original raw data size: %s\n', mat2str(size(rawLFP_data)));
+    fprintf('Original cleaned data size: %s\n', mat2str(size(Cleaned_Data)));
     
     % segment
     % loop on trials, separate each step 
@@ -434,36 +439,72 @@ for f = 1 : numel(files)
                 clear e
         end
     end
-    
-    % chop data
-    setWindow(data, win);
-    data.chop    
-    
+ 
+
     % create segment
     %     clear seg;
     if exist('seg', 'var')
         count = numel(seg);
+    elseif exist('seg_clean')
+        count = numel(seg_clean);
     else
         count = 0;
     end
+    
+    % Create a time vector based on the number of samples in rawLFP_data
+    t_full = (0:size(rawLFP_data,1)-1) / data.Fs;
+    nTrials = size(win,1);
+    choppedRaw = repmat(SampledProcess(), 1, nTrials);
+    choppedCleaned = repmat(SampledProcess(), 1, nTrials);
+
+    for tIdx = 1:nTrials
+        % Get the current trial window (in seconds)
+        win_t = win(tIdx, :);
+
+        % Find the indices in t_full that fall within this window
+        idx = find(t_full >= win_t(1) & t_full <= win_t(2));
+
+        % Create a new SampledProcess for raw data using a numeric matrix
+        choppedRaw(tIdx) = SampledProcess('values', rawLFP_data(idx, :), ...
+                                          'Fs', data.Fs, 'labels', data.labels);
+
+        % Similarly, for the cleaned data
+        choppedCleaned(tIdx) = SampledProcess('values', Cleaned_Data(idx, :), ...
+                                              'Fs', data.Fs, 'labels', data.labels);
+
+        % Print the number of samples by accessing the cell content of the values property
+       % fprintf('Manually created trial %d: raw samples = %d, cleaned samples = %d\n', ...
+                tIdx, size(choppedRaw(tIdx).values{1}, 1), size(choppedCleaned(tIdx).values{1}, 1));
+    end
+
+
     
     %check labels if number of files f_count > 1
      for t = 1 : numel(trials)
         count = count + 1;
         if f_count > 1
-            if isempty(setdiff({seg(1).sampledProcess.labels.name}, {data(t).labels.name}))
-                data(t).labels = seg(1).sampledProcess.labels;
+            if isempty(setdiff({seg_raw(1).sampledProcess.labels.name}, {choppedRaw(t).labels.name}))
+                choppedRaw(t).labels = seg_raw(1).sampledProcess.labels;
             else
                 error(['labels of segment ' num2str(t) ' differs from 1st segment'])
             end
         end
-        
-        seg(count)               = Segment('process',{data(t), EventProcess('events',event{t},'tStart',0,'tEnd',win(t,2) - win(t,1))},'labels',{'data' 'event'});
-        seg(count).info('trial') = trials{t};
-    end
-    
+            % Create a single Segment that has three processes:
+        %   1) Raw data SampledProcess
+        %   2) Cleaned data SampledProcess
+        %   3) EventProcess
+        seg_raw(count) = Segment('process', {choppedRaw(t),     EventProcess('events', event{t}, 'tStart', 0, 'tEnd', win(t,2) - win(t,1))}, 'labels', {'data','event'});
+        seg_clean(count)= Segment('process',{choppedCleaned(t), EventProcess('events', event{t}, 'tStart', 0, 'tEnd', win(t,2) - win(t,1))}, 'labels', {'data','event'});
+
+        % Store the simplified trial info in the segment's info map
+        seg_clean(count).info('trial') = trials{t};
+        seg_raw(count).info('trial') = trials{t};
+
+
+     end
+
     
 end
+seg = {seg_raw,seg_clean};
 clear f files;
-
 end

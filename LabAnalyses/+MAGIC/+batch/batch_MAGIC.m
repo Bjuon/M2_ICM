@@ -46,7 +46,7 @@ todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
-todo.seg             = 1; % segment data per step
+todo.seg             = 0; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
 todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha
@@ -315,7 +315,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 
             seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent); %protocol, subject{s});
             %save preprocess data
-            save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
+          %  save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
             disp('seg done')
 
            
@@ -347,7 +347,13 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             
             %% create baseline with rest
             if ((todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.extractLFP) && norm > 0) || todo.meanTF
-                seg.reset;
+                
+                try
+                    seg.reset;
+                catch
+                    seg{1}.reset;
+                    seg{2}.reset;
+                end
                 % select rest data
                 clear rest restLFP restTF restTFm idx
                 %% Initialement la valeur de r etait change ici (r et non r_bsl , or r est le compteur de la boucle), voir si cela marche mieux
@@ -382,7 +388,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 
                 % spectral calculation on raw data 
                 if todo.TF == 1 || todo.TF == 3 || todo.TF == 4
-                    disp(['Computing spectral TF maps with raw LFP data ', med , ' state ' ,run])
+                    disp(['Computing spectral TF maps with raw LFP data ', ' state ' ,run])
                     [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'raw');
                     if existTF
                         save([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
