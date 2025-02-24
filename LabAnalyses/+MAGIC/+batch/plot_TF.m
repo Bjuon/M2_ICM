@@ -22,7 +22,7 @@ for t = 1 : numel(dataTF)
         end
         
         FigName = [fileName '_' TimePlot{TP} '_' med '_' sprintf('%02i', trial_num)];
-        fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 29.7 21]);
+        fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 29.7 84]);
         
             
         for ch = 1:nb_ch
@@ -67,9 +67,9 @@ for t = 1 : numel(dataTF)
                     MAGIC.batch.plot_for_MAGIC(dataTF(t).eventProcess, 'handle', g , 'all', 5) 
                     xlim([2 min(endTrial,7)])
                 case 'artefact_watch'
-                    xlim([t_axis(1) t_axis(end)])
+                    %xlim([t_axis(1) t_axis(end)])
                     MAGIC.batch.plot_for_MAGIC(dataTF(t).eventProcess, 'handle', g, 'all', 800+ch)
-                    %xlim([2 endTrial])
+                    xlim([2 endTrial])
             end
 
             colorbar

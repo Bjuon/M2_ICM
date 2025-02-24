@@ -67,7 +67,7 @@ fqStart                   = 1;
 hpFilt                    = 1;                  % 0 if no highpass filter on data before segmentation, else 1
 segType                   = 'step'  ;           %'trial'; % 'step', if seg per step
 ChannelMontage            = 'extended';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
-TimePlot                  = {'artefact_watch'}; % Args in for plot_TF   %TimePlot = {'all', '10s', '05s', 'marche','artefact_watch'};
+TimePlot                  = {'marche'}; % Args in for plot_TF   %TimePlot = {'all', '10s', '05s', 'marche','artefact_watch'};
 Artefact_Rejection_Method = 'TF';               % 'TraceBrut' , 'TF',  'none'
 
 if     strcmp(Artefact_Rejection_Method,'TF') % fait un scoring sur la veleur en dB des 
@@ -401,7 +401,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 
                 % spectral calculation on raw data 
                 if todo.TF == 1 || todo.TF == 3 || todo.TF == 4
-                    disp(['Computing spectral TF maps with raw LFP data ', ' state ' ,run])
+                    disp(['Computing spectral TF maps with raw LFP data ',run])
                     [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'raw');
                     if existTF
                         save([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
@@ -461,7 +461,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
         
         % --- Recompute Spectral TF Maps from Cleaned Data ---
         if todo.recomputeCleanedTF
-            disp('Recomputing spectral TF maps with cleaned LFP data...');
+            disp('Recomputing spectral TF maps with cleaned LFP data...', run);
             [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'cleaned');
             if existTF_clean
                 % Save the cleaned TF data to the designated cleaned TF directory

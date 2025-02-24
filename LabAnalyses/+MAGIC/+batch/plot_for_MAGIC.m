@@ -162,14 +162,15 @@ function varargout = plot_for_MAGIC(self,varargin)
    if nargout >= 2
       varargout{1} = h;
       varargout{2} = StartTurnValue;
-      varargout{2} = StartWalkValue;
+      varargout{3} = StartWalkValue;
    end
 end
 
 function [StartTurnValue, StartWalkValue] = refreshPlot_MAGIC(obj,h,id,all_wanted)
    % Extract specific parameters for this ID
    StartTurnValue = 12 ; 
-   StartWalkValue =  5 ;
+   StartWalkValue =  5 ; 
+   flag_exist_T0 = false;
    
    gui = linq(h.UserData).where(@(x) strcmp(x.id,id)).select(@(x) x).toArray;
 
@@ -323,10 +324,7 @@ function [StartTurnValue, StartWalkValue] = refreshPlot_MAGIC(obj,h,id,all_wante
          elseif strcmp(name, 'T0_EMG')
              name = 'M';            
              color = [1 0.2 0.8];
-         elseif strcmp(name, 'T0')
-             name = 'T0';            
-             color = 'r';
-             StartWalkValue = values(i).time(1) ;
+             if ~flag_exist_T0 ; StartWalkValue = values(i).time(1) ; flag_exist_T0 = true ; end
          elseif strcmp(name, 'BSL')          
              name = 'BS'; 
              color = [0.4 0 0.4];
@@ -339,9 +337,16 @@ function [StartTurnValue, StartWalkValue] = refreshPlot_MAGIC(obj,h,id,all_wante
          elseif strcmp(name, 'FO1') || strcmp(name, 'FO2')         
              name = '\Delta';
              color = [1 0.2 0.8];
+         elseif strcmp(name, 'FO1')
+             if ~flag_exist_T0 ; StartWalkValue = values(i).time(1) ; end
          elseif strcmp(name, 'FC1') || strcmp(name, 'FC2')         
              name = '\nabla';
              color = [1 0.2 0.8];
+         elseif strcmp(name, 'T0')
+             name = 'T0';            
+             color = 'r';
+             StartWalkValue = values(i).time(1) ;
+             flag_exist_T0 = true;
          end
 
          

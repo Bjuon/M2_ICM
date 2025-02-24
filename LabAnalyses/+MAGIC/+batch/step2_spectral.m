@@ -27,7 +27,6 @@ d = linq(seg);
 
 if ~isempty(e)
    temp = d.where(@(x) x.info('trial').quality == 1);
-   % temp = d;  % This includes all trials, without filtering by quality
     if strcmp(segType, 'step')
         if strcmp(e, 'FOG_S') || strcmp(e, 'TURN_S')
             SyncWin = [-2.5 2];
