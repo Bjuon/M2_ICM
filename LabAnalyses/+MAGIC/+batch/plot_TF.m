@@ -50,7 +50,8 @@ for t = 1 : numel(dataTF)
 %             set(h(1:(numel(h)-1)/2), 'color', 'r')
 %             set(h((numel(h)-1)/2 + 1: end-1), 'edgecolor', 'r')
 %             set(h((numel(h)-1)/2 + 1: end-1), 'facecolor', 'w')
-            endTrial = dataTF(1, t).eventProcess.times{1, 1}(end,end)+1 ;
+            endTrial =   dataTF(1, t).eventProcess.times{1, 1}(end,end)+1 ;
+            startTrial = dataTF(1, t).eventProcess.times{1, 1}(1,1) ;
             switch TimePlot{TP}
                 case 'all'
                     %xlim([t_axis(1) t_axis(end)])
@@ -62,6 +63,9 @@ for t = 1 : numel(dataTF)
                 case 'marche'  
                     [~, StartTurnValue, StartWalkValue] = MAGIC.batch.plot_for_MAGIC(dataTF(t).eventProcess, 'handle', g , 'all', 998) ;
                     xlim([StartWalkValue - 0.05 min(endTrial+0.2,StartTurnValue + 0.5)])
+                case 'event'  
+                    [~, StartTurnValue, ~] = MAGIC.batch.plot_for_MAGIC(dataTF(t).eventProcess, 'handle', g , 'all', 998) ; % a terme changer pour 997 et enlever l'affichage des events trop lointains
+                    xlim([startTrial min(endTrial,StartTurnValue + 0.5)])
                 case '05s'
                     %xlim([t_axis(1) 5])
                     MAGIC.batch.plot_for_MAGIC(dataTF(t).eventProcess, 'handle', g , 'all', 5) 

@@ -67,7 +67,7 @@ fqStart                   = 1;
 hpFilt                    = 1;                  % 0 if no highpass filter on data before segmentation, else 1
 segType                   = 'step'  ;           %'trial'; % 'step', if seg per step
 ChannelMontage            = 'extended';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
-TimePlot                  = {'marche'}; % Args in for plot_TF   %TimePlot = {'all', '10s', '05s', 'marche','artefact_watch'};
+TimePlot                  = {'event'}; % Args in for plot_TF   %TimePlot = {'all', '10s', '05s', 'marche','artefact_watch'};
 Artefact_Rejection_Method = 'TF';               % 'TraceBrut' , 'TF',  'none'
 
 if     strcmp(Artefact_Rejection_Method,'TF') % fait un scoring sur la veleur en dB des 

@@ -338,7 +338,9 @@ function [StartTurnValue, StartWalkValue] = refreshPlot_MAGIC(obj,h,id,all_wante
              name = '\Delta';
              color = [1 0.2 0.8];
          elseif strcmp(name, 'FO1')
-             if ~flag_exist_T0 ; StartWalkValue = values(i).time(1) ; end
+             if ~flag_exist_T0 ;
+                 StartWalkValue = values(i).time(1) ;
+             end
          elseif strcmp(name, 'FC1') || strcmp(name, 'FC2')         
              name = '\nabla';
              color = [1 0.2 0.8];
