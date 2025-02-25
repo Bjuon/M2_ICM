@@ -46,7 +46,7 @@ todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
-todo.seg             = 1; % segment data per step
+todo.seg             = 0; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
 todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha
@@ -138,7 +138,7 @@ if ~argin
     %subject = complet(~strcmp(complet, 'BEm_000a'));
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = { 'FO1', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC' } %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = { 'TURN_S', 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC' } %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
 else
@@ -445,19 +445,20 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     end
                 end
 %                 toc
+                if todo.plotTF
+                    load([OutputFileName suff1 '_TF_' suff '_' event{1} '.mat'], 'dataTF')
+                    if todo.plotTF == 1
+                        disp('Plotting Raw TF')
+                        MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], rawTFDir, TimePlot);
+
+                        %             elseif todo.plotTF == 2
+                        %                 MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
+                    end
+                end
             end
         end
         
-        if todo.plotTF
-            load([OutputFileName suff1 '_TF_' suff '_' event{1} '.mat'], 'dataTF')
-            if todo.plotTF == 1
-                disp('Plotting Raw TF')
-                 MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], rawTFDir, TimePlot);
-
-%             elseif todo.plotTF == 2
-%                 MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
-            end
-        end
+        
         
         % --- Recompute Spectral TF Maps from Cleaned Data ---
         if todo.recomputeCleanedTF

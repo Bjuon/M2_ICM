@@ -143,6 +143,14 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
             else
                 sideValue = trials(tr).info('trial').side;
             end
+                if verLessThan('matlab','9.11')
+                    nStepVal = trials(tr).info('trial').nStep;
+                    if isempty(nStepVal)
+                        nStepVal = NaN;
+                    end
+                else
+                    nStepVal = trials(tr).info('trial').nStep;
+                end
 
             MForR(index_tr+1:index_tr+NLine_trial,1)        = {protocol};
             MForR(index_tr+1:index_tr+NLine_trial,3)        = {trials(tr).info('trial').medication}; %medcondition};
@@ -154,7 +162,8 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
             MForR(index_tr+1:index_tr+NLine_trial,9)        = {trials(tr).info('trial').nTrial};
             MForR(index_tr+1:index_tr+NLine_trial,14)       = {trials(tr).info('trial').run};
             MForR(index_tr+1:index_tr+NLine_trial,15)       = e ;%event 
-            MForR(index_tr+1:index_tr+NLine_trial,16)       = {trials(tr).info('trial').nStep};
+            
+            MForR(index_tr+1:index_tr+NLine_trial,16)       = {nStepVal};
             MForR(index_tr+1:index_tr+NLine_trial,17)       = {sideValue};
             
             if strcmp(type,'TF') || strcmp(type,'meanTF')
@@ -269,7 +278,7 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
         % Ensure all variable names start with a letter, replace invalid characters
         validVarNames = cellfun(@(x) regexprep(x, '^-', 'x_'), MForR(1,:), 'UniformOutput', false); % Replace leading '-' with 'x_'
         validVarNames = strrep(validVarNames, '.', '_');  % Replace '.' with '_'
-
+        
         % Ensure names start with a letter
         validVarNames = cellfun(@(x) regexprep(x, '^[^a-zA-Z]', 'x_$0'), validVarNames, 'UniformOutput', false);
 
