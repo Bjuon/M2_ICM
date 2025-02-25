@@ -1,0 +1,1707 @@
+---
+title: "Insula_Controles_V2"
+author: "Mathieu Yèche"
+date: "`r Sys.Date()`"
+params: 
+  ValeurLimite: 0  # 8, 0 ou 4.018 
+   # BIEN REPORTER CI-DESSOUS LA VALEUR (dans knit, le chiffre)
+knit: (function(inputFile, encoding) {rmarkdown::render(inputFile, encoding = encoding, output_file = file.path(dirname(inputFile), paste0("Insula_Controles_V2_lim=", 0, ".html")))})
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Loading
+
+```{r libraries, echo=FALSE, output = FALSE}
+suppressPackageStartupMessages({
+suppressWarnings({
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+library(scales)
+library(lmerTest)
+library(emmeans)
+library(sjPlot)
+library(magrittr)
+})
+})
+
+ if (Sys.info()[['sysname']] == "Windows") source("C:/Users/mathieu.yeche/Documents/Toolbox/ggplot_theme_Publication-2.R") else theme_Publication = theme_minimal
+ 
+source("C:/Users/mathieu.yeche/Desktop/GitHub/PhD_Scripts/shared_utils/PCA_utils.R")
+```
+
+
+
+```{r parameters, echo=FALSE}
+ValeurLimite = params$ValeurLimite # 8, 0 ou 4.018 
+
+if (ValeurLimite == 99) SelectPatients = T else SelectPatients = F
+
+filename = paste0('Insula Controles - lim=', params$ValeurLimite)
+knitr::opts_knit$set(output = paste0(filename, ".html"))
+```
+
+---
+title: "`r filename`"
+---
+
+```{r loading, echo=FALSE}
+DataDir = "C:/Users/mathieu.yeche/OneDrive - ICM/Thèse - Scientifique/Insula_Odeurs/"
+OutputDir = "C:/Users/mathieu.yeche/OneDrive - ICM/Thèse - Scientifique/Insula_Odeurs/Figures/"
+Data   = read_xlsx(paste0(DataDir, "Patients_and_controls.xlsx"), sheet = 'PatCtl')
+Grades = read_xlsx(paste0(DataDir, "Appariement_Patients_ctrl.xlsx"), sheet = 'Grades')
+DataOrigin = Data
+
+```
+
+## Preprocessing
+
+
+```{r preprocessing}
+if (ValeurLimite != 98) {
+  Data = Data[Data$Matching != 0,]
+  PairingTestMatch = TRUE 
+} else {
+  PairingTestMatch = FALSE
+  i = max(as.numeric(Data$Matching))
+  for (id in unique(Data$Id[Data$Group == "Cont"])) {
+    i = i + 1
+    Data[Data$Id == id, "Matching"] = i
+  }
+}
+if (SelectPatients) Data %<>% filter(!(Matching %in% c(6, 14, 4, 11, 19, 20, 8, 7, 2)))
+  
+Data$Matching = as.factor(Data$Matching)
+Data = Data[Data$Odor != "Miel" & Data$Odor != "Defi" & Data$Odor != "Neutre"  & Data$Odor != "Firsantol" ,]
+Data$Group = as.factor(Data$Group)
+
+for (row in 1:nrow(Data)) {
+  if (Data[row, "Group"] == "Cont"){
+    Data[row, "Intensite"] = Data[row, "Intensite"] / 2
+    Data[row, "Familiarite"] = Data[row, "Familiarite"] / 2
+    Data[row, "Irritabilite"] = Data[row, "Irritabilite"] / 2
+    Data[row, "Pleasant_Feeling"] = Data[row, "Pleasant_Feeling"] / 2
+    Data[row, "Unpleasant_Feeling"] = Data[row, "Unpleasant_Feeling"] / 2
+    Data[row, "Refreshing"] = Data[row, "Refreshing"] / 2
+    Data[row, "Sensuality"] = Data[row, "Sensuality"] / 2
+    Data[row, "Sensory_Pleasure"] = Data[row, "Sensory_Pleasure"] / 2
+    Data[row, "Relaxation"] = Data[row, "Relaxation"] / 2
+  }
+}
+```
+
+
+```{r correction}
+DataPreCorrection = Data
+
+ValeurLimiteLocal = ifelse(ValeurLimite > 90, 0, ValeurLimite)
+for (col in 6:ncol(Data)) {
+    Data[Data$Group == "insul1" & Data[, col] < ValeurLimiteLocal, col ] = ValeurLimiteLocal
+    Data[Data$Group == "insul1", col ] = scales::rescale(as.numeric(unlist(Data[Data$Group == "insul1", col])), to = c(0, 100))
+}
+
+```
+
+```{r odor group}
+Data$Odor     = as.character(Data$Odor)
+OdorGpOrdered = Data %>% group_by(Odor_categ) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean) %>% pull(Odor_categ)
+OdorOrder     = c()
+for (odor in OdorGpOrdered) {
+  localOdorOrder = as.character(Data %>% filter(Odor_categ == odor) %>% group_by(Odor) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean) %>% pull(Odor))
+  OdorOrder = c(OdorOrder, localOdorOrder)
+}
+Data$Odor = factor(Data$Odor, levels = OdorOrder)
+Data      = Data %>% arrange(Odor)
+```
+
+
+# Analyses Initiales
+
+## Visualisation brute
+
+A ne pas inclure dans l'article : 
+
+```{r ggplotAnova2factors}
+
+for (Sentiment in colnames(Data)[6:ncol(Data)]) {
+    print(ggplot2::ggplot(data=Data, mapping=aes(x=(Odor),y=!!sym(Sentiment), color=Group)) +
+        ggplot2::geom_boxplot() +
+        ggbeeswarm::geom_beeswarm(dodge.width=0.75) +
+        ggplot2::theme_light(base_size = 15) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  +
+        ggplot2::geom_text(aes(label = Sentiment, x = "Paradisone", y = 110), color = "black", size = 8))
+        
+}
+
+```
+
+## Graph + Stats Classiques 
+
+```{r ANOVA + PostHoc}
+
+print( "Warning in wilcox.test.default : impossible de calculer la p-value exacte avec des ex-aequos")
+for (Sentiment in colnames(Data)[6:ncol(Data)]) {
+  
+      cat("\n")
+      f = as.formula(paste0("rank(", Sentiment, ") ~ Group * Odor"))
+      mod = aov(f, data=Data)
+      print(f)
+      print(summary(mod))
+      cat("\n------------------------------------------------------------------------------------------\n\n")
+      
+      suppressMessages({
+        MeanData    = Data %>% group_by(Odor,Group) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Odor,Group)
+        MeanData$SD = Data %>% group_by(Odor,Group) %>% summarise(SD   = sd(!!sym(Sentiment)))   %>% arrange(Odor,Group) %>% pull(SD)
+      })
+      
+      WilcoxPairedResult = list()
+      OdorList =  unique(Data$Odor)
+      for (odor in unique(Data$Odor)) {
+        suppressWarnings({
+          WilcoxPairedResult = c(WilcoxPairedResult, wilcox.test(as.numeric(unlist(Data[Data$Group == "Cont" & Data$Odor == odor , Sentiment])),as.numeric(unlist(Data[Data$Group == "insul1" & Data$Odor == odor , Sentiment])), paired = PairingTestMatch )$p.value)
+        })
+      }
+      suppressWarnings({ 
+        WilcoxPairedResult = p.adjust(WilcoxPairedResult, method = "fdr")
+        })
+      
+      StatDf = data.frame(Odor = OdorList, p.value = WilcoxPairedResult)
+      StatDf$Odor = factor(StatDf$Odor, levels = OdorOrder)
+      StatDf = merge(StatDf, Data %>% group_by(Odor) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Mean), by = "Odor" )
+      
+      print(ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Group)) +
+        geom_point() +
+        geom_line(aes(group=1), data = MeanData[MeanData$Group == "Cont",]) +
+        geom_line(aes(group=1), data = MeanData[MeanData$Group == "insul1",]) +
+        theme_light(base_size = 15) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+        geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD, color = Group), width=0.1, position=position_dodge(0.15)) +
+        geom_text(aes(label = round(p.value, 3), x = Odor, y = Mean+25, color = NA), data = StatDf) +
+        geom_text(aes(label = paste0("pvalue ANOVA Group:Odor = ", round(summary(mod)[[1]][["Pr(>F)"]][3], 5)), x = "Paradisone", y = 105), color = "black", size = 5) +
+        geom_text(aes(label = Sentiment, x = "Paradisone", y = 120), color = "black", size = 8))
+      Sys.sleep(0.5)  
+}
+
+
+```
+
+
+## Graph + modele lineaire mixte de base
+### Le modele
+
+```{r lmer} 
+
+rm(StatDf)
+rm(mod)
+
+DataLong = Data
+DataLong$Matching = as.factor(DataLong$Matching)
+DataLong$Group    = as.factor(DataLong$Group)
+DataLong = DataLong %>% tidyr::pivot_longer(cols = c(6:ncol(DataLong)), names_to = "Sentiment", values_to = "Value")
+DataLong$Sentiment = as.factor(DataLong$Sentiment)
+
+suppressWarnings(dir.create(paste0(OutputDir, '/Model')))
+if(file.exists(paste0(OutputDir, '/Model/lmer_model_longformat_lim', ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, '/Model/lmer_model_longformat_n_lim', ValeurLimite,'.RData'))
+} else {
+  #model = lmerTest::lmer(Value ~ Sentiment * Group * Odor + (1 + Sentiment | Matching), data = DataLong)
+  model = lmerTest::lmer(Value ~ 0 + Sentiment:Odor + Sentiment:Group + Sentiment:Group:Odor + (0 + Sentiment | Matching), data = DataLong)
+  summary(manova(cbind(Intensite, Familiarite,Irritabilite,Pleasant_Feeling,Unpleasant_Feeling,Refreshing,Sensuality,Sensory_Pleasure,Relaxation) ~  Group * Odor , data = Data))
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_longformat_n_lim", ValeurLimite,".RData"))
+  lattice::qqmath(model)
+  lattice::dotplot(ranef(model))$Matching
+}
+
+emmean = data.frame(emmeans::emmeans(model, pairwise ~ Group | Odor:Sentiment)$contrasts) 
+
+print(sjPlot::plot_model(model, type="eff", terms = c("Odor","Group","Sentiment")))
+# Not working when knitting sadly
+
+write.csv(emmean, file = paste0(OutputDir, '/Model/pvalues', ValeurLimite,'.csv'))
+
+em2 = emmean
+em2$txt = paste0(round(em2$estimate, digits = 2), " [", round(em2$SE, digits = 2), "], p ", ifelse(em2$p.value < 0.001, "< 0.001" , paste0("= ", round(em2$p.value, digits = 3))))
+em2 %>% select(Odor, Sentiment, txt) %>% tidyr::spread(Sentiment, txt) %>% write.csv(file = paste0(OutputDir, '/Model/pvalues', ValeurLimite,'_nice.csv'))
+
+
+```
+
+### Les graphes
+
+```{r lmer graph}
+for (Sentiment in colnames(Data)[6:ncol(Data)]) {
+  
+  StatsDf      = emmean[emmean$Sentiment == Sentiment,]
+  StatsDf      = merge( StatsDf, Data %>% group_by(Odor) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Mean), by = "Odor" )
+  StatsDf$Odor = factor(StatsDf$Odor, levels = OdorOrder)
+  StatsDf$p.value = ifelse(StatsDf$p.value < 0.001, "***", ifelse(StatsDf$p.value < 0.01, "**", ifelse(StatsDf$p.value < 0.05, "*", "")))
+  
+  
+  suppressMessages({
+    MeanData    = Data %>% group_by(Odor,Group) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Odor,Group)
+    MeanData$SD = Data %>% group_by(Odor,Group) %>% summarise(SD   = sd(  !!sym(Sentiment))) %>% arrange(Odor,Group) %>% pull(SD)
+    MeanData$SE = Data %>% group_by(Odor,Group) %>% summarise(SE   = sd(  !!sym(Sentiment))/sqrt(max(as.numeric(Matching)))) %>% arrange(Odor,Group) %>% pull(SE)
+  })
+  MeanData$p.value = StatsDf$p.value[match(MeanData$Odor, StatsDf$Odor)]
+  MeanData$ColError = MeanData$SE # A reporter dans le write CSV
+  
+  MeanData$Odor %<>% recode(
+    "Acide isovalérique" = "Isovaleric acid", "Civette" = "Skunk", "Tannerie" = "Tanning",
+    "Eucalyptus" = "Eucalyptus", "Menthe" = "Menthol",
+    "Paradisone" = "Paradisone", "Tiare" = "Tiare", "Lavande" = "Lavender", "Lilas" = "Lilac", "Pamplemousse" = "Grapefruit",
+    "Fraise" = "Strawberry", "Caramel" = "Caramel"
+  )
+  MeanData$Group %<>% recode("Cont" = "Controls", "insul1" = "Patients")
+  
+  p = ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Group)) +
+          geom_ribbon(aes(ymin=Mean-ColError, ymax=Mean+ColError, fill = Group, group = Group, color = NULL), alpha = 0.25) +
+          geom_point() +
+        # geom_line(aes(y = !!sym(Sentiment), group = Id), data = Data, alpha = 0.25) +
+          geom_line(aes(group=1), data = MeanData[MeanData$Group == "Controls",]) +
+          geom_line(aes(group=1), data = MeanData[MeanData$Group == "Patients",])+ 
+        # geom_errorbar(aes(ymin=Mean-ColError, ymax=Mean+ColError, color = Group), width=0.1, position=position_dodge(0.15)) +
+          geom_text(aes(label = p.value, x = Odor, y = Mean+5), color = "black", size = 6, data = MeanData %>% group_by(Odor,p.value) %>% summarise(Mean = max(Mean+ColError))) +
+          labs(title = Sentiment, x = "Odor", y = "", color = "Group") +
+        # ggh4x::facet_nested(. ~ OdorGroup + Odor, scales = "free", space = "free") +
+          theme_Publication()  +
+          scale_color_manual(values = c("Controls" = "#38E0A1", "Patients" = "#38B1E0")) +
+          scale_fill_manual( values = c("Controls" = "#38E0A1", "Patients" = "#38B1E0")) +
+          theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) +
+          theme( panel.grid = element_blank())
+  
+  cowplot::save_plot(paste0(OutputDir, 'Soumission/source_figures/', "Fig2_", Sentiment, ".svg"), p, base_width = 10, base_height = 5, dpi = 1200)
+  write.csv(MeanData %>% select(Odor, Group, Mean, SE, p.value), paste0(OutputDir, '/Soumission/source_files', "Fig2_", Sentiment, ".csv"))
+  
+  print(p)
+}
+
+```
+Wraping the plot
+
+```{r}
+
+DataLongWrap = Data %>% tidyr::pivot_longer(cols = c(6:ncol(Data)), names_to = "Sentiment", values_to = "Value")
+DataLongWrap$Sentiment = as.factor(DataLongWrap$Sentiment)
+
+  suppressMessages({
+    MeanData    = DataLongWrap %>% group_by(Odor,Group,Sentiment) %>% summarise(Mean = mean(Value)) %>% arrange(Odor,Group,Sentiment)
+    MeanData$SD = DataLongWrap %>% group_by(Odor,Group,Sentiment) %>% summarise(SD   = sd(  Value)) %>% arrange(Odor,Group,Sentiment) %>% pull(SD)
+    MeanData$SE = DataLongWrap %>% group_by(Odor,Group,Sentiment) %>% summarise(SE   = sd(  Value)/sqrt(max(as.numeric(Matching)))) %>% arrange(Odor,Group,Sentiment) %>% pull(SE)
+  })
+  MeanData$p.value = emmean$p.value[match(paste(MeanData$Odor, MeanData$Sentiment), paste(emmean$Odor, emmean$Sentiment))]
+  MeanData$p.value = ifelse(MeanData$p.value < 0.001, "***", ifelse(MeanData$p.value < 0.01, "**", ifelse(MeanData$p.value < 0.05, "*", "")))
+  MeanData$ColError = MeanData$SE # A reporter dans le write CSV
+  
+  MeanData$Odor %<>% recode(
+    "Acide isovalérique" = "Isovaleric acid", "Civette" = "Skunk", "Tannerie" = "Tanning",
+    "Eucalyptus" = "Eucalyptus", "Menthe" = "Menthol",
+    "Paradisone" = "Paradisone", "Tiare" = "Tiare", "Lavande" = "Lavender", "Lilas" = "Lilac", "Pamplemousse" = "Grapefruit",
+    "Fraise" = "Strawberry", "Caramel" = "Caramel"
+  )
+  MeanData$Sentiment %<>% recode(
+    Familiarite = "Familiarity", Intensite = "Intensity", Irritabilite = "Irritability", 
+    Pleasant_Feeling = "Pleasant Feeling", Relaxation = "Relaxing", Sensory_Pleasure = "Sensory Pleasure", Unpleasant_Feeling = "Unpleasant Feeling"
+  )
+  
+  MeanData$Sentiment = factor(MeanData$Sentiment, levels = c("Intensity", "Familiarity", "Irritability", "Pleasant Feeling", "Unpleasant Feeling", "Refreshing", "Relaxing", "Sensuality", "Sensory Pleasure"))
+
+  MeanData$Group %<>% recode("Cont" = "Controls", "insul1" = "Patients")
+  
+  p = ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Group)) +
+          # geom_rect(aes(xmin = 0.5, xmax = 3.5, ymin = 0, ymax = 100, color = NULL), fill = colorspace::desaturate(colorspace::lighten("#ffcb00", .6), .2), alpha = 0.1) +
+          # geom_rect(aes(xmin = 3.5, xmax = 5.5, ymin = 0, ymax = 100, color = NULL), fill = colorspace::desaturate(colorspace::lighten("#4cd200", .8), .2), alpha = 0.1) +
+          # geom_rect(aes(xmin = 5.5, xmax = 10.5, ymin = 0, ymax = 100, color = NULL), fill = colorspace::desaturate(colorspace::lighten("#a439eb", .8), .2), alpha = 0.1) +
+          # geom_rect(aes(xmin = 10.5, xmax = 12.5, ymin = 0, ymax = 100, color = NULL), fill = colorspace::desaturate(colorspace::lighten("#c92f2f", .8), .2), alpha = 0.1) +
+          # geom_ribbon(aes(ymin=Mean-ColError   , ymax=Mean+ColError   , group = Group, color = NULL), fill="white") +
+          # geom_ribbon(aes(ymin=Mean-ColError-2 , ymax=Mean+ColError+2 , group = Group, color = NULL), fill="white", alpha=0.9) +
+          # geom_ribbon(aes(ymin=Mean-ColError-4 , ymax=Mean+ColError+4 , group = Group, color = NULL), fill="white", alpha=0.8) +
+          # geom_ribbon(aes(ymin=Mean-ColError-5 , ymax=Mean+ColError+5 , group = Group, color = NULL), fill="white", alpha=0.7) +
+          # geom_ribbon(aes(ymin=Mean-ColError-7 , ymax=Mean+ColError+7 , group = Group, color = NULL), fill="white", alpha=0.6) +
+          # geom_ribbon(aes(ymin=Mean-ColError-8 , ymax=Mean+ColError+8 , group = Group, color = NULL), fill="white", alpha=0.5) +
+          # geom_ribbon(aes(ymin=Mean-ColError-9 , ymax=Mean+ColError+9 , group = Group, color = NULL), fill="white", alpha=0.4) +
+          # geom_ribbon(aes(ymin=Mean-ColError-10, ymax=Mean+ColError+10, group = Group, color = NULL), fill="white", alpha=0.3) +
+          # geom_ribbon(aes(ymin=Mean-ColError-11, ymax=Mean+ColError+11, group = Group, color = NULL), fill="white", alpha=0.2) +
+          # geom_ribbon(aes(ymin=Mean-ColError-12, ymax=Mean+ColError+12, group = Group, color = NULL), fill="white", alpha=0.1) +
+          geom_vline(xintercept = 3.5, linetype = "59", color = "grey80") +
+          geom_vline(xintercept = 5.5, linetype = "59", color = "grey80") +
+          geom_vline(xintercept =10.5, linetype = "59", color = "grey80") +
+          geom_ribbon(aes(ymin=Mean-ColError, ymax=Mean+ColError, fill = Group, group = Group, color = NULL), alpha = 0.25) +
+          geom_point() +
+        # geom_line(aes(y = !!sym(Sentiment), group = Id), data = Data, alpha = 0.25) +
+          geom_line(aes(group=1), data = MeanData[MeanData$Group == "Controls",]) +
+          geom_line(aes(group=1), data = MeanData[MeanData$Group == "Patients",])+ 
+        # geom_errorbar(aes(ymin=Mean-ColError, ymax=Mean+ColError, color = Group), width=0.1, position=position_dodge(0.15)) +
+          facet_wrap(~Sentiment) +
+          geom_text(aes(label = p.value, x = Odor, y = Mean+5), color = "black", size = 6, data = MeanData %>% group_by(Odor,p.value,Sentiment) %>% summarise(Mean = max(Mean+ColError))) +
+          labs(x = "Odor", y = "", color = "Group") +
+        # ggh4x::facet_nested(. ~ OdorGroup + Odor, scales = "free", space = "free") +
+          theme_Publication()  +
+          scale_color_manual(values = c("Controls" = "#38E0A1", "Patients" = "#38B1E0")) +
+          scale_fill_manual( values = c("Controls" = "#38E0A1", "Patients" = "#38B1E0")) +
+          theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) +
+          theme(panel.grid.major.x = element_blank(), panel.grid.minor = element_blank()) + 
+          theme(strip.background=element_blank())
+  
+  cowplot::save_plot(paste0(OutputDir, 'Soumission/source_figures/', "Fig2_wrapped.svg"), p, base_width = 9, base_height = 9, dpi = 1200)
+  write.csv(MeanData %>% select(Odor, Group, Mean, SE, p.value), paste0(OutputDir, '/Soumission/source_files', "Fig2_wrapped.csv"))
+  
+  print(p)
+
+```
+
+# Gravite
+
+```{r Observation per gravity}
+DataGrav = Data %>% filter(Group == "insul1")
+DataGrav$Gravite = Grades$GradeNew[match(DataGrav$Id, Grades$ID1)]
+DataGrav$Gravite = as.factor(DataGrav$Gravite)
+if (sum(is.na(DataGrav$Gravite)) > 0) {print("Attention, il manque des grades")}
+DataGrav %<>% relocate(Gravite, .after = "Matching") %>% select(-c(2))
+
+res_pca      = FactoMineR::PCA(DataGrav,
+                quali.sup = c(1,2,3,4,5) , 
+                ncp=5, 
+                scale.unit=T, graph=F)
+
+VerifGeneralePCA("None", res_pca)
+
+plotIndPPT("None", res_pca, Grouping = 'Gravite', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet")
+plotIndPPT("None", res_pca, Grouping = 'Odor_categ', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet")
+plotIndPPT("None", res_pca, Grouping = 'Odor', Axe1 = 1, Axe2 = 2, paletteCouleur = "bpalette")
+
+```
+
+## Only on negative odors plotted
+
+
+
+### Pat & Gravite
+
+```{r degout Grav}
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Gravite', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet", SubsetVar = "Odor_categ", SubsetVal = "Degout")
+```
+
+
+```{r degout Grav2}
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Odor_categ', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet", SubsetVar = "Odor_categ", SubsetVal = "Degout")
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Odor', Axe1 = 1, Axe2 = 2, paletteCouleur = "bpalette", SubsetVar = "Odor_categ", SubsetVal = "Degout")
+
+
+```
+
+```{r}
+
+res_pca      = FactoMineR::PCA(Data,
+                quali.sup = c(1,2,3,4,5) , 
+                ncp=5, 
+                scale.unit=T, graph=F)
+
+VerifGeneralePCA("None", res_pca)
+
+plotIndPPT("None", res_pca, Grouping = 'Group', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet")
+plotIndPPT("None", res_pca, Grouping = 'Odor_categ', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet")
+plotIndPPT("None", res_pca, Grouping = 'Odor', Axe1 = 1, Axe2 = 2, paletteCouleur = "bpalette")
+
+
+
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Group', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet", SubsetVar = "Odor_categ", SubsetVal = "Degout")
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Odor_categ', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet", SubsetVar = "Odor_categ", SubsetVal = "Degout")
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Odor', Axe1 = 1, Axe2 = 2, paletteCouleur = "bpalette", SubsetVar = "Odor_categ", SubsetVal = "Degout")
+
+
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Group', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet", SubsetVar = "Odor_categ", SubsetVal = "Gourmand")
+
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Group', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet", SubsetVar = "Odor_categ", SubsetVal = "Trigeminal")
+plotIndPPT_withSelection("None", res_pca, Grouping = 'Group', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet", SubsetVar = "Odor_categ", SubsetVal = "Floral")
+```
+
+# New PCA
+
+```{r}
+DataFusion = Data %>% filter(Group == "insul1")
+ldf = nrow(DataFusion)
+DataFusion = rbind(DataFusion, Data %>% filter(Group == "Cont"))
+DataFusion$Group = as.factor(DataFusion$Group)
+
+indices_sup = (ldf + 1):nrow(DataFusion)
+
+res_pca      = FactoMineR::PCA(DataFusion,
+                quali.sup = c(1,2,3,4,5) , 
+                ind.sup = indices_sup,
+                ncp=5, 
+                scale.unit=T, graph=F)
+
+VerifGeneralePCA("None", res_pca)
+plotIndPPT("None", res_pca, Grouping = 'Group', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet")
+
+PCA_loadings = cbind(res_pca$call$quali.sup$quali.sup, res_pca$ind$coord)
+PCA_distance = cbind(res_pca$call$quali.sup$quali.sup, res_pca$ind$dist )
+PCA_loadings_ind.sup = cbind(DataFusion[indices_sup,1:5], res_pca$ind.sup$coord)
+PCA_distance_ind.sup = cbind(DataFusion[indices_sup,1:5], res_pca$ind.sup$dist)
+PCA_loadings = rbind(PCA_loadings, PCA_loadings_ind.sup)
+colnames(PCA_distance)[6] = "dist"
+colnames(PCA_distance_ind.sup)[6] = "dist"
+PCA_distance = rbind(PCA_distance, PCA_distance_ind.sup)
+
+```
+
+Joli biplot avec les supp
+
+```{r}
+
+```
+
+
+
+```{r}
+
+for (pc in c("Dim.1", "Dim.2", "dist")) {
+  
+  if (pc == "dist") {
+    PC_to_Plot = PCA_distance
+  } else {
+    PC_to_Plot = cbind(PCA_loadings[,1:5], PCA_loadings[,grep(pc, colnames(PCA_loadings))])
+  }
+  colnames(PC_to_Plot)[6] = "Value"
+          
+  MeanData    = PC_to_Plot %>% group_by(Odor,Group) %>% summarise(Mean = mean(Value)) %>% arrange(Odor,Group)
+  MeanData$SD = PC_to_Plot %>% group_by(Odor,Group) %>% summarise(SD   = sd(Value))   %>% arrange(Odor,Group) %>% pull(SD)
+  
+  mod = aov(Value ~ Group * Odor, data=PC_to_Plot)
+  
+  PC_to_Plot = PC_to_Plot %>% arrange(Matching)
+  
+  WilcoxPairedResult = list()
+  OdorList =  unique(PC_to_Plot$Odor)
+  for (odor in unique(PC_to_Plot$Odor)) {
+    suppressWarnings({
+      WilcoxPairedResult = c(WilcoxPairedResult, wilcox.test(as.numeric(unlist(PC_to_Plot[PC_to_Plot$Group == "Cont" & PC_to_Plot$Odor == odor , "Value"])), as.numeric(unlist(PC_to_Plot[PC_to_Plot$Group == "insul1" & PC_to_Plot$Odor == odor , "Value"])), paired = PairingTestMatch)$p.value)
+    })
+  }
+  suppressWarnings({ 
+    WilcoxPairedResult = p.adjust(WilcoxPairedResult, method = "fdr")
+    })
+  
+  StatDf = data.frame(Odor = OdorList, p.value = WilcoxPairedResult)
+  StatDf$Odor = factor(StatDf$Odor, levels = OdorOrder)
+  StatDf = merge(StatDf, PC_to_Plot %>% group_by(Odor) %>% summarise(Mean = mean(Value)) %>% arrange(Mean), by = "Odor" )
+  
+
+  print(ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Group)) +
+        geom_point() +
+        geom_line(aes(group=1), data = MeanData[MeanData$Group == "Cont",]) +
+        geom_line(aes(group=1), data = MeanData[MeanData$Group == "insul1",]) +
+        theme_light(base_size = 15) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+        geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD, color = Group), width=0.1, position=position_dodge(0.15)) +
+        geom_text(aes(label = round(p.value, 3), x = Odor, y = Mean+1, color = NA), data = StatDf) +
+        geom_text(aes(label = paste0("pvalue ANOVA Group:Odor = ", round(summary(mod)[[1]][["Pr(>F)"]][3], 5)), x = "Paradisone", y = 4), color = "black", size = 5) +
+        geom_text(aes(label = pc, x = "Paradisone", y = 5), color = "black", size = 8))
+  
+
+}
+```
+
+```{r}
+```
+
+# Meta Pleasure
+
+## Graph + Stats Classiques 
+
+```{r ANOVA + PostHoc2}
+
+DataS = Data
+Data$MetaPleasure = Data$Pleasant_Feeling - Data$Unpleasant_Feeling 
+Sentiment = "MetaPleasure"
+  
+      cat("\n")
+      f = as.formula(paste0("rank(", Sentiment, ") ~ Group * Odor"))
+      mod = aov(f, data=Data)
+      print(f)
+      print(summary(mod))
+      cat("\n------------------------------------------------------------------------------------------\n\n")
+      
+      suppressMessages({
+        MeanData    = Data %>% group_by(Odor,Group) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Odor,Group)
+        MeanData$SD = Data %>% group_by(Odor,Group) %>% summarise(SD   = sd(!!sym(Sentiment)))   %>% arrange(Odor,Group) %>% pull(SD)
+      })
+      
+      WilcoxPairedResult = list()
+      OdorList =  unique(Data$Odor)
+      for (odor in unique(Data$Odor)) {
+        suppressWarnings({
+          WilcoxPairedResult = c(WilcoxPairedResult, wilcox.test(as.numeric(unlist(Data[Data$Group == "Cont" & Data$Odor == odor , Sentiment])),as.numeric(unlist(Data[Data$Group == "insul1" & Data$Odor == odor , Sentiment])), paired = PairingTestMatch)$p.value)
+        })
+      }
+      suppressWarnings({ 
+        WilcoxPairedResult = p.adjust(WilcoxPairedResult, method = "fdr")
+        })
+      
+      StatDf = data.frame(Odor = OdorList, p.value = WilcoxPairedResult)
+      StatDf$Odor = factor(StatDf$Odor, levels = OdorOrder)
+      StatDf = merge(StatDf, Data %>% group_by(Odor) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Mean), by = "Odor" )
+      
+      print(ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Group)) +
+        geom_point() +
+        geom_line(aes(group=1), data = MeanData[MeanData$Group == "Cont",]) +
+        geom_line(aes(group=1), data = MeanData[MeanData$Group == "insul1",]) +
+        theme_light(base_size = 15) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+        geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD, color = Group), width=0.1, position=position_dodge(0.15)) +
+        geom_text(aes(label = round(p.value, 3), x = Odor, y = Mean+25, color = NA), data = StatDf) +
+        geom_text(aes(label = paste0("pvalue ANOVA Group:Odor = ", round(summary(mod)[[1]][["Pr(>F)"]][3], 5)), x = "Paradisone", y = 105), color = "black", size = 5) +
+        geom_text(aes(label = Sentiment, x = "Paradisone", y = 120), color = "black", size = 8))
+      Sys.sleep(0.5)  
+
+
+Data = DataS
+
+```
+
+```{r}
+# Plot PCA multi-infos 
+# design the color palette
+my_palette_Pat = c("#5124E0","#2534E1","#8F24E0",
+                   "#24E04D","#41E125",
+                   "#E09C2F","#E0C628","#E0AF28","#E08134","#E0DC28",
+                   "#E12A1B","#E0225E")
+
+my_palette_Ctl = c("#8D75E0","#7580E0","#B075E0",
+                   "#7BE089","#94E17B",
+                   "#E0AA67","#E0C760","#E0B760","#E0986C","#E0D760",
+                   "#E0695B","#E06383")
+
+mypalette = c(my_palette_Ctl, my_palette_Pat)
+
+
+DataFusion$Metaselect = paste0(DataFusion[["Group"]], ':', DataFusion[["Odor"]])
+indices_sup = 253:504
+res_pca      = FactoMineR::PCA(DataFusion,
+                quali.sup = c(1,2,3,4,5,15) , 
+               # ind.sup = indices_sup,
+                ncp=5, 
+                scale.unit=T, graph=F)
+
+
+plt = factoextra::fviz_pca_ind(res_pca,
+    geom.ind = "point", 
+    habillage = res_pca$call$quali.sup$quali.sup[["Metaselect"]], 
+    palette = mypalette,
+    addEllipses = TRUE, # Ellipses de concentration
+    legend.title = "Groups", axes = c(1, 2)
+    )
+
+print(plt)
+
+```
+
+```{r}
+# Comparaison avec et sans les Ctrl
+res_pca      = FactoMineR::PCA(DataFusion,
+                quali.sup = c(1,2,3,4,5,15) , 
+               # ind.sup = indices_sup,
+                ncp=5, 
+                scale.unit=T, graph=F)
+
+res_pca2     = FactoMineR::PCA(DataFusion,
+                quali.sup = c(1,2,3,4,5,15) , 
+                ind.sup = indices_sup,
+                ncp=5, 
+                scale.unit=T, graph=F)
+
+plt = factoextra::fviz_pca_ind(res_pca,
+    geom.ind = "point", 
+    addEllipses = TRUE, # Ellipses de concentration
+    legend.title = "Groups", axes = c(1, 2))
+print(plt)
+
+plt2 = factoextra::fviz_pca_ind(res_pca2,
+    geom.ind = "point",
+    addEllipses = TRUE, # Ellipses de concentration
+    legend.title = "Groups", axes = c(1, 2))
+print(plt2)
+
+```
+
+# PrePost
+```{r prepost model run}
+PrePostLong = read_xlsx(paste0(DataDir, "Data patients prepost odeurs_pr_analyse_Juillet2023.xlsx"), sheet = 'PatPréPost OK') 
+
+PrePostLong$Id        = as.factor(PrePostLong$Id)
+PrePostLong$Groupes   = as.factor(PrePostLong$Groupes)
+PrePostLong$odeurs    = as.factor(PrePostLong$odeurs)
+PrePostLong %<>% tidyr::pivot_longer(cols = c(4:ncol(PrePostLong)), names_to = "Sentiment", values_to = "Value")
+
+if(file.exists(paste0(OutputDir, '/Model/lmer_model_prepost',ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, '/Model/lmer_model_prepost',ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ Groupes + Sentiment * odeurs + (1 + Sentiment | Id), data = PrePostLong)
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_prepost",ValeurLimite,".RData"))
+}
+
+pvalgp = summary(model)$coefficients[['Groupespre', 'Pr(>|t|)']]
+if (pvalgp < 0.05) {
+  print(paste0("L'effet pre/post est significatif avec un pvalue de " , pvalgp))
+} else {
+  print(paste0("L'effet pre/post n'est pas significatif avec un pvalue de ", pvalgp))
+}
+
+```
+
+```{r LR model run}
+DataLongLR = Data %>% filter(Group == "insul1")
+DataLongLR$Side = Grades$Side[match(DataLongLR$Id, Grades$ID1)]
+DataLongLR$Side = as.factor(DataLongLR$Side)
+if (sum(is.na(DataLongLR$Side)) > 0) {print("Attention, il manque des grades")}
+DataLongLR %<>% relocate(Side, .after = "Matching") %>% select(-c(2))
+DataLongLR %<>% tidyr::pivot_longer(cols = c(6:ncol(DataLongLR)), names_to = "Sentiment", values_to = "Value")
+DataLongLR$Sentiment = as.factor(DataLongLR$Sentiment)
+
+if(file.exists(paste0(OutputDir, 'Model/lmer_model_easyLR',ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, 'Model/lmer_model_easyLR',ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ Side + Sentiment * Odor + (1 + Sentiment | Id), data = DataLongLR)
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_easyLR",ValeurLimite,".RData"))
+}
+
+pvalgp = summary(model)$coefficients[['SideR', 'Pr(>|t|)']]
+if (pvalgp < 0.05) {
+  print(paste0("L'effet Side est significatif avec un pvalue de " , pvalgp))
+} else {
+  print(paste0("L'effet Side n'est pas significatif avec un pvalue de ", pvalgp))
+}
+
+```
+
+
+```{r grade model run}
+DataLongG = Data %>% filter(Group == "insul1")
+DataLongG$Grade = Grades$GradeNew[match(DataLongG$Id, Grades$ID1)]
+DataLongG$Grade = as.factor(DataLongG$Grade)
+if (sum(is.na(DataLongG$Grade)) > 0) {print("Attention, il manque des grades")}
+DataLongG %<>% relocate(Grade, .after = "Matching") %>% select(-c(2))
+DataLongG %<>% tidyr::pivot_longer(cols = c(6:ncol(DataLongG)), names_to = "Sentiment", values_to = "Value")
+DataLongG$Sentiment = as.factor(DataLongG$Sentiment)
+
+if(file.exists(paste0(OutputDir, 'Model/lmer_model_easyGrade',ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, 'Model/lmer_model_easyGrade',ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ Grade + Sentiment * Odor + (1 + Sentiment | Id), data = DataLongG)
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_easyGrade",ValeurLimite,".RData"))
+}
+
+pvalgp = summary(model)$coefficients[['GradeGB', 'Pr(>|t|)']]
+if (pvalgp < 0.05) {
+  print(paste0("L'effet Grade est significatif avec un pvalue de " , pvalgp))
+} else {
+  print(paste0("L'effet Grade n'est pas significatif avec un pvalue de ", pvalgp))
+}
+
+```
+
+```{r vol model run}
+DataLongVol = Data %>% filter(Group == "insul1")
+DataLongVol$Volume = Grades$Volume[match(DataLongVol$Id, Grades$ID1)]
+if (sum(is.na(DataLongVol$Volume)) > 0) {print("Attention, il manque des grades")}
+DataLongVol %<>% relocate(Volume, .after = "Matching") %>% select(-c(2))
+DataLongVol %<>% tidyr::pivot_longer(cols = c(6:ncol(DataLongVol)), names_to = "Sentiment", values_to = "Value")
+DataLongVol$Sentiment = as.factor(DataLongVol$Sentiment)
+DataLongVol$Volume %<>% as.numeric()
+
+if(file.exists(paste0(OutputDir, '/Model/lmer_model_easyVol',ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, '/Model/lmer_model_easyVol',ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ Volume + Sentiment * Odor + (1 + Sentiment | Id), data = DataLongVol)
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_easyVol",ValeurLimite,".RData"))
+}
+
+pvalgp = summary(model)$coefficients[['Volume', 'Pr(>|t|)']]
+if (pvalgp < 0.05) {
+  print(paste0("L'effet Volume est significatif avec un pvalue de " , pvalgp))
+} else {
+  print(paste0("L'effet Volume n'est pas significatif avec un pvalue de ", pvalgp))
+}
+
+```
+
+```{r ampl model run}
+DataLongAmpleur = Data %>% filter(Group == "insul1")
+DataLongAmpleur$Amp  = Grades$Regions[match(DataLongAmpleur$Id, Grades$ID1)]
+DataLongAmpleur$Amp  = ifelse(DataLongAmpleur$Amp == "Insula","Pur","Mixe")
+DataLongAmpleur$Amp  = as.factor(DataLongAmpleur$Amp)
+if (sum(is.na(DataLongAmpleur$Amp)) > 0) {print("Attention, il manque des grades")}
+DataLongAmpleur %<>% relocate(Amp, .after = "Matching") %>% select(-c(2))
+DataLongAmpleur %<>% tidyr::pivot_longer(cols = c(6:ncol(DataLongAmpleur)), names_to = "Sentiment", values_to = "Value")
+DataLongAmpleur$Sentiment = as.factor(DataLongAmpleur$Sentiment)
+
+if(file.exists(paste0(OutputDir, 'Model/lmer_model_easyAmpl',ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, 'Model/lmer_model_easyAmpl',ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ Amp + Sentiment * Odor + (1 + Sentiment | Id), data = DataLongAmpleur)
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_easyAmpl",ValeurLimite,".RData"))
+}
+
+pvalgp = summary(model)$coefficients[['AmpPur', 'Pr(>|t|)']]
+if (pvalgp < 0.05) {
+  print(paste0("L'effet ampl est significatif avec un pvalue de " , pvalgp))
+} else {
+  print(paste0("L'effet ampl n'est pas significatif avec un pvalue de ", pvalgp))
+}
+
+anovamodel = aov(Value ~ Amp * Sentiment * Odor, data=DataLongAmpleur)
+wilcox.test(Value ~ Amp, data=DataLongAmpleur)
+
+```
+
+```{r ampl model run 2}
+DataLongAmpleur = Data %>% filter(Group == "insul1")
+DataLongAmpleur$Amp  = Grades$Regions[match(DataLongAmpleur$Id, Grades$ID1)]
+#DataLongAmpleur$Amp  = ifelse(DataLongAmpleur$Amp == "Insula","Pur","Mixe")
+DataLongAmpleur$Amp  = as.factor(DataLongAmpleur$Amp)
+if (sum(is.na(DataLongAmpleur$Amp)) > 0) {print("Attention, il manque des grades")}
+DataLongAmpleur %<>% relocate(Amp, .after = "Matching") %>% select(-c(2))
+DataLongAmpleur %<>% tidyr::pivot_longer(cols = c(6:ncol(DataLongAmpleur)), names_to = "Sentiment", values_to = "Value")
+DataLongAmpleur$Sentiment = as.factor(DataLongAmpleur$Sentiment)
+
+if(file.exists(paste0(OutputDir, 'Model/lmer_model_easy2Ampl',ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, 'Model/lmer_model_easy2Ampl',ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ Amp + Sentiment * Odor + (1 + Sentiment | Id), data = DataLongAmpleur)
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_easy2Ampl",ValeurLimite,".RData"))
+}
+
+pvalgp = summary(model)$coefficients[['AmpInsula + LF + LT', 'Pr(>|t|)']]
+if (pvalgp < 0.05) {
+  print(paste0("L'effet ampl est significatif avec un pvalue de " , pvalgp))
+} else {
+  print(paste0("L'effet ampl n'est pas significatif avec un pvalue de ", pvalgp))
+}
+
+anovamodel = aov(Value ~ Amp * Sentiment * Odor, data=DataLongAmpleur)
+wilcox.test(Value ~ Amp, data=DataLongAmpleur)
+
+```
+
+# Modele Mixte avec distance et grades : 
+
+## Modele
+
+```{r}
+# Prepare the data
+PCAresults = cbind(PCA_loadings, PCA_distance[,6])
+PCAresults %<>% select(-c(8:10))
+PCAresults$Matching = as.factor(as.numeric(gsub("\\D", "", PCAresults$Matching)))
+PatId_and_Matching = unique(PCAresults[PCAresults$Group == "insul1",c(1,5)])
+colnames(PCAresults)[8] = "dist"
+
+PCAdiff_match = PCAresults %>% group_by(Matching, Odor) %>% 
+  summarise_at(vars(4:6), ~mean(.x[Group == "insul1"]) - mean(.x[Group == "Cont"])) %>%
+  ungroup() 
+PCAdiff_match$Id = PatId_and_Matching$Id[match(PCAdiff_match$Matching, PatId_and_Matching$Matching)]
+PCAdiff_match$Side = as.factor(Grades$Side[match(PCAdiff_match$Id, Grades$ID1)])
+PCAdiff_match$Volume = as.numeric(Grades$Volume[match(PCAdiff_match$Id, Grades$ID1)])
+PCAdiff_match$TempLobe = as.factor(Grades$TempLobe[match(PCAdiff_match$Id, Grades$ID1)])
+PCAdiff_match$FrontalLobe = as.factor(Grades$FrontalLobe[match(PCAdiff_match$Id, Grades$ID1)])
+
+PCACtrl = PCAresults %>% group_by(Odor) %>% 
+  summarise_at(vars(5:7), ~mean(.x[Group == "Cont"]) ) %>%
+  ungroup()
+PCAdiff_mean = PCAresults[PCAresults$Group == "insul1",]
+PCAdiff_mean$Dim.1 = PCAdiff_mean$Dim.1 - PCACtrl$Dim.1[match(PCAdiff_mean$Odor, PCACtrl$Odor)]
+PCAdiff_mean$Dim.2 = PCAdiff_mean$Dim.2 - PCACtrl$Dim.2[match(PCAdiff_mean$Odor, PCACtrl$Odor)]
+PCAdiff_mean$dist = PCAdiff_mean$dist - PCACtrl$dist[match(PCAdiff_mean$Odor, PCACtrl$Odor)]
+PCAdiff_mean$Side = as.factor(Grades$Side[match(PCAdiff_mean$Id, Grades$ID1)])
+PCAdiff_mean$Volume = as.numeric(Grades$Volume[match(PCAdiff_mean$Id, Grades$ID1)])
+PCAdiff_mean$TempLobe = as.factor(Grades$TempLobe[match(PCAdiff_mean$Id, Grades$ID1)])
+PCAdiff_mean$FrontalLobe = as.factor(Grades$FrontalLobe[match(PCAdiff_mean$Id, Grades$ID1)])
+PCAdiff_mean %<>% select(-Group)
+colnames(PCAdiff_mean)[1] = "Matching"
+
+```
+
+```{r}
+## Latéralisation - sans matching 
+# Dist 
+mod = lmerTest::lmer(dist ~ Odor*Side + (1 | Matching), data = PCAdiff_mean)
+DistEmm = (emmeans::emmeans(mod, pairwise ~ Side | Odor)$contrasts %>% as.data.frame() %>% select(c(1,2,3,7)) %>% rename("dist_estimate" = "estimate") %>% rename("dist_p.value" = "p.value"))
+# Dim1 
+mod = lmerTest::lmer(Dim.1 ~ Odor*Side + (1 | Matching), data = PCAdiff_mean)
+Dim1Emm = (emmeans::emmeans(mod, pairwise ~ Side | Odor)$contrasts %>% as.data.frame() %>% select(c(3,7)) %>% rename("dim1_estimate" = "estimate") %>% rename("dim1_p.value" = "p.value"))
+# Dim2 
+mod = lmerTest::lmer(Dim.2 ~ Odor*Side + (1 | Matching), data = PCAdiff_mean)
+Dim2Emm = (emmeans::emmeans(mod, pairwise ~ Side | Odor)$contrasts %>% as.data.frame() %>% select(c(3,7)) %>% rename("dim2_estimate" = "estimate") %>% rename("dim2_p.value" = "p.value"))
+
+GlobEmm = cbind(DistEmm, Dim1Emm, Dim2Emm)
+GlobEmm %<>% mutate( across(starts_with("di"), ~round(., 4)))
+GlobEmm %<>% mutate(across(ends_with("p.value"), ~ifelse(. < 0.05, paste0("**", ., "**"), .)))
+                    
+print(GlobEmm)
+print("Attention, pas corrigé pour comp. multiples")
+ 
+```
+
+```{r}
+## Latéralisation - AVEC matching 
+# Dist 
+if (ValeurLimite != 98) {
+mod = lmerTest::lmer(dist ~ Odor*Side + (1 | Matching), data = PCAdiff_match)
+DistEmm = (emmeans::emmeans(mod, pairwise ~ Side | Odor)$contrasts %>% as.data.frame() %>% select(c(1,2,3,7)) %>% rename("dist_estimate" = "estimate") %>% rename("dist_p.value" = "p.value"))
+# Dim1
+mod = lmerTest::lmer(Dim.1 ~ Odor*Side + (1 | Matching), data = PCAdiff_match)
+Dim1Emm = (emmeans::emmeans(mod, pairwise ~ Side | Odor)$contrasts %>% as.data.frame() %>% select(c(3,7)) %>% rename("dim1_estimate" = "estimate") %>% rename("dim1_p.value" = "p.value"))
+# Dim2 
+mod = lmerTest::lmer(Dim.2 ~ Odor*Side + (1 | Matching), data = PCAdiff_match)
+Dim2Emm = (emmeans::emmeans(mod, pairwise ~ Side | Odor)$contrasts %>% as.data.frame() %>% select(c(3,7)) %>% rename("dim2_estimate" = "estimate") %>% rename("dim2_p.value" = "p.value"))
+
+GlobEmm = cbind(DistEmm, Dim1Emm, Dim2Emm)
+GlobEmm %<>% mutate( across(starts_with("di"), ~round(., 4)))
+GlobEmm %<>% mutate(across(ends_with("p.value"), ~ifelse(. < 0.05, paste0("**", ., "**"), .)))
+
+print(GlobEmm)
+print("Attention, pas corrigé pour comp. multiples")
+}
+```
+
+```{r}
+## Volume seul - sans matching 
+# Dist 
+mod = lmerTest::lmer(scale(dist) ~ Odor*scale(Volume) + (1 | Matching), data = PCAdiff_mean)
+DistEmm = (emmeans::emtrends(mod,  ~ Odor, var = "Volume") %>% contrast() %>% as.data.frame() %>% select(c(1,2,6)) %>% rename("dist_trend" = "estimate") %>% rename("dist_p.value" = "p.value"))
+# Dim1 
+mod = lmerTest::lmer(scale(Dim.1) ~ Odor*scale(Volume) + (1 | Matching), data = PCAdiff_mean)
+Dim1Emm = (emmeans::emtrends(mod,  ~ Odor, var = "Volume") %>% contrast() %>% as.data.frame() %>% select(c(  2,6)) %>% rename("dim1_trend" = "estimate") %>% rename("dim1_p.value" = "p.value"))
+# Dim2
+mod = lmerTest::lmer(scale(Dim.2) ~ Odor*scale(Volume) + (1 | Matching), data = PCAdiff_mean)
+Dim2Emm = (emmeans::emtrends(mod,  ~ Odor, var = "Volume") %>% contrast() %>% as.data.frame() %>% select(c(  2,6)) %>% rename("dim2_trend" = "estimate") %>% rename("dim2_p.value" = "p.value"))
+
+GlobEmm = cbind(DistEmm, Dim1Emm, Dim2Emm)
+#GlobEmm %<>% mutate( across(starts_with("di"), ~round(., 4)))
+GlobEmm %<>% mutate(across(ends_with("p.value"), ~ifelse(. < 0.05, paste0("**", ., "**"), .)))
+
+print(GlobEmm)
+print("Attention, pas corrigé pour comp. multiples")
+
+```
+```{r}
+if (ValeurLimite != 98) {
+## Volume seul - AVEC matching 
+# Dist 
+mod = lmerTest::lmer(scale(dist) ~ Odor*scale(Volume) + (1 | Matching), data = PCAdiff_match)
+DistEmm = (emmeans::emtrends(mod,  ~ Odor, var = "Volume") %>% contrast() %>% as.data.frame() %>% select(c(1,2,6)) %>% rename("dist_trend" = "estimate") %>% rename("dist_p.value" = "p.value"))
+# Dim1 
+mod = lmerTest::lmer(scale(Dim.1) ~ Odor*scale(Volume) + (1 | Matching), data = PCAdiff_match)
+Dim1Emm = (emmeans::emtrends(mod,  ~ Odor, var = "Volume") %>% contrast() %>% as.data.frame() %>% select(c(  2,6)) %>% rename("dim1_trend" = "estimate") %>% rename("dim1_p.value" = "p.value"))
+# Dim2
+mod = lmerTest::lmer(scale(Dim.2) ~ Odor*scale(Volume) + (1 | Matching), data = PCAdiff_match)
+Dim2Emm = (emmeans::emtrends(mod,  ~ Odor, var = "Volume") %>% contrast() %>% as.data.frame() %>% select(c(  2,6)) %>% rename("dim2_trend" = "estimate") %>% rename("dim2_p.value" = "p.value"))
+
+GlobEmm = cbind(DistEmm, Dim1Emm, Dim2Emm)
+#GlobEmm %<>% mutate( across(starts_with("di"), ~round(., 4)))
+GlobEmm %<>% mutate(across(ends_with("p.value"), ~ifelse(. < 0.05, paste0("**", ., "**"), .)))
+
+print(GlobEmm)
+print("Attention, pas corrigé pour comp. multiples")
+}
+
+```
+
+```{r}
+## Autres lobes - sans matching 
+# Dist 
+mod = lmerTest::lmer(dist ~ Odor*Side*TempLobe*FrontalLobe + (1 | Matching), data = PCAdiff_mean)
+cat("\n\n ######################## \n    Dist    \n ######################## \n ")
+print(suppressMessages(anova(mod)[grep("Temp|Front", rownames(anova(mod))),]))
+# Dim1 
+mod = lmerTest::lmer(Dim.1 ~ Odor*Side*TempLobe*FrontalLobe + (1 | Matching), data = PCAdiff_mean)
+cat("\n\n ######################## \n    Dim1    \n ######################## \n ")
+print(suppressMessages(anova(mod)[grep("Temp|Front", rownames(anova(mod))),]))
+
+# Dim2 
+mod = lmerTest::lmer(Dim.2 ~ Odor*Side*TempLobe*FrontalLobe + (1 | Matching), data = PCAdiff_mean)
+cat("\n\n ######################## \n    Dim2    \n ######################## \n ")
+print(suppressMessages(anova(mod)[grep("Temp|Front", rownames(anova(mod))),]))
+
+```
+
+```{r}
+if (ValeurLimite != 98) {
+## Autres lobes - AVEC matching
+# Dist
+mod = lmerTest::lmer(dist ~ Odor*Side*TempLobe*FrontalLobe + (1 | Matching), data = PCAdiff_match)
+cat("\n\n ######################## \n    Dist    \n ######################## \n ")
+print(suppressMessages(anova(mod)[grep("Temp|Front", rownames(anova(mod))),]))
+# Dim1 
+mod = lmerTest::lmer(Dim.1 ~ Odor*Side*TempLobe*FrontalLobe + (1 | Matching), data = PCAdiff_match)
+cat("\n\n ######################## \n    Dim1    \n ######################## \n ")
+print(suppressMessages(anova(mod)[grep("Temp|Front", rownames(anova(mod))),]))
+
+# Dim2 
+mod = lmerTest::lmer(Dim.2 ~ Odor*Side*TempLobe*FrontalLobe + (1 | Matching), data = PCAdiff_match)
+cat("\n\n ######################## \n    Dim2    \n ######################## \n ")
+print(suppressMessages(anova(mod)[grep("Temp|Front", rownames(anova(mod))),]))
+}
+
+```
+## Jolie figure vue dans le papier en review
+
+```{r}
+PCAresults = cbind(PCA_loadings, PCA_distance[,6])
+PCAresults %<>% select(-c(9:10))
+PCAresults$Matching = as.factor(as.numeric(gsub("\\D", "", PCAresults$Matching)))
+colnames(PCAresults)[9] = "dist"
+
+PCAplot = PCAresults %>% mutate(Group = recode(Group, 
+                  "insul1" = "Patients",
+                    "Cont" = "Controls")
+                  )
+
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "dist", 
+                    ylabel_plot = "Euclidian Distance", 
+                    title_plot  = "PCA Distance between Patients and Controls"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "Dim.1", 
+                    ylabel_plot = "Principal Component 1", 
+                    title_plot  = "Difference between Patients and Controls along PC1"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "Dim.2", 
+                    ylabel_plot = "Principal Component 2", 
+                    title_plot  = "Difference between Patients and Controls along PC2"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "Dim.3", 
+                    ylabel_plot = "Principal Component 3", 
+                    title_plot  = "Difference between Patients and Controls along PC3"
+                  )))
+print(p)
+
+## With Grouping
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "dist",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Euclidian Distance", 
+                    title_plot  = "PCA Distance between Patients and Controls"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "Dim.1",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Principal Component 1", 
+                    title_plot  = "Difference between Patients and Controls along PC1"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "Dim.2",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Principal Component 2", 
+                    title_plot  = "Difference between Patients and Controls along PC2"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                    VarCateg = "Group", 
+                    VarNum = "Dim.3",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Principal Component 3", 
+                    title_plot  = "Difference between Patients and Controls along PC3"
+                  )))
+print(p)
+
+```
+
+
+```{r}
+
+PCAplotPat = PCAplot
+PCAplotPat %<>% filter(Group == "Patients") %>% select(-Group)
+PCAplotPat$Side = as.factor(Grades$Side[match(PCAplotPat$Id, Grades$ID1)])
+TempDF = PCAplotPat %>% select(Id, Side)
+TempDF$TempLobe = as.factor(Grades$TempLobe[match(TempDF$Id, Grades$ID1)])
+TempDF$FrontalLobe = as.factor(Grades$FrontalLobe[match(TempDF$Id, Grades$ID1)])
+TempDF$Reg = ifelse((TempDF$TempLobe == 1 & TempDF$FrontalLobe == 1), "TemporoFrontal",
+                    ifelse((TempDF$TempLobe == 0 & TempDF$FrontalLobe == 1), "Frontal",
+                           ifelse((TempDF$TempLobe == 1 & TempDF$FrontalLobe == 0), "Temporal",
+                                  "Insular")))
+PCAplotPat$Reg = TempDF$Reg[match(PCAplotPat$Id, TempDF$Id)]
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "dist", 
+                    ylabel_plot = "Euclidian Distance", 
+                    title_plot  = "PCA Distance between sides in Patients"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.1", 
+                    ylabel_plot = "Principal Component 1", 
+                    title_plot  = "Difference between sides in Patients along PC1"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.2", 
+                    ylabel_plot = "Principal Component 2", 
+                    title_plot  = "Difference between sides in Patients along PC2"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.3", 
+                    ylabel_plot = "Principal Component 3", 
+                    title_plot  = "Difference between sides in Patients along PC3"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "dist",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Euclidian Distance", 
+                    title_plot  = "PCA Distance between sides in Patients"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.1",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Principal Component 1", 
+                    title_plot  = "Difference between sides in Patients along PC1"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.2",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Principal Component 2", 
+                    title_plot  = "Difference between sides in Patients along PC2"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.3",
+                    Grouping = "Odor_categ",
+                    ylabel_plot = "Principal Component 3", 
+                    title_plot  = "Difference between sides in Patients along PC3"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "dist",
+                    Grouping = "Reg",
+                    ylabel_plot = "Euclidian Distance", 
+                    title_plot  = "PCA Distance between sides in Patients",
+                    AddNumbersOfSubjects = 12,
+                    palette = "pals::parula"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.1",
+                    Grouping = "Reg",
+                    ylabel_plot = "Principal Component 1", 
+                    title_plot  = "Difference between sides in Patients along PC1",
+                    AddNumbersOfSubjects = 12,
+                    palette = "pals::parula"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.2",
+                    Grouping = "Reg",
+                    ylabel_plot = "Principal Component 2", 
+                    title_plot  = "Difference between sides in Patients along PC2",
+                    AddNumbersOfSubjects = 12,
+                    palette = "pals::parula"
+                  )))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplotPat,
+                    VarCateg = "Side", 
+                    VarNum = "Dim.3",
+                    Grouping = "Reg",
+                    ylabel_plot = "Principal Component 3", 
+                    title_plot  = "Difference between sides in Patients along PC3",
+                    AddNumbersOfSubjects = 12,
+                    palette = "pals::parula"
+                  )))
+print(p)
+
+```
+# Complete Lateralization analysis
+
+```{r lat model run}
+rm(StatDf)
+rm(model)
+
+DataLong = Data[Data$Group == "insul1",]
+DataLong$Matching = as.factor(DataLong$Matching)
+DataLong$Group    = as.factor(DataLong$Group)
+DataLong = DataLong %>% tidyr::pivot_longer(cols = c(6:ncol(DataLong)), names_to = "Sentiment", values_to = "Value")
+DataLong$Sentiment = as.factor(DataLong$Sentiment)
+DataLong$Side = as.factor(Grades$Side[match(DataLong$Id, Grades$ID1)])
+
+suppressWarnings(dir.create(paste0(OutputDir, '/Model')))
+if(file.exists(paste0(OutputDir, 'Model/lmer_model_longformat_side_lim', ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, 'Model/lmer_model_longformat_side_lim', ValeurLimite,'.RData'))
+    if(file.exists(paste0(OutputDir, 'Model/lmer_emmean_longformat_side_lim', ValeurLimite,'.RData'))) {
+      load(paste0(OutputDir, 'Model/lmer_emmean_longformat_side_lim', ValeurLimite,'.RData')) 
+    } else {
+      emmean = data.frame(emmeans::emmeans(model, pairwise ~ Side | Odor:Sentiment)$contrasts)
+      save(emmean, file = paste0(OutputDir, "Model/lmer_emmean_longformat_side_lim", ValeurLimite,".RData"))
+    }
+} else {
+  model = lmerTest::lmer(Value ~ Side * Sentiment * Odor + (1 + Sentiment | Matching), data = DataLong)
+  save(model,  file = paste0(OutputDir, "Model/lmer_model_longformat_side_lim", ValeurLimite,".RData"))
+  
+  emmean = data.frame(emmeans::emmeans(model, pairwise ~ Side | Odor:Sentiment)$contrasts) 
+  save(emmean, file = paste0(OutputDir, "Model/lmer_emmean_longformat_side_lim", ValeurLimite,".RData"))
+  
+  print(sjPlot::plot_model(model, type="eff", terms = c("Odor","Side","Sentiment"))) # Not working when knitting sadly
+  write.csv(emmean, file = paste0(OutputDir, '/Model/pvalues_side', ValeurLimite,'.csv'))
+}
+
+```
+
+
+```{r}
+DataS = Data
+Data$Side = as.factor(Grades$Side[match(Data$Id, Grades$ID1)])
+Data %<>% filter(Group == "insul1") %>% relocate(Side, .after = Matching)
+
+for (Sentiment in colnames(Data)[7:ncol(Data)]) {
+  
+      StatsDf      = emmean[emmean$Sentiment == Sentiment,]
+      StatsDf      = merge( StatsDf, Data %>% group_by(Odor) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Mean), by = "Odor" )
+      StatsDf$Odor = factor(StatsDf$Odor, levels = OdorOrder)
+      
+      suppressMessages({
+        MeanData    = Data %>% group_by(Odor,Side) %>% summarise(Mean = mean(!!sym(Sentiment))) %>% arrange(Odor,Side)
+        MeanData$SD = Data %>% group_by(Odor,Side) %>% summarise(SD   = sd(  !!sym(Sentiment))) %>% arrange(Odor,Side) %>% pull(SD)
+      })
+      
+      print(ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Side)) +
+        geom_point() +
+        geom_line(aes(group=1), data = MeanData[MeanData$Side == "L",]) +
+        geom_line(aes(group=1), data = MeanData[MeanData$Side == "R",]) +
+        theme_light(base_size = 15) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+        geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD, color = Side), width=0.1, position=position_dodge(0.15)) +
+        geom_text(aes(label = round(p.value, 3), x = Odor, y = Mean+25, color = NA), data = StatsDf) +
+        geom_text(aes(label = Sentiment, x = "Paradisone", y = 105), color = "black", size = 8))
+}
+
+Data = DataS
+
+
+```
+
+
+
+## Side of tumor
+
+```{r lmerLR} 
+
+DataLongLR = Data %>% filter(Group == "insul1")
+DataLongLR$Side = Grades$Side[match(DataLongLR$Id, Grades$ID1)]
+DataLongLR$Side = as.factor(DataLongLR$Side)
+if (sum(is.na(DataLongLR$Side)) > 0) {print("Attention, il manque des grades")}
+DataLongLR %<>% relocate(Side, .after = "Matching") %>% select(-c(2))
+
+DataLongLR %<>% tidyr::pivot_longer(cols = c(6:ncol(DataLongLR)), names_to = "Sentiment", values_to = "Value")
+DataLongLR$Sentiment = as.factor(DataLongLR$Sentiment)
+
+suppressWarnings(dir.create(paste0(OutputDir, '/Model')))
+if(file.exists(paste0(OutputDir, '/Model/lmer_model_lateralisationtumeur_lim', ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, '/Model/lmer_model_lateralisationtumeur_lim', ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ 0 + Sentiment:Odor + Sentiment:Side + Sentiment:Side:Odor + (0 + Sentiment | Matching), data = DataLongLR)
+ # summary(manova(cbind(Intensite, Familiarite,Irritabilite,Pleasant_Feeling,Unpleasant_Feeling,Refreshing,Sensuality,Sensory_Pleasure,Relaxation) ~  Side * Odor , data = DataLongLR))
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_lateralisationtumeur_lim", ValeurLimite,".RData"))
+  lattice::qqmath(model)
+  lattice::dotplot(ranef(model))$Matching
+  emmean = data.frame(emmeans::emmeans(model, pairwise ~ Side | Odor:Sentiment)$contrasts)
+  write.csv(emmean, file = paste0(OutputDir, '/Model/pvaluesLR_', ValeurLimite,'.csv'))
+}
+ 
+
+print(sjPlot::plot_model(model, type="eff", terms = c("Odor","Side","Sentiment")))
+
+
+```
+
+```{r diff}
+if (F) {
+  mod1 = lmerTest::lmer(Value ~ 0 + Sentiment:Odor + Sentiment + (0 + Sentiment | Matching), REML=FALSE, data = DataLongLR)
+  mod2 = lmerTest::lmer(Value ~ 0 + Sentiment:Odor + Sentiment:Side + Sentiment:Side:Odor + (0 + Sentiment | Matching), REML=FALSE, data = DataLongLR)
+  diffmodel = anova(mod1, mod2)
+  print(diffmodel)
+  save(diffmodel, file = paste0(OutputDir, "/Model/lmer_model_diff_lateralisationtumeur_lim", ValeurLimite,".RData"))
+  save(mod1, mod2, file = paste0(OutputDir, "/Model/lmer_model_diffsource_lateralisationtumeur_lim", ValeurLimite,".RData"))
+  
+  mod3 = lmerTest::lmer(Value ~ 0 + Sentiment*Odor + (0 + Sentiment | Matching), REML=FALSE, data = DataLongLR)
+  mod4 = lmerTest::lmer(Value ~ 0 + Sentiment*Side*Odor + (0 + Sentiment | Matching), REML=FALSE, data = DataLongLR)
+  diff2model = anova(mod3, mod4)
+  print(diff2model)
+  save(diff2model, file = paste0(OutputDir, "/Model/lmer_model_diff2_lateralisationtumeur_lim", ValeurLimite,".RData"))
+  save(mod3, mod4, file = paste0(OutputDir, "/Model/lmer_model_diff2source_lateralisationtumeur_lim", ValeurLimite,".RData"))
+  
+  mod5 = lmerTest::lmer(Value ~ 0 + Sentiment*Odor + (0 + Sentiment | Matching), REML=FALSE, data = DataLongVol)
+  mod6 = lmerTest::lmer(Value ~ 0 + Sentiment*Volume*Odor + (0 + Sentiment | Matching), REML=FALSE, data = DataLongVol)
+  diff3model = anova(mod5, mod6)
+  print(diff3model)
+  save(diff3model, file = paste0(OutputDir, "/Model/lmer_model_diff3_lateralisationtumeur_lim", ValeurLimite,".RData"))
+  save(mod5, mod6, file = paste0(OutputDir, "/Model/lmer_model_diff3source_lateralisationtumeur_lim", ValeurLimite,".RData"))
+}
+
+```
+
+## Volume of tumor
+
+```{r lmerVol} 
+DataLongLRsave = DataLongLR
+
+DataLongLR = Data %>% filter(Group == "insul1")
+DataLongLR$Volume = Grades$Volume[match(DataLongLR$Id, Grades$ID1)]
+DataLongLR$Volume = as.numeric(DataLongLR$Volume)
+if (sum(is.na(DataLongLR$Volume)) > 0) {print("Attention, il manque des grades")}
+DataLongLR %<>% relocate(Volume, .after = "Matching") %>% select(-c(2))
+DataLongLR$Volume = scale(DataLongLR$Volume)
+
+DataLongLR %<>% tidyr::pivot_longer(cols = c(6:ncol(DataLongLR)), names_to = "Sentiment", values_to = "Value")
+DataLongLR$Sentiment = as.factor(DataLongLR$Sentiment)
+
+suppressWarnings(dir.create(paste0(OutputDir, '/Model')))
+if(file.exists(paste0(OutputDir, '/Model/lmer_model_Volumetumeur_lim', ValeurLimite,'.RData'))){
+  load(paste0(OutputDir, '/Model/lmer_model_Volumetumeur_lim', ValeurLimite,'.RData'))
+} else {
+  model = lmerTest::lmer(Value ~ 0 + Sentiment:Odor + Sentiment:Volume + Sentiment:Volume:Odor + (0 + Sentiment | Matching), data = DataLongLR)
+  save(model, file = paste0(OutputDir, "/Model/lmer_model_Volumetumeur_lim", ValeurLimite,".RData"))
+  print(lattice::qqmath(model))
+  print(lattice::dotplot(ranef(model))$Matching)
+  emmean = data.frame(summary(emmeans::emtrends(model,  ~ Odor | Sentiment, var = "Volume"), infer = c(TRUE, TRUE))) 
+  write.csv(emmean, file = paste0(OutputDir, '/Model/pvaluesVolume_', ValeurLimite,'.csv'))
+}
+
+#print(sjPlot::plot_model(model, type="eff", terms = c("Odor","Volume","Sentiment"))).
+
+DataLongVolume = DataLongLR
+DataLongLR = DataLongLRsave
+
+```
+
+## Palette Couleur Perop
+
+```{r palette}
+# palette = c(rev(pals::brewer.reds(10)[1:9]), "#58CDEA" ,pals::brewer.greens(10)[2:10] )
+#   ggplot2::ggplot(data = iris, ggplot2::aes(x = Sepal.Length, y = Sepal.Width, color = Sepal.Length)) + ggplot2::geom_point() + ggplot2::scale_color_gradientn(colors = palette) + theme_Publication()
+  
+```
+
+## Figures Papier
+
+```{r stats sup}
+
+"%&%" = function(x,y) {
+  paste( as.character(substitute(x)) , if( length(substitute(y)) == 1) {                                          
+    as.character(substitute(y))} else{ 
+      eval(substitute(y))} )
+}
+
+"%&%" = function(x,y) {
+  paste(as.character(x), as.character(y))    
+}
+
+suppressPackageStartupMessages({
+  suppressWarnings({
+    library(readxl)
+    library(dplyr)
+    library(ggplot2)
+    library(ggbeeswarm)
+    library(scales)
+    library(lmerTest)
+    library(emmeans)
+    library(sjPlot)
+    library(magrittr)
+  })
+})
+
+
+theme_Publication = theme_minimal
+
+source("C:/Users/azert/Documents/GitHub/PhD_Scripts/shared_utils/PCA_utils.R")
+
+ValeurLimite = 0
+SelectPatients = F
+
+
+# DataDir = "C:/Users/azert/OneDrive - ICM/Thèse - Scientifique/Insula_Odeurs/"
+# OutputDir = "C:/Users/azert/OneDrive - ICM/Thèse - Scientifique/Insula_Odeurs/Figures/"
+Data   = read_xlsx(paste0(DataDir, "Patients_and_controls.xlsx"), sheet = 'PatCtl')
+Grades = read_xlsx(paste0(DataDir, "Appariement_Patients_ctrl.xlsx"), sheet = 'Grades')
+DataOrigin = Data
+
+if (ValeurLimite != 98) {
+  Data = Data[Data$Matching != 0,]
+  PairingTestMatch = TRUE 
+} else {
+  PairingTestMatch = FALSE
+  i = max(as.numeric(Data$Matching))
+  for (id in unique(Data$Id[Data$Group == "Cont"])) {
+    i = i + 1
+    Data[Data$Id == id, "Matching"] = i
+  }
+}
+if (SelectPatients) Data %<>% filter(!(Matching %in% c(6, 14, 4, 11, 19, 20, 8, 7, 2)))
+
+Data$Matching = as.factor(Data$Matching)
+Data = Data[Data$Odor != "Miel" & Data$Odor != "Defi" & Data$Odor != "Neutre"  & Data$Odor != "Firsantol" ,]
+Data$Group = as.factor(Data$Group)
+
+for (row in 1:nrow(Data)) {
+  if (Data[row, "Group"] == "Cont"){
+    Data[row, "Intensite"] = Data[row, "Intensite"] / 2
+    Data[row, "Familiarite"] = Data[row, "Familiarite"] / 2
+    Data[row, "Irritabilite"] = Data[row, "Irritabilite"] / 2
+    Data[row, "Pleasant_Feeling"] = Data[row, "Pleasant_Feeling"] / 2
+    Data[row, "Unpleasant_Feeling"] = Data[row, "Unpleasant_Feeling"] / 2
+    Data[row, "Refreshing"] = Data[row, "Refreshing"] / 2
+    Data[row, "Sensuality"] = Data[row, "Sensuality"] / 2
+    Data[row, "Sensory_Pleasure"] = Data[row, "Sensory_Pleasure"] / 2
+    Data[row, "Relaxation"] = Data[row, "Relaxation"] / 2
+  }
+}
+
+DataPreCorrection = Data
+
+ValeurLimiteLocal = ifelse(ValeurLimite > 90, 0, ValeurLimite)
+for (col in 6:ncol(Data)) {
+  Data[Data$Group == "insul1" & Data[, col] < ValeurLimiteLocal, col ] = ValeurLimiteLocal
+  Data[Data$Group == "insul1", col ] = scales::rescale(as.numeric(unlist(Data[Data$Group == "insul1", col])), to = c(0, 100))
+}
+
+
+Data$Odor     = as.character(Data$Odor)
+OdorGpOrdered = Data %>% group_by(Odor_categ) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean) %>% pull(Odor_categ)
+OdorOrder     = c()
+for (odor in OdorGpOrdered) {
+  localOdorOrder = as.character(Data %>% filter(Odor_categ == odor) %>% group_by(Odor) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean) %>% pull(Odor))
+  OdorOrder = c(OdorOrder, localOdorOrder)
+}
+
+Data$Odor = factor(Data$Odor, levels = OdorOrder)
+Data      = Data %>% arrange(Odor)
+
+
+
+
+## PART ONE : CORRELATIONS
+
+
+
+corrplot::corrplot(cor(Data %>% filter(Group == "Cont") %>% select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation), use = "pairwise.complete.obs"), method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black", number.cex = 0.7, tl.cex = 0.7, cl.cex = 0.7, cl.lim = c(0, 1), cl.length = 1.5, cl.ratio = 0.2, cl.align = "c", title = "Correlations between Sentiments in Controls", mar = c(0, 0, 0, 0), title.cex = 0.8, title.col = "black", col = colorRampPalette(c("blue", "white", "red"))(100))
+corrplot::corrplot(cor(Data %>% filter(Group == "insul1") %>% select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation), use = "pairwise.complete.obs"), method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black", number.cex = 0.7, tl.cex = 0.7, cl.cex = 0.7, cl.lim = c(0, 1), cl.length = 1.5, cl.ratio = 0.2, cl.align = "c", title = "Correlations between Sentiments in Controls", mar = c(0, 0, 0, 0), title.cex = 0.8, title.col = "black", col = colorRampPalette(c("blue", "white", "red"))(100))
+
+for (odgp in unique(Data$Odor_categ)) {
+  corrplot::corrplot(cor(Data %>% filter(Group == "Cont" & Odor_categ == odgp)   %>% select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation), use = "pairwise.complete.obs"), method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black", number.cex = 0.7, tl.cex = 0.7, cl.cex = 0.7, cl.lim = c(0, 1), cl.length = 1.5, cl.ratio = 0.2, cl.align = "c", 
+                     title = paste("Controls", odgp), mar = c(0, 0, 0, 0), title.cex = 0.8, title.col = "black", col = colorRampPalette(c("blue", "white", "red"))(100))
+  corrplot::corrplot(cor(Data %>% filter(Group == "insul1" & Odor_categ == odgp) %>% select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation), use = "pairwise.complete.obs"), method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black", number.cex = 0.7, tl.cex = 0.7, cl.cex = 0.7, cl.lim = c(0, 1), cl.length = 1.5, cl.ratio = 0.2, cl.align = "c", 
+                     title = paste("Patients", odgp), mar = c(0, 0, 0, 0), title.cex = 0.8, title.col = "black", col = colorRampPalette(c("blue", "white", "red"))(100))
+}
+  
+
+Data %>% filter(Group == "Cont") %>% 
+  select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+  cor() %>%
+  round(2) %>%
+  knitr::kable()
+
+pmat_ctrl = Data %>% filter(Group == "Cont") %>% 
+  select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+  ggcorrplot::cor_pmat()
+pmat_ctrl %>%
+  round(3) %>%
+  knitr::kable()
+
+myPaletteCor = grDevices::colorRampPalette(c("#38dae0","#ffffff","#84e038"))
+
+p1 = Data %>% filter(Group == "Cont") %>% 
+  select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+                         outline.color = "white", p.mat = pmat_ctrl,
+                         insig = "pch",
+                         ggtheme = ggplot2::theme_gray,
+                         lab = T) +
+  scale_fill_gradientn(colours = myPaletteCor(100),lim=c(-1,1))+
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() +
+  theme(legend.position = "none") +
+  ggtitle("Controls")
+
+Data %>% filter(Group == "insul1") %>% 
+  select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+  cor() %>%
+  round(2) %>%
+  knitr::kable()
+
+pmat_pats = Data %>% filter(Group == "insul1") %>% 
+  select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+  ggcorrplot::cor_pmat()
+pmat_pats %>%
+  round(3) %>%
+  knitr::kable()
+
+p2 = Data %>% filter(Group == "insul1") %>% 
+  select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+                         outline.color = "white", 
+                         p.mat = pmat_pats,
+                         ggtheme = ggplot2::theme_gray,
+                         insig = "pch",
+                         lab = T) +
+  ylab("") + xlab("") + 
+  scale_fill_gradientn(colours = myPaletteCor(100),lim=c(-1,1)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() +
+  theme(legend.position = "none") +
+  ggtitle("Patients")
+
+qplot = list()
+
+for (odgp in unique(Data$Odor_categ)) {
+  templot = list()
+  templot[[1]] = Data %>% filter(Group == "Cont" & Odor_categ == odgp) %>% 
+    select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+    cor() %>%
+    ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+                           outline.color = "white",
+                           p.mat = Data %>% filter(Group == "Cont" & Odor_categ == odgp) %>% select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation) %>% ggcorrplot::cor_pmat(),
+                           ggtheme = ggplot2::theme_gray,
+                           insig = "pch",
+                           lab = T) +
+    ylab("") + xlab("") + 
+    scale_x_discrete(guide = guide_axis(angle = 45)) +
+    scale_fill_gradientn(colours = myPaletteCor(100),lim=c(-1,1))+
+    theme_Publication() +
+    theme(legend.position = "none") +
+    ggtitle("Controls - " %&% odgp)
+  
+  templot[[2]] = Data %>% filter(Group == "insul1" & Odor_categ == odgp) %>% 
+    select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation)  %>%
+    cor() %>%
+    ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+                           outline.color = "white",
+                           ggtheme = ggplot2::theme_gray,
+                           insig = "pch",
+                           p.mat = Data %>% filter(Group == "insul1" & Odor_categ == odgp) %>% select(Intensite, Familiarite, Irritabilite, Pleasant_Feeling, Unpleasant_Feeling, Refreshing, Sensuality,Sensory_Pleasure,Relaxation) %>% ggcorrplot::cor_pmat(),
+                           lab = T) +
+    ylab("") + xlab("") + 
+    scale_x_discrete(guide = guide_axis(angle = 45)) +
+    scale_fill_gradientn(colours = myPaletteCor(100),lim=c(-1,1))+
+    theme_Publication() +
+    theme(legend.position = "none") +
+    ggtitle("Patients - " %&% odgp)
+  
+  qplot[[odgp]] = patchwork::wrap_plots(templot, nrow = 2) + patchwork::plot_layout(guides = "collect")
+}
+
+pplot = patchwork::wrap_plots(qplot, nrow = 1) + patchwork::plot_layout(guides = "collect")
+
+p1 + p2
+pplot
+patchwork::wrap_plots(p1, p2, nrow = 2)
+
+
+## PART TWO : PCA
+DataFusion = Data %>% filter(Group == "insul1")
+ldf = nrow(DataFusion)
+DataFusion = rbind(DataFusion, Data %>% filter(Group == "Cont"))
+DataFusion$Group = as.factor(DataFusion$Group)
+
+indices_sup = (ldf + 1):nrow(DataFusion)
+
+res_pca_noctrl  = FactoMineR::PCA(DataFusion,
+                               quali.sup = c(1,2,3,4,5) , 
+                               ind.sup = indices_sup,
+                               ncp=5, 
+                               scale.unit=T, graph=F)
+
+
+res_pca_withctrl = FactoMineR::PCA(DataFusion,
+                              quali.sup = c(1,2,3,4,5) , 
+                              #ind.sup = indices_sup,
+                              ncp=5, 
+                              scale.unit=T, graph=F)
+
+
+df_scores_withctrl = cbind(DataFusion, res_pca_withctrl$ind$coord)
+df_scores_withctrl$dist = res_pca_withctrl$ind$dist
+df_scores_withctrl$GpAnly = paste(df_scores_withctrl$Group, " withctrl" )
+df_scores_noctrl   = cbind(DataFusion, rbind(res_pca_noctrl$ind$coord, res_pca_noctrl$ind.sup$coord))
+df_scores_noctrl$dist = c(res_pca_noctrl$ind$dist, res_pca_noctrl$ind.sup$dist)
+df_scores_noctrl$GpAnly = paste(df_scores_noctrl$Group, " noctrl")
+
+rbind(df_scores_withctrl, df_scores_noctrl) %>% ggplot(aes(x = Dim.1, y = Dim.2, color = GpAnly)) + 
+  geom_point(size = 4, alpha = 0.5) + 
+  geom_line(aes(group = paste(Id, Odor)), size = 1, alpha = 0.5, color = "grey") +
+  theme_Publication()
+
+# We will keep without controls, very similar, more homgeneous and more reproductibe for anaysis only on patient
+
+res_pca = res_pca_noctrl
+PCA_loadings = cbind(res_pca$call$quali.sup$quali.sup, res_pca$ind$coord)
+PCA_distance = cbind(res_pca$call$quali.sup$quali.sup, res_pca$ind$dist )
+PCA_loadings_ind.sup = cbind(DataFusion[indices_sup,1:5], res_pca$ind.sup$coord)
+PCA_distance_ind.sup = cbind(DataFusion[indices_sup,1:5], res_pca$ind.sup$dist)
+PCA_loadings = rbind(PCA_loadings, PCA_loadings_ind.sup)
+colnames(PCA_distance)[6] = "dist"
+colnames(PCA_distance_ind.sup)[6] = "dist"
+PCA_distance = rbind(PCA_distance, PCA_distance_ind.sup)
+
+
+
+### PCA part A : getting the values for the article
+
+VerifGeneralePCA("None", res_pca)
+# Dim 1 = 53.6%
+# Dim 2 = 19.7%
+PCA_loadings %>% group_by(Group) %>% summarise(M1 = mean(Dim.1), M2 = mean(Dim.2))
+# Group         M1              M2
+#   1 Cont   -3.85e- 1          6.50e- 2    
+# 2 insul1 -7.54e-16            1.37e-16
+t.test(PCA_loadings$Dim.1[PCA_loadings$Group == "insul1"], PCA_loadings$Dim.1[PCA_loadings$Group == "Cont"] )
+wilcox.test(PCA_loadings$Dim.1[PCA_loadings$Group == "insul1"], PCA_loadings$Dim.1[PCA_loadings$Group == "Cont"] )
+
+var.test(PCA_loadings$Dim.1[PCA_loadings$Group == "insul1" & PCA_loadings$Odor_categ == "Trigeminal"], PCA_loadings$Dim.1[PCA_loadings$Group == "Cont" & PCA_loadings$Odor_categ == "Trigeminal"])
+
+PCA_loadings %>% group_by(Group, Odor_categ) %>% summarise(M1 = mean(Dim.1))
+wilcox.test(PCA_loadings$Dim.1[PCA_loadings$Group == "insul1" & PCA_loadings$Odor_categ == "Degout"], PCA_loadings$Dim.1[PCA_loadings$Group == "Cont" & PCA_loadings$Odor_categ == "Degout"])
+
+PCA_loadings %>% group_by(Group) %>% summarise(M1 = min(Dim.1), M2 = min(Dim.2))
+PCA_loadings %>% group_by(Group) %>% summarise(M1 = max(Dim.1), M2 = max(Dim.2))
+
+PCA_loadings %>% group_by(Group, Odor_categ) %>% summarise(M2 = mean(Dim.2))
+wilcox.test(PCA_loadings$Dim.2[PCA_loadings$Group == "insul1" & PCA_loadings$Odor_categ %in% c("Gourmand", "Trigeminal")], PCA_loadings$Dim.2[PCA_loadings$Group == "Cont" & PCA_loadings$Odor_cate %in% c("Gourmand", "Trigeminal")])
+
+
+PCA_distance %>% group_by(Group, Odor_categ) %>% summarise(M1 = mean(dist))
+PCA_distance %>% group_by(Group) %>% summarise(M1 = mean(dist))
+wilcox.test(PCA_distance$dist[PCA_distance$Group == "insul1"], PCA_distance$dist[PCA_distance$Group == "Cont"] )
+
+### PCA part B : Nice plots
+
+#colormap for correlations 
+
+COR1 = res_pca$var$coord[, 1:2]
+COR2 = data.frame(COR1)
+COR2$Var1 = rownames(COR2)
+COR       = reshape2::melt(COR2) #pour metre les dimensions sur les lignes 
+limCor  = max(c(abs(COR$value), 1))
+myPalette = grDevices::colorRampPalette(c("#38dae0","#ffffff","#ffffff","#ffffff","#84e038"))
+
+COR$Components = ifelse(COR$variable == "Dim.1", "Positiveness (PC 1)", ifelse(COR$variable == "Dim.2", "Strength (PC 2)", "error"))
+
+COR$Var1 %<>% recode(
+  Familiarite = "Familiarity", Intensite = "Intensity", Irritabilite = "Irritability", 
+  Pleasant_Feeling = "Pleasant Feeling", Relaxation = "Relaxing", Sensory_Pleasure = "Sensory Pleasure", Unpleasant_Feeling = "Unpleasant Feeling"
+)
+
+COR$Characteristics = COR$Var1 
+
+cor = ggplot(COR,aes(x = Components, y = Characteristics, fill = value))+ # nolint: object_usage_linter.
+  geom_tile()+
+  scale_fill_gradientn(colours = myPalette(100),lim=c(-limCor,limCor))+
+  theme_Publication()
+print(cor)
+
+
+factoextra::fviz_pca_biplot(res_pca, 
+                            axes = c(1, 2),
+                            geom.ind = "point", 
+                            col.ind = "#38b1e0",
+                            pointsize = 7,
+                            alpha.ind = 0.5,
+                            col.var = "black",
+                            col.ind.sup = "#38e0a188",
+                            repel = T) +
+  theme_Publication()
+  
+
+
+
+PCAresults = cbind(PCA_loadings %>% select(c(1:8)), PCA_distance[,6])
+PCAresults$Matching = as.factor(as.numeric(gsub("\\D", "", PCAresults$Matching)))
+colnames(PCAresults)[9] = "dist"
+PCAplot = PCAresults %>% mutate(Group = recode(Group, 
+                                               "insul1" = "Patients",
+                                               "Cont" = "Controls")
+)
+
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                                                  VarCateg = "Group", 
+                                                  VarNum = "dist",
+                                                  Grouping = "Odor_categ",
+                                                  ylabel_plot = "Euclidian Distance", 
+                                                  title_plot  = "PCA Distance between Patients and Controls",
+                                                  palette = c("#ffcb00", "#a439eb", "#c92f2f", "#4cd200")
+)))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                                                  VarCateg = "Group", 
+                                                  VarNum = "Dim.1",
+                                                  Grouping = "Odor_categ",
+                                                  ylabel_plot = "Principal Component 1", 
+                                                  title_plot  = "Difference between Patients and Controls along PC1",
+                                                  palette = c("#ffcb00", "#a439eb", "#c92f2f", "#4cd200")
+)))
+print(p)
+
+p = suppressMessages(suppressWarnings(RainbowPlot(PCAplot,
+                                                  VarCateg = "Group", 
+                                                  VarNum = "Dim.2",
+                                                  Grouping = "Odor_categ",
+                                                  ylabel_plot = "Principal Component 2", 
+                                                  title_plot  = "Difference between Patients and Controls along PC2",
+                                                  palette = c("#ffcb00", "#a439eb", "#c92f2f", "#4cd200")
+)))
+print(p)
+
+```

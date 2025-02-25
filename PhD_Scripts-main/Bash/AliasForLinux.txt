@@ -1,0 +1,33 @@
+Pour attacher un ordi au cluster (acces sans mdp :
+ssh-keygen -t rsa 
+Puis sur powershell :
+Get-Content $env:USERPROFILE\.ssh\id_rsa.pub | ssh mathieu.yeche@login02 "cat >> .ssh/authorized_keys"
+
+----------------------------------------------------------------
+----------------------------------------------------------------
+----------------------------------------------------------------
+----------------------------------------------------------------
+Pour modif alias linux :     (tout en bas du bashrc)
+nano ~/.bashrc
+----------------------------------------------------------------
+
+
+# Cluster aliases
+alias squeue="squeue -o \"%.10i  %9P  %.20j  %20u  %.5t  %.10M  %.3C  %.8m  %.20S  %5D  %R\""
+alias squeueme="squeue -u $USER -o \"%.10i  %9P  %.20j  %20u  %.5t  %.10M  %.3C  %.8m  %.20S  %5D  %R\""
+alias rsync='rsync --stats --human-readable --itemize-changes --times --progress'
+alias sacct="sacct --units=G -o submit,jobid,partition,NodeList,user,jobname%25,reqmem,timelimit,elapsed,maxrss,averss,state,start"
+alias tree="tree -C"
+alias cluster_state='sinfo -o "%10n %10P %10T %5c %C  %m"'
+
+#Personal aliases
+alias visu8='salloc --partition=normal --cpus-per-task=4 --mem=32G --time=08:00:00 --job-name="Visual-Session" '
+alias visu32='salloc --partition=normal --cpus-per-task=4 --mem=32G --time=08:00:00 --job-name="Visual-Session" '
+alias visu64='salloc --partition=normal --cpus-per-task=4 --mem=64G --time=08:00:00 --job-name="Visual-Session" '
+alias visu96='salloc --partition=normal --cpus-per-task=12 --mem=95G --time=08:00:00 --job-name="Visual-Session" '
+alias visu128='salloc --partition=normal --cpus-per-task=20 --mem=120G --time=08:00:00 --job-name="Visual-Session" '
+alias visu256='salloc --partition=bigmem --cpus-per-task=20 --mem=250G --time=08:00:00 --job-name="Visual-Session" '
+
+alias snode='ssh -XY $SLURM_NODELIST'
+alias mat20='module load MATLAB/R2020b; matlab'
+alias R4='module load R/4.1.2; R'

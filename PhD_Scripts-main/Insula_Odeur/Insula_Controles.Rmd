@@ -1,0 +1,650 @@
+---
+title: "Insula_Controles"
+author: "Mathieu Yèche"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading
+
+```{r libraries, echo=FALSE, output = FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+
+```
+
+```{r loading, echo=FALSE}
+DataDir = "C:/Users/mathieu.yeche/OneDrive - ICM/Thèse - Scientifique/Insula_Odeurs/"
+OutputDir = "C:/Users/mathieu.yeche/OneDrive - ICM/Thèse - Scientifique/Insula_Odeurs/Figures/"
+Data = read_xlsx(paste0(DataDir, "Patients_and_controls.xlsx"), sheet = 'PatCtl')
+DataOrigin = Data
+
+```
+
+## Preprocessing
+
+
+```{r summary}
+Data = DataOrigin
+summary(Data)
+```
+
+```{r preprocessing}
+Data = Data[Data$Matching != 0,]
+Data$Matching = as.factor(Data$Matching)
+Data = Data[Data$Odor != "Miel" & Data$Odor != "Defi" & Data$Odor != "Neutre" ,]
+
+for (row in 1:nrow(Data)) {
+  if (Data[row, "Group"] == "Cont"){
+    Data[row, "Intensite"] = Data[row, "Intensite"] / 2
+    Data[row, "Familiarite"] = Data[row, "Familiarite"] / 2
+    Data[row, "Irritabilite"] = Data[row, "Irritabilite"] / 2
+    Data[row, "Pleasant_Feeling"] = Data[row, "Pleasant_Feeling"] / 2
+    Data[row, "Unpleasant_Feeling"] = Data[row, "Unpleasant_Feeling"] / 2
+    Data[row, "Refreshing"] = Data[row, "Refreshing"] / 2
+    Data[row, "Sensuality"] = Data[row, "Sensuality"] / 2
+    Data[row, "Sensory_Pleasure"] = Data[row, "Sensory_Pleasure"] / 2
+    Data[row, "Relaxation"] = Data[row, "Relaxation"] / 2
+  }
+}
+```
+
+
+```{r new summary}
+summary(Data)
+```
+
+
+## ANOVA
+
+First we make sure we address assumptions of ANOVA : Independence among samples (ok), Normality and Homoscedasticity
+
+```{r test assumptions}
+Ctl = Data[Data$Group == "Cont",]
+Pat = Data[Data$Group == "insul1",]
+
+results = data.frame()
+results = rbind(results, c(Variable = "Sentiment",Odor = "odor",Shapiro_Ctl = "Ctl",Shapiro_Pat = "Pat",Bartlett = "Homosced"))
+for (col in colnames(Data)[6:ncol(Data)]) {
+    for (odor in unique(Data$Odor)) {
+        col_results  = c(
+            Variable = col,
+            Odor = odor,
+            Shapiro_Ctl = shapiro.test(as.numeric(unlist(Ctl[Ctl$Odor == odor, col])))$p.value,
+            Shapiro_Pat = shapiro.test(as.numeric(unlist(Pat[Pat$Odor == odor, col])))$p.value,
+            Bartlett    = bartlett.test(as.formula(paste0(col, "~Group")), data = Data[Data$Odor == odor,] )$p.value
+        )
+        results = rbind(results, col_results)
+    }
+}
+results$X.Pat. = p.adjust(results$X.Pat., method = "fdr")
+results$X.Ctl. = p.adjust(results$X.Ctl., method = "fdr")
+results$X.Homosced. = p.adjust(results$X.Homosced., method = "fdr")
+results$Alert = ifelse(results$X.Pat. < 0.05 | results$X.Ctl. < 0.05 | results$X.Homosced. < 0.05 , "XXXXX", "_")
+
+kableExtra::kable(results,"html") %>% 
+    kableExtra::kable_styling() 
+
+```
+
+
+
+ANOVA classique mais fausse au vue de la non normalité des données
+
+```{r modelAnova2factors}
+f = as.formula("Sensory_Pleasure ~ Group + Odor_categ")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+f = as.formula("Sensory_Pleasure ~ Group * Odor_categ")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+f = as.formula("Pleasant_Feeling ~ Group + Odor")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+f = as.formula("Pleasant_Feeling ~ Group * Odor")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+```
+Rank transformed ANOVA
+
+```{r ANOVA}
+
+f = as.formula("rank(Pleasant_Feeling) ~ Group * Odor")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+```
+
+
+Kruskal-Willis, non parametric alternative to ANOVA
+
+```{r Kruskal-Willis}
+f = as.formula("Pleasant_Feeling ~ Group")
+mod = kruskal.test(f, data=Data)
+print(f)
+print(mod)
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+```
+
+## Remise des donnes dans un espace similaire
+
+Le probleme :
+
+```{r ggplotAnova2factors, fig.width=10, fig.height=7, out.width="60%"}
+ggplot2::ggplot(data=Data, mapping=aes( x=Unpleasant_Feeling,y=Odor, color=Group)) +
+  geom_boxplot() +
+  ggbeeswarm::geom_beeswarm(dodge.width=0.75) +
+  theme_light(base_size = 15)
+```
+
+```{r observations}
+hist(Data$Sensory_Pleasure[Data$Group == "insul1"], breaks = 1000)
+hist(Data$Sensory_Pleasure[Data$Group == "Cont"], breaks = 1000)
+hist(Data$Sensory_Pleasure[Data$Group == "insul1" & Data$Sensory_Pleasure < 20], breaks = 20)
+hist(Data$Sensory_Pleasure[Data$Group == "Cont" & Data$Sensory_Pleasure < 20], breaks = 20)
+
+```
+
+La proposition de solution : 
+
+```{r correction}
+DataPreCorrection = Data
+
+ValeurLimite = 8
+
+for (col in 6:ncol(Data)) {
+    Data[Data$Group == "insul1" & Data[, col] < ValeurLimite, col ] = ValeurLimite
+    Data[Data$Group == "insul1", col ] = scales::rescale(as.numeric(unlist(Data[Data$Group == "insul1", col])), to = c(0, 100))
+}
+
+```
+
+Distributions post-normalisation :
+```{r observations corrected}
+hist(Data$Sensory_Pleasure[Data$Group == "insul1"], breaks = 1000)
+hist(Data$Sensory_Pleasure[Data$Group == "Cont"], breaks = 1000)
+hist(Data$Sensory_Pleasure[Data$Group == "insul1" & Data$Sensory_Pleasure < 20], breaks = 20)
+hist(Data$Sensory_Pleasure[Data$Group == "Cont" & Data$Sensory_Pleasure < 20], breaks = 20)
+
+```
+
+## ANOVA post-ranging
+
+```{r modelAnova2factors corrected}
+f = as.formula("Sensory_Pleasure ~ Group + Odor_categ")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+f = as.formula("Sensory_Pleasure ~ Group * Odor_categ")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+f = as.formula("Pleasant_Feeling ~ Group + Odor")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+f = as.formula("Pleasant_Feeling ~ Group * Odor")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+```
+
+
+Rank transformed ANOVA
+
+```{r ANOVA corrected}
+
+f = as.formula("rank(Pleasant_Feeling) ~ Group * Odor")
+mod = aov(f, data=Data)
+print(f)
+print(summary(mod))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+```
+
+
+Aligned Rank Transform Analysis of Variance
+
+```{r Aligned Rank Transform ANOVA}
+
+Data$Group = as.factor(Data$Group)
+Data$Odor  = as.factor(Data$Odor)
+f = as.formula("Pleasant_Feeling ~ Group * Odor")
+mod_ART = anova(ARTool::art(f, data=Data))
+print(f)
+print((mod_ART))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+
+```
+
+```{r Plotting}
+Sentiment = "Pleasant_Feeling" # A changer manuellement
+
+OdorOrder = Data %>% group_by(Odor) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean) %>% pull(Odor)
+Data$Odor = factor(Data$Odor, levels = OdorOrder)
+MeanData  = Data %>% group_by(Odor,Group) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Odor,Group)
+Sd__Data  = Data %>% group_by(Odor,Group) %>% summarise(SD   = sd(Pleasant_Feeling))   %>% arrange(Odor,Group)
+MeanData$SD = Sd__Data$SD
+
+WilcoxPairedResult = list()
+WilcoxUnPairResult = list()
+OdorList =  unique(Data$Odor)
+for (odor in unique(Data$Odor)) {
+  WilcoxPairedResult = c(WilcoxPairedResult, wilcox.test(as.numeric(unlist(Data[Data$Group == "Cont" & Data$Odor == odor , Sentiment])),as.numeric(unlist(Data[Data$Group == "insul1" & Data$Odor == odor , Sentiment])), paired = TRUE)$p.value)
+  WilcoxUnPairResult = c(WilcoxUnPairResult, wilcox.test(as.numeric(unlist(Data[Data$Group == "Cont" & Data$Odor == odor , Sentiment])),as.numeric(unlist(Data[Data$Group == "insul1" & Data$Odor == odor , Sentiment])), paired = TRUE)$p.value)
+}
+WilcoxPairedResult = p.adjust(WilcoxPairedResult, method = "fdr")
+WilcoxUnPairResult = p.adjust(WilcoxUnPairResult, method = "fdr")
+
+StatDf = data.frame(Odor = OdorList, p.value = WilcoxPairedResult)
+StatDf$Odor = factor(StatDf$Odor, levels = OdorOrder)
+StatDf = merge(StatDf, Data %>% group_by(Odor) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean), by = "Odor" )
+
+# Plot
+ggplot2::ggplot(Data, aes(x = Odor, y = Pleasant_Feeling, color = Group)) +
+  ggbeeswarm::geom_beeswarm(dodge.width=0.15) +
+  theme_light(base_size = 15) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Group)) +
+  geom_point() +
+  geom_line(aes(group=1), data = MeanData[MeanData$Group == "Cont",]) +
+  geom_line(aes(group=1), data = MeanData[MeanData$Group == "insul1",]) +
+  theme_light(base_size = 15) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD, color = Group), width=0.1, position=position_dodge(0.15)) +
+  geom_text(aes(label = round(p.value, 3), x = Odor, y = Mean+25, color = NA), data = StatDf) +
+  geom_text(aes(label = paste0("pvalue ANOVA Group:Odor = ", round(summary(mod)[[1]][["Pr(>F)"]][3], 5)), x = "Menthe", y = 100), color = "black", size = 5)
+
+```
+
+Mais que se passe t il si la valeur est de 12 ?
+```{r correction bis}
+DataPostCorrection = Data
+Data = DataPreCorrection
+
+ValeurLimite = 8
+
+# Copié de ci-dessus (et dessous)
+            for (col in 6:ncol(Data)) {
+                Data[Data$Group == "insul1" & Data[, col] < ValeurLimite, col ] = ValeurLimite
+                Data[Data$Group == "insul1", col ] = scales::rescale(as.numeric(unlist(Data[Data$Group == "insul1", col])), to = c(0, 100))
+            }
+
+            f = as.formula("rank(Pleasant_Feeling) ~ Group * Odor")
+            mod = aov(f, data=Data)
+            print(f)
+            print(summary(mod))
+            cat("\n------------------------------------------------------------------------------------------\n\n")
+
+            model = lme4::lmer(Sensory_Pleasure ~ Group * Odor_categ + (1|Matching), data = Data)
+            print(model)
+            cat("\n------------------------------------------------------------------------------------------\n\n")
+            print(summary(model))
+            cat("\n------------------------------------------------------------------------------------------\n\n")
+
+            OdorOrder = Data %>% group_by(Odor) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean) %>% pull(Odor)
+            Data$Odor = factor(Data$Odor, levels = OdorOrder)
+            MeanData  = Data %>% group_by(Odor,Group) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Odor,Group)
+            Sd__Data  = Data %>% group_by(Odor,Group) %>% summarise(SD   = sd(Pleasant_Feeling))   %>% arrange(Odor,Group)
+            MeanData$SD = Sd__Data$SD
+
+            WilcoxPairedResult = list()
+            WilcoxUnPairResult = list()
+            OdorList =  unique(Data$Odor)
+            for (odor in unique(Data$Odor)) {
+            WilcoxPairedResult = c(WilcoxPairedResult, wilcox.test(as.numeric(unlist(Data[Data$Group == "Cont" & Data$Odor == odor , Sentiment])),as.numeric(unlist(Data[Data$Group == "insul1" & Data$Odor == odor , Sentiment])), paired = TRUE)$p.value)
+            WilcoxUnPairResult = c(WilcoxUnPairResult, wilcox.test(as.numeric(unlist(Data[Data$Group == "Cont" & Data$Odor == odor , Sentiment])),as.numeric(unlist(Data[Data$Group == "insul1" & Data$Odor == odor , Sentiment])), paired = TRUE)$p.value)
+            }
+            WilcoxPairedResult = p.adjust(WilcoxPairedResult, method = "fdr")
+            WilcoxUnPairResult = p.adjust(WilcoxUnPairResult, method = "fdr")
+
+            StatDf = data.frame(Odor = OdorList, p.value = WilcoxPairedResult)
+            StatDf$Odor = factor(StatDf$Odor, levels = OdorOrder)
+            StatDf = merge(StatDf, Data %>% group_by(Odor) %>% summarise(Mean = mean(Pleasant_Feeling)) %>% arrange(Mean), by = "Odor" )
+
+            # Plot
+            ggplot2::ggplot(Data, aes(x = Odor, y = Pleasant_Feeling, color = Group)) +
+            ggbeeswarm::geom_beeswarm(dodge.width=0.15) +
+            theme_light(base_size = 15) +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+            ggplot2::ggplot(MeanData, aes(x = Odor, y = Mean, color = Group)) +
+            geom_point() +
+            geom_line(aes(group=1), data = MeanData[MeanData$Group == "Cont",]) +
+            geom_line(aes(group=1), data = MeanData[MeanData$Group == "insul1",]) +
+            theme_light(base_size = 15) +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+            geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD, color = Group), width=0.1, position=position_dodge(0.15)) +
+            geom_text(aes(label = round(p.value, 3), x = Odor, y = Mean+25, color = NA), data = StatDf) +
+            geom_text(aes(label = paste0("pvalue ANOVA Group:Odor = ", round(summary(mod)[[1]][["Pr(>F)"]][3], 5)), x = "Menthe", y = 100), color = "black", size = 5)
+
+Data = DataPostCorrection
+```
+
+
+
+## Modelisation avec un modele lineaire mixte
+
+```{r modelisation sensory pleasure}
+
+model = lme4::lmer(Sensory_Pleasure ~ Group * Odor_categ + (1|Matching), data = Data)
+print(model)
+cat("\n------------------------------------------------------------------------------------------\n\n")
+print(summary(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+```
+
+```{r long format}
+
+DataLong = Data
+DataLong$Matching = as.factor(DataLong$Matching)
+DataLong = DataLong %>% tidyr::pivot_longer(cols = c(6:ncol(DataLong)), names_to = "Sentiment", values_to = "Value")
+
+```
+
+```{r modelisation All Sentiments}
+
+model = lmerTest::lmer(Value ~ Group * Odor * Sentiment + (1 |Matching), data = DataLong)
+print(lmerTest::step(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+print(summary(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+print(car::Anova(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+print(anova(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+emmeans::emmeans(model, pairwise ~ Group | Odor)$contrasts
+```
+
+
+
+Dans la PCA, je fais le choix de ne pas normaliser les données en entrée (scale.unit=FALSE), car je considere que les scores sur 100 sont déjà normalisés. 
+
+
+```{r PCA premodelisation}
+
+res_pca      = FactoMineR::PCA(Data,
+                quali.sup = c(1,2,3,4,5) , 
+                ncp=5, 
+                scale.unit=FALSE, graph=F)
+
+```
+
+```{r PCA visualisation}
+
+plotIndPPT = function(ppt, res_pca, Grouping, Axe1, Axe2, paletteCouleur = "bpalette") {
+    plt = factoextra::fviz_pca_ind(res_pca,
+        geom.ind = "point", 
+        habillage = res_pca$call$quali.sup$quali.sup[[Grouping]],
+        #col.ind = APA$g, # colorer by groups
+        palette = paletteCouleur,
+        addEllipses = TRUE, # Ellipses de concentration
+        legend.title = "Groups",axes = c(Axe1, Axe2)
+        )
+        if (ppt == "None") { print(plt)
+        } else {
+            ppt = add_slide(ppt, layout = "Title and Content", master = "Office Theme")
+            ppt = ph_with(ppt, value = plt, location = ph_location_fullsize())
+        }
+    }
+
+VerifGeneralePCA = function(ppt, res_pca) {
+    Kaiser = factoextra::fviz_eig(res_pca, addlabels = TRUE, ylim = c(0, 100)) +
+    geom_abline(slope = 0,intercept = 10,color='red')+ 
+    theme_classic()+
+    ggtitle("Composantes principales")
+    if (ppt == "None") { print(Kaiser)
+    } else {
+        ppt = add_slide(ppt, layout = "Title and Content", master = "Office Theme")
+        ppt = ph_with(ppt, value = Kaiser, location = ph_location_fullsize())
+    }
+    #Correlogrammes
+    COR1 = res_pca$var$coord[, 1:3]
+    COR2 = data.frame(COR1)
+    COR2$Var1 = rownames(COR2)
+    COR       = reshape2::melt(COR2) #pour metre les dimensions sur les lignes 
+    limCor  = max(c(abs(COR$value), 1))
+    myPalette = grDevices::colorRampPalette(c("#281E78","#ffffff","#ffffff","#ffffff","#fa4616"))
+    cor = ggplot(COR,aes(x = variable, y = Var1, fill = value))+ # nolint: object_usage_linter.
+    geom_tile()+
+    scale_fill_gradientn(colours = myPalette(100),lim=c(-limCor,limCor))+
+    theme_classic()
+    if (ppt == "None") { print(cor)
+    } else {
+        ppt = add_slide(ppt, layout = "Title and Content", master = "Office Theme")
+        ppt = ph_with(ppt, value = cor, location = ph_location_fullsize())
+    }
+
+    # varplot
+    var1 = factoextra::fviz_pca_var(res_pca, 
+        col.var = "contrib", # Color by the quality of the variables: blue if not very correlated with other variables
+        gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), # Color by the quality of the variables: blue if not very correlated with other variables
+        repel = TRUE, # Avoid text overlapping
+        axes = c(1, 2), # Choose the axes to draw
+        )
+
+    if (ppt == "None") { print(var1)
+    } else { 
+        ppt = add_slide(ppt, layout = "Title and Content", master = "Office Theme")
+        ppt = ph_with(ppt, value = var1, location = ph_location_fullsize())
+    }  
+}
+
+VerifGeneralePCA("None", res_pca)
+
+plotIndPPT("None", res_pca, Grouping = 'Group', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet")
+plotIndPPT("None", res_pca, Grouping = 'Odor_categ', Axe1 = 1, Axe2 = 2, paletteCouleur = "lancet")
+plotIndPPT("None", res_pca, Grouping = 'Odor', Axe1 = 1, Axe2 = 2, paletteCouleur = "bpalette")
+
+
+```
+
+```{r PCA + modelisation}
+
+df_res_pca  = data.frame(res_pca$ind$coord)
+df_res_call = res_pca$call$quali.sup$quali.sup
+DataPCA     = cbind(df_res_call, df_res_pca)
+
+model = lmerTest::lmer(Dim.1 ~ Group * Odor + (1|Matching), data = DataPCA)
+print(lmerTest::step(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+print(summary(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+print(car::Anova(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+print(anova(model))
+cat("\n------------------------------------------------------------------------------------------\n\n")
+emmeans::emmeans(model, pairwise ~ Group | Odor)$contrasts
+
+```
+
+## Classification
+
+
+```{r UltraWide}
+DataWide = Data %>% select(-Odor_categ) %>% tidyr::pivot_wider(names_from = Odor, values_from = c((6-1):(ncol(Data)-1)))
+
+```
+
+SVC
+
+```{r classification}
+
+model = e1071::svm(Group ~ ., data = DataWide, kernel = "radial", cost = 10, gamma = 0.1)
+print(model)
+cat("\n------------------------------------------------------------------------------------------\n\n")
+
+
+```
+
+
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import accuracy_score
+
+Data = r.Data
+
+
+DataArray  = np.empty((42, 13, 9))
+UniqueOdor = np.unique(Data['Odor'])
+UniqueId   = np.unique(Data['Id'])
+UniqueGrp  = np.empty((42, 1))
+for i in range(13):
+    for j in range(42):
+        DataArray[j, i,:] = Data[(Data['Odor'] == UniqueOdor[i]) & (Data['Id'] == UniqueId[j])].iloc[:, (6-1):(15-1)]
+        if len(UniqueId[j]) > 15:
+            UniqueGrp[j] = 0
+        else:
+            UniqueGrp[j] = 1
+        
+
+
+
+```
+
+```{python}
+
+X = DataArray
+y = UniqueGrp
+Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, test_size=0.2, random_state=1)
+clf = SVC()
+# clf.fit(Xtrain, ytrain)
+# Raise an error dlmo je veux lui donner un input 3D mais il ne peut traiter qu'en 2D
+```
+
+Raise an error dlmo je veux lui donner un input 3D mais il ne peut traiter qu'en 2D
+Solution : 
+    Reduire une dimention : soit prendre que pleasent feeling, soit prendre la Dim 1. de la PCA
+    C'est la deuxieme option que nous avons privilégié ici. 
+    
+```{python}
+
+DataPCA = r.DataPCA
+DataPCAArray  = np.empty((42, 13))
+UniqueOdor = np.unique(DataPCA['Odor'])
+UniqueId   = np.unique(DataPCA['Id'])
+UniqueGrp  = np.empty((42, 1))
+for i in range(13):
+    for j in range(42):
+        DataPCAArray[j, i] = DataPCA[(DataPCA['Odor'] == UniqueOdor[i]) & (DataPCA['Id'] == UniqueId[j])].iloc[:, 5]
+        if len(UniqueId[j]) > 15:
+            UniqueGrp[j] = 0
+        else:
+            UniqueGrp[j] = 1
+DataPCAArray = pd.DataFrame(DataPCAArray)
+
+```
+
+
+```{python}
+
+X = DataPCAArray
+y = np.array(UniqueGrp).ravel()
+Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, test_size=0.2, random_state=1)
+
+clf = SVC()
+clf.fit(Xtrain, ytrain)
+ypred = clf.predict(Xtest)
+print(confusion_matrix(ytest, ypred))
+print(classification_report(ytest, ypred))
+print(accuracy_score(ytest, ypred))
+```
+
+```{python}
+from sklearn.model_selection import GridSearchCV, LeaveOneOut, cross_val_score
+
+loo = LeaveOneOut()
+
+clf = SVC()
+scores = cross_val_score(clf, X, y, cv=loo, n_jobs=1, scoring='neg_mean_squared_error')
+print("Default SVM classifier : root mean squared error (RMSE):", np.sqrt(np.mean(np.absolute(scores))), ' (Lower is better)')
+
+
+```
+
+
+
+```{python}
+
+
+param_grid = {'C': [0.1, 1, 10, 100, 1000], 'kernel': ['linear', 'rbf', 'poly'], 'degree': [2, 3, 4]}
+
+# create an instance of SVM
+svc = SVC()
+
+# create an instance of GridSearchCV and fit the data
+loo = LeaveOneOut()
+grid_search = GridSearchCV(svc, param_grid, cv=loo, n_jobs=1)
+grid_search.fit(X, y)
+bestkernel = grid_search.best_params_['kernel']
+bestdegree = grid_search.best_params_['degree']
+scores = cross_val_score(SVC(**grid_search.best_params_), X, y, cv=loo, n_jobs=1, scoring='neg_mean_squared_error')
+
+# print the best hyperparameters and the corresponding accuracy score
+print("Best hyperparameters:", grid_search.best_params_)
+print("Accuracy:", grid_search.best_score_)
+print("Root mean squared error (RMSE):", np.sqrt(np.mean(np.absolute(scores))), ' (Lower is better)')
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

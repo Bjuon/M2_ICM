@@ -46,7 +46,7 @@ todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
-todo.seg             = 0; % segment data per step
+todo.seg             = 1; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
 todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha
@@ -117,7 +117,7 @@ LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 LocTablePath   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA', 'MAGIC_loc_electrodes.xlsx');
 
 if strcmp(segType, 'step')
-        event    = {'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E', 'Left_MidFOG_Start', 'Left_MidFOG_End', 'Right_MidFOG_Start', 'Right_MidFOG_End', }; %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+        event    = {'FO1', 'FC1', 'FO', 'FC' }; %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 elseif strcmp(segType, 'trial')
         event    = {'BSL'};
 end
@@ -135,10 +135,10 @@ if ~argin
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
     subject   = {'BEm_000a'}
-
+    %subject = complet(~strcmp(complet, 'BEm_000a'));
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FC1' } %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = { 'FO1', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC' } %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
 else
@@ -461,7 +461,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
         
         % --- Recompute Spectral TF Maps from Cleaned Data ---
         if todo.recomputeCleanedTF
-            disp('Recomputing spectral TF maps with cleaned LFP data...', run);
+            disp('Recomputing spectral TF maps with cleaned LFP data...');
             [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'cleaned');
             if existTF_clean
                 % Save the cleaned TF data to the designated cleaned TF directory

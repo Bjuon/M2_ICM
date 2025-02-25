@@ -93,6 +93,8 @@ for t = 1 : numel(dataTF)
         saveas(fig, fullfile(FigDir, segType, TimePlot{TP}, [FigName '.jpg']), 'jpg')
         saveas(fig, fullfile(FigDir, segType, TimePlot{TP}, [FigName '.fig']), 'fig')
         close all
+        
+        
     end
 end
 

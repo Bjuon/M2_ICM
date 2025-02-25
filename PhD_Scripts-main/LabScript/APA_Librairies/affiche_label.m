@@ -1,0 +1,13 @@
+function affiche_label(h,TXT,handle)
+%% Affichage d'un label TXT à une courbe dont le plot handle est "h"
+
+x = get(h,'XData'); 		% Get the plotted data
+y = get(h,'YData');
+
+imax = find(max(y) == y); % Find the index of the max
+
+text(x(imax-20),y(imax-20),TXT,...
+	'VerticalAlignment','middle',...
+	'HorizontalAlignment','left',...
+	'FontSize',8,...
+    'Parent',handle)

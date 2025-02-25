@@ -1,0 +1,155 @@
+function [N,P] = lambdaNuSmoothing(N,P,varargin) ;
+%
+% Fonction de lissage d'objet surfacique suivant l'algorithme 
+% Lambda Nu (Article Taubin)
+%
+
+
+% #########################################
+% ### 0. Gestion des données d'entrée : ###
+% #########################################
+%
+% a) Initialisation de variables :
+% --------------------------------------------------------------------
+%
+% ---> Paramètres du filtre lambda Nu
+lambda = .6307 ;
+nu = - .6732;
+kpb = 1/lambda + 1/nu ;
+% ---> Nombre d'itérations de lissage
+Puis = 50 ;
+% ---> liste des points immuables : i.e. non déplacé par l'algorithme
+immuable = [] ; % Les points sont tous déplacés
+% ---> Nombre de subdivisions
+subdivision = 0 ; % Pas de subdivision dans le cas général
+% ---> Poids pour les arretes
+poids = 'unitaire' ;
+%
+% b) gestion des options
+% ---------------------------------------------------------------------
+%
+N_option = length(varargin)/2 ;
+% ---> Si ce n'est pas un entier ---> erreur
+if N_option - fix(N_option) ~= 0 ;
+    error('Les options doivent etre entrées par ''nomoption'',''valueoption''') ;
+end
+% ---> Boucles sur les options
+for t = 1:2:2*N_option-1 ;
+    % ---> Suivant les cas :
+    switch lower(varargin{t}) ;
+    case 'lambda' ;
+        % ---> Nouvelle valeur de lambda 
+        lambda = varargin{t+1} ;
+        kpb = 1/lambda + 1/nu ;
+    case 'nu'
+        % ---> Nouvelle valeur de nu
+        nu = varargin{t+1} ;
+        kpb = 1/lambda + 1/nu ;
+    case 'immuable' ;
+        % ---> Points immuables : plusieurs cas
+        if isstr(varargin{t+1}) ;
+            switch lower(varargin{t+1}) ;
+            case 'init' ;
+                % ---> les points initiazux de l'interpolation sont immuables
+                immuable = [1:size(N,1)] ;
+            end
+        else
+            % ---> c'est une liste de nombre qui est entrée
+            immuable = varargin{t+1} ;
+        end
+    case 'subdivision' ;
+        % ---> Nombre de subdivisions par triangles dans le cas d'interpolation
+        subdivision = varargin{t+1} ;
+    case 'iterations' ;
+        % ---> Nombre d'itération de lissage
+        Puis = varargin{t+1} ;
+    case 'poids' ;
+        % ---> Type des poids
+        poids = varargin{t+1} ;
+    otherwise
+        % ---> il y a un warning
+        warning(['L''option ',varargin{t},' est inconnue : pas de prise en compte']) ;
+    end
+end
+%
+% ################################
+% ### 1. Algorithme de lissage ###
+% ################################
+%
+try 
+    % _________________________________________________________________________________
+    %
+    % a0) triangularisation du maillage
+    P = triangularise_maillage(P,N) ;
+    % a) création des subdivisions :
+    for t = 1:subdivision ;
+        [N,P] = subdivise_movie(N,P) ;
+    end
+    % _________________________________________________________________________________
+    %
+    % b) analyse des arretes :
+    Arr = analyse_arretes(P) ;
+    % _________________________________________________________________________________
+    %
+    % c) matrice des couts C
+    C = sparse(size(N,1),size(N,1)) ;
+    switch lower(poids)
+    case 'unitaire' 
+        % ---> Toutes les arretes ont le meme poids 
+        C(sub2ind(size(C),Arr.Definition(:,1),Arr.Definition(:,2))) = 1 ;
+    case 'fujiwara' ;
+        % ---> Chaque arretes est pondérée par l'inverse de sa longueur
+        C(sub2ind(size(C),Arr.Definition(:,1),Arr.Definition(:,2))) = ... 
+            1 ./ norm2(N(Arr.Definition(:,1),:) - N(Arr.Definition(:,2),:)) ;
+    end
+    C = C + C' ;
+    % ---> Il faut absolument vérifier que la diagonale est nulle 
+    C(sub2ind(size(C),[1:size(C,1)],[1:size(C,1)])) = 0 ;
+    % _________________________________________________________________________________
+    %
+    % d) matrice des poids W : C modifié
+    NC = sum(C,2) ;                 % Somme des couts pour un noeuds   
+    for t = 1:size(C,2) ;
+        C(find(NC~=0),t) = C(find(NC~=0),t) ./ NC(find(NC~=0)) ;
+    end
+    %
+    %         N_connect = sum(find(C~=0),2) ; % Nombre de connections
+    %     % ---> Création des poids :
+    %     for t =  full(min(N_connect)):full(max(N_connect)) ;
+    %         % ---> Recherche des noeuds dans ce cas :
+    %         quels = find(N_connect == t) ; 
+    %         % ---> Création des poids dans ce cas
+    %         if ~isempty(quels)&(t ~= 0) ;
+    %             % ---> Division par t des lignes incriminées
+    %             C(quels,:) = C(quels,:) / t ;
+    %         end
+    %     end
+    %__________________________________________________________________________________
+    %
+    % e) création de l'opérateur Laplacien K : C modifié
+    C = speye(size(C)) - C ; 
+    %__________________________________________________________________________________
+    %
+    % f) prise en compte des points immuables
+    %
+    if ~isempty(immuable) ;
+        % ---> Les lignes sont mises à zéros :
+        C(immuable,:) = 0 ;
+    end
+    %__________________________________________________________________________________
+    %
+    % g) création de l'opérateur de lissage f(K) : C modifié
+    C = (speye(size(C)) - nu * C) * (speye(size(C)) - lambda * C) ;
+    %__________________________________________________________________________________
+    %
+    % h) Boucle de calcul des nouveaux points :  autant de fois que la puissance demandée
+    for t = 1:Puis
+        N = C * N ;
+    end
+    %
+catch
+    % ---> En cas d'erreur
+    error(lasterr) ;
+end
+%
+% Fin de la fonction

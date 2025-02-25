@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FreeFileSync XmlType="BATCH" XmlFormat="23">
+    <Notes/>
+    <Compare>
+        <Variant>TimeAndSize</Variant>
+        <Symlinks>Exclude</Symlinks>
+        <IgnoreTimeShift/>
+    </Compare>
+    <Synchronize>
+        <Differences LeftOnly="right" LeftNewer="right" RightNewer="right" RightOnly="right"/>
+        <DeletionPolicy>Versioning</DeletionPolicy>
+        <VersioningFolder Style="TimeStamp-Folder" MaxAge="30">D:\SaveDell\Old</VersioningFolder>
+    </Synchronize>
+    <Filter>
+        <Include>
+            <Item>*</Item>
+        </Include>
+        <Exclude>
+            <Item>\System Volume Information\</Item>
+            <Item>\$Recycle.Bin\</Item>
+            <Item>\RECYCLE?\</Item>
+            <Item>\ICM\</Item>
+            <Item>\Recovery\</Item>
+            <Item>\AppData\Local\Temp</Item>
+            <Item>*\thumbs.db</Item>
+            <Item>\OneDrive - ICM\</Item>
+            <Item>\.cache\</Item>
+            <Item>\NTUSER.DAT</Item>
+            <Item>\ntuser.dat.LOG1</Item>
+            <Item>*\ntuser.dat.LOG2</Item>
+            <Item>\AppData\Local\D3DSCache\</Item>
+            <Item>\AppData\Local\Packages\CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc\LocalState\ext4.vhdx</Item>
+            <Item>\AppData\Local\assembly\</Item>
+            <Item>\bfda57f0\1aa41134_0805db01\</Item>
+            <Item>* \Temp\*</Item>
+            <Item>\AppData\Local\Comms\UnistoreDB\</Item>
+            <Item>\AppData\Local\Microsoft\Outlook\mathieu.yeche@icm-institute.org(3).nst</Item>
+            <Item>*.tmp</Item>
+            <Item>\AppData\Local\Microsoft\Outlook\mathieu.yeche@icm-institute.org.ost</Item>
+            <Item>\AppData\Local\Microsoft\Windows\UsrClass*</Item>
+            <Item>\AppData\Local\Microsoft\Windows \WebCacheLock.dat</Item>
+            <Item/>
+            <Item>\AppData\Local\Packages\oice_16_974fa576_32c1d314_543\AC\Temp\Diagnostics\WINWORD\Additional\</Item>
+            <Item>\AppData\Local\Packages\oice_16_974fa576_32c1d314_712\AC\Temp\Diagnostics\POWERPNT\</Item>
+            <Item>\AppData\Local\flutter_webview_windows\LogiAiPromptBuilder\EBWebView\Default\Network\</Item>
+            <Item>\AppData\Local\Microsoft\Internet Explorer\CacheStorage\edb.log</Item>
+            <Item>\AppData\Local\Microsoft\Office\16.0\Wef\webview2\8a2211ed-9a63-4708-81eb-a3d896864d80_ADAL\2\EBWebView\Default\Network\</Item>
+            <Item>\AppData\Local\Microsoft\Windows\WebCacheLock.dat</Item>
+            <Item>\AppData\Local\Microsoft\Windows\WebCache\V01.log</Item>
+            <Item>\AppData\Local\Microsoft\Windows\WebCache\V01tmp.log</Item>
+            <Item>\AppData\Local\Microsoft\Windows\WebCache\WebCacheV01.dat</Item>
+            <Item>\AppData\Local\Microsoft\Windows\WebCache\WebCacheV01.jfm</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc\ubuntu.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Clipchamp.Clipchamp_yxz26nhyzhsrt\clipchamp.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\python.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\python3.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\WindowsPackageManagerServer.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\winget.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.GetHelp_8wekyb3d8bbwe\GetHelp.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.OutlookForWindows_8wekyb3d8bbwe\olk.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.WindowsFileRecovery_8wekyb3d8bbwe\WinFR.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\Microsoft.WindowsTerminal_8wekyb3d8bbwe\wt.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_8wekyb3d8bbwe\bash.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_8wekyb3d8bbwe\wsl.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_8wekyb3d8bbwe\wslconfig.exe</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\MSTeams_8wekyb3d8bbwe\</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\TheBrowserCompany.Arc_ttt1ap7aakyb4\Arc.exe</Item>
+            <Item>\AppData\Local\Packages\AcrobatNotificationClient_e1rzdqpraam7r\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\AcrobatNotificationClient_e1rzdqpraam7r\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\AcrobatNotificationClient_e1rzdqpraam7r\Settings\settings.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\AdobeNotificationClient_enpm4xejd91yc\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\AdobeNotificationClient_enpm4xejd91yc\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\AdobeNotificationClient_enpm4xejd91yc\Settings\settings.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.Photos_8wekyb3d8bbwe\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.Photos_8wekyb3d8bbwe\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.Photos_8wekyb3d8bbwe\SystemAppData\Helium\UserClasses.dat</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy\AppData\Indexed DB\edb.log</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy\AppData\Indexed DB\edbtmp.log</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy\AppData\Indexed DB\IndexedDB.edb</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy\AppData\Indexed DB\IndexedDB.jfm</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.ShellExperienceHost_cw5n1h2txyewy\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.ShellExperienceHost_cw5n1h2txyewy\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\Settings\settings.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\Microsoft.WindowsCalculator_8wekyb3d8bbwe\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\Microsoft.WindowsCalculator_8wekyb3d8bbwe\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\Microsoft.WindowsCalculator_8wekyb3d8bbwe\Settings\settings.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\Microsoft.YourPhone_8wekyb3d8bbwe\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\Microsoft.YourPhone_8wekyb3d8bbwe\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\Microsoft.YourPhone_8wekyb3d8bbwe\Settings\settings.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\Settings\settings.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\Settings\settings.dat</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\Settings\settings.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\Settings\settings.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\SystemAppData\Helium\User.dat</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\SystemAppData\Helium\User.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\SystemAppData\Helium\User.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\SystemAppData\Helium\UserClasses.dat</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\SystemAppData\Helium\UserClasses.dat.LOG1</Item>
+            <Item>\AppData\Local\Packages\MicrosoftWindows.CrossDevice_cw5n1h2txyewy\SystemAppData\Helium\UserClasses.dat.LOG2</Item>
+            <Item>\AppData\Local\Packages\oice_16_974fa576_32c1d314_42f\AC\Temp\</Item>
+            <Item>\AppData\Local\Packages\oice_16_974fa576_32c1d314_543\AC\Temp\</Item>
+            <Item>\AppData\Local\Packages\PortraitDisplays.DellPremierColor_2dgmkzkw4h30c\SystemAppData\Helium\</Item>
+            <Item>\AppData\LocalLow\Microsoft\PowerToys\Peek-Temp\EBWebView\Default\Network\Cookies</Item>
+            <Item>\AppData\LocalLow\NVIDIA\PerDriverVersion\DXCache\</Item>
+            <Item>\AppData\Local\Microsoft\WindowsApps\</Item>
+        </Exclude>
+        <SizeMin Unit="None">0</SizeMin>
+        <SizeMax Unit="None">0</SizeMax>
+        <TimeSpan Type="None">0</TimeSpan>
+    </Filter>
+    <FolderPairs>
+        <Pair>
+            <Left>C:\LustreSync</Left>
+            <Right>D:\SaveDell\LustreSync</Right>
+        </Pair>
+        <Pair>
+            <Left>C:\Users\mathieu.yeche</Left>
+            <Right>D:\SaveDell\Users</Right>
+        </Pair>
+    </FolderPairs>
+    <Errors Ignore="true" Retry="0" Delay="5"/>
+    <PostSyncCommand Condition="Completion"/>
+    <LogFolder>D:\SaveDell\Logs</LogFolder>
+    <EmailNotification Condition="Always"/>
+    <GridViewType>Action</GridViewType>
+    <Batch>
+        <ProgressDialog Minimized="true" AutoClose="true"/>
+        <ErrorDialog>Show</ErrorDialog>
+        <PostSyncAction>None</PostSyncAction>
+    </Batch>
+</FreeFileSync>
