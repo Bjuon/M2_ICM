@@ -1884,8 +1884,7 @@ for i = 1:nb_acq
             'units', {'mm','mm'}, 'TrialNum', myNum, 'TrialName', myTrialName);
         
         %%%%%%% SEGMENTATION STEP %%%%%%%%%
-        % Avant la détection automatique des événements, vous pouvez segmenter
-        % l'acquisition en fonction d'un fichier CSV contenant les timestamps.
+               % Demander si l'utilisateur souhaite segmenter l'acquisition avant détection automatique
         segmentChoice = questdlg('Segmenter l''acquisition avant détection automatique des événements ?', ...
             'Segmentation', 'Oui', 'Non', 'Non');
         if strcmp(segmentChoice, 'Oui')
@@ -1895,24 +1894,43 @@ for i = 1:nb_acq
             else
                 csvFilePath = fullfile(csvPath, csvFile);
                 segTimestamps = readtable(csvFilePath);
-                % Ici, nous utilisons uniquement le premier segment pour cet exemple.
-                segStart = segTimestamps.StartTime(1);
-                segEnd = segTimestamps.EndTime(1);
-                segIdx = find(t_all >= segStart & t_all <= segEnd);
-                if isempty(segIdx)
-                    warning('Aucune donnée trouvée pour la segmentation entre %f et %f secondes.', segStart, segEnd);
-                else
-                    % Mise à jour des signaux en fonction des indices de segmentation.
-                    % Exemple pour CP_Position :
-                    Trial_APA.CP_Position.Data = Trial_APA.CP_Position.Data(:, segIdx);
-                    % Vous devrez faire de même pour les autres signaux dépendants du temps.
-                    % Mise à jour du vecteur temps :
-                    t = t_all(segIdx);
-                    % Vous pouvez aussi stocker les bornes de segmentation dans Trial_TrialParams si nécessaire.
-                    disp('Segmentation appliquée sur l''acquisition.');
+
+                % Créer le sous-dossier "segment_vicon" s'il n'existe pas
+                segDir = '\\iss\pf-marche\01_rawdata\01_RawData\01_Donnees_Vicon_Brutes\PERCEPT\MOc_58_19-07-2024\V1\segment_vicon_test';
+                if ~exist(segDir, 'dir')
+                    mkdir(segDir);
                 end
+
+                % t_all contient le vecteur temps complet de l'acquisition
+                % et que Trial_APA est la structure contenant vos signaux, ici CP_Position par exemple.
+                numSegments = height(segTimestamps);
+                for seg = 1:numSegments
+                    segStart = segTimestamps.StartTime(seg);
+                    segEnd   = segTimestamps.EndTime(seg);
+                    segIdx = find(t >= segStart & t <= segEnd);
+                    if isempty(segIdx)
+                        warning('Aucune donnée trouvée pour la segmentation entre %f et %f secondes.', segStart, segEnd);
+                    else
+                        % Extraire la portion de signal pour ce segment
+                        segCP_Data = Trial_APA.CP_Position.Data(:, segIdx);
+                        segTime = t(segIdx);
+
+                        % On copie la structure de Trial_APA et on met à jour les données segmentées
+                        segmentData = Trial_APA; % copie complète de la structure
+                        segmentData.CP_Position.Data = segCP_Data;
+                        % Vous pouvez ajouter d'autres signaux ou stocker le vecteur temps
+                        segmentData.Time = segTime;
+
+                        % Sauvegarder le segment dans le sous-dossier
+                        segFileName = fullfile(segDir, sprintf('%s_segment_%d.mat', myTrialName, seg));
+                        save(segFileName, 'segmentData');
+                        fprintf('Segment %d sauvegardé dans : %s\n', seg, segFileName);
+                    end
+                end
+                disp('Segmentation terminée.');
             end
         end
+
         %%%%%%% FIN DU STEP DE SEGMENTATION %%%%%%%%%
         
         %======================================================================
@@ -1949,20 +1967,20 @@ for i = 1:nb_acq
             Trial_TrialParams.EventsTime(1) = t(1);
         end
         
-        try
-            % Extraction des événements notés sur Nexus (VICON)
-            ev = btkGetEvents(h);
-            evts = sort(struct2array(ev));
-            Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
-        catch ERR % Détection automatique
-            warning(ERR.identifier, '%s', ERR.message)
-            disp(['Pas d''évènements du pas ' myFile]);
-            disp('...Détection automatique des évènements');
-            evts = calcul_APA_all(CP_filt, t) - t(1);
-            Trial_TrialParams.EventsTime(2:7) = [evts(1) + t(1), evts(2)-0.01, evts(2:5)];
-            disp('...Terminé!');
-        end
-        
+%         try
+%             % Extraction des événements notés sur Nexus (VICON)
+%             ev = btkGetEvents(h);
+%             evts = sort(struct2array(ev));
+%             Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
+%         catch ERR % Détection automatique
+%             warning(ERR.identifier, '%s', ERR.message)
+%             disp(['Pas d''évènements du pas ' myFile]);
+%             disp('...Détection automatique des évènements');
+%             evts = calcul_APA_all(CP_filt, t) - t(1);
+%             Trial_TrialParams.EventsTime(2:7) = [evts(1) + t(1), evts(2)-0.01, evts(2:5)];
+%             disp('...Terminé!');
+%         end
+%         
         %======================================================================
         % Calcul des vitesses du CG et autres traitements
         waitbar(i/length(files), wb, ['Calculs préliminaires vitesses et APA, marche ' num2str(i) '/' num2str(nb_acq)]);

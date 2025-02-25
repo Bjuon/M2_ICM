@@ -138,8 +138,9 @@ if ~argin
     %subject = complet(~strcmp(complet, 'BEm_000a'));
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = { 'TURN_S', 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC' } %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
- %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
+event    = { 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC' }%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+% 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
+%   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
 else
     subject = varargin(1) ;
@@ -166,8 +167,8 @@ for s = 1:numel(subject)
         eventDir = fullfile(patientDir, eventName);
         
         % Assign directory variables
-        rawLFPDir = fullfile(eventDir, 'Raw_LFP');
-        cleanLFPDir = fullfile(eventDir, 'Cleaned_LFP');
+        rawLFPDir = fullfile(patientDir, 'Raw_LFP');
+        cleanLFPDir = fullfile(patientDir, 'Cleaned_LFP');
         rawTFDir = fullfile(eventDir, 'Raw_TF');
         cleanTFDir = fullfile(eventDir, 'Cleaned_TF');
 
@@ -453,6 +454,19 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 
                         %             elseif todo.plotTF == 2
                         %                 MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
+                        
+                      % --- Recompute Spectral TF Maps from Cleaned Data ---
+                    if todo.recomputeCleanedTF
+                        disp('Recomputing spectral TF maps with cleaned LFP data...');
+                        [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'cleaned');
+                        if existTF_clean
+                            % Save the cleaned TF data to the designated cleaned TF directory
+                            save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
+
+                            % Plot the cleaned TF maps using plot_TF.m
+                            MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
+                        end
+                    end
                     end
                 end
             end
@@ -460,18 +474,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
         
         
         
-        % --- Recompute Spectral TF Maps from Cleaned Data ---
-        if todo.recomputeCleanedTF
-            disp('Recomputing spectral TF maps with cleaned LFP data...');
-            [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'cleaned');
-            if existTF_clean
-                % Save the cleaned TF data to the designated cleaned TF directory
-                save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
-        
-                % Plot the cleaned TF maps using plot_TF.m
-                MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
-            end
-        end
+      
         
     end
     if todo.plotTF || todo.TF
