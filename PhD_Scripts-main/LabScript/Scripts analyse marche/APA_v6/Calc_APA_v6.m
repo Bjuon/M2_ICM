@@ -451,6 +451,8 @@ try
     %Mise à jour de la liste
     set(findobj('tag','listbox1'), 'Value',1);
     liste_marche = arrayfun(@(i) APA.Trial(i).CP_Position.TrialName, 1:length(APA.Trial),'uni',0);
+ %   liste_marche = cellfun(@(trial) trial.CP_Position.TrialName, APA.Trial, 'UniformOutput', false);
+
     set(findobj('tag','listbox1'),'String',liste_marche);
     
     set(findobj('tag','time_normalize'), 'Enable','On');
@@ -2120,49 +2122,44 @@ for i = 1:nb_acq
 end
 close(wb);
 
-% Now ask the user if they want to segment the (big) trial(s):
+%% Ask User About Segmentation
+% 1) Check if the file name (or any file in the list) contains 'PERCEPT'
+containsPercept = false;
+for iFile = 1:length(files)
+    if contains(upper(files{iFile}), 'PERCEPT')
+        containsPercept = true;
+        break;
+    end
+end
+% 2) If we found 'PERCEPT' in any filename, propose segmentation
+if containsPercept
 choice = questdlg('Do you want to segment the Vicon recording into individual trials?', ...
     'Segment Vicon Recording', 'Yes','No','No');
 
 if strcmp(choice, 'Yes')
-    % Prompt user to select the CSV file with segmentation timestamps
     [csvFile, csvPath] = uigetfile('*.csv', 'Select CSV File with Segmentation Timestamps');
-    
     if isequal(csvFile, 0)
         disp('No CSV file selected; no segmentation will be performed.');
     else
-        % Read the CSV file (must have columns: StartTime, EndTime, TrialID)
-        segTable = readtable(fullfile(csvPath, csvFile));
-
-        % For example, assume you only have ONE big trial in APA.Trial(1).
-        % If you have more, adapt accordingly.
+        segTable = readtable(fullfile(csvPath, csvFile)); 
+        % For simplicity, assume segmentation on the first big trial:
         bigTrial = APA.Trial(1);
-        
-        % Segment that single bigTrial into multiple smaller ones:
-        segmentedTrials = segmentTrial(bigTrial, segTable);  
-        % (We'll define segmentTrial below.)
+        segmentedTrials = segmentTrial(bigTrial, segTable);
+        APA.Trial = [segmentedTrials{:}];  % Convert cell array to structure array
 
-        % Update the global structures
-        APA.Trial = segmentedTrials;
-        % If you have corresponding TrialParams / ResAPA,
-        % you might either clear them or rebuild them from scratch.
-        % For now, just demonstrate replacing with empty or later re-compute:
+        % Clear or reinitialize TrialParams and ResAPA as needed:
         TrialParams.Trial = [];
         ResAPA.Trial = [];
-
-        % Update the GUI list
         global liste_marche
         liste_marche = cellfun(@(t) t.TrialName, segmentedTrials, 'UniformOutput', false);
         set(findobj('tag','listbox1'),'String', liste_marche);
-
         disp('Segmentation completed; multiple trials now in APA.Trial.');
         disp('You can now annotate each segment individually in the GUI.');
     end
 else
     disp('No segmentation chosen; proceeding with the original recording(s).');
 end
-
-% End of Data_Preprocessing
+end
 
 %% Graph selection
 function graph_zoom(hObject, ~, ~)
