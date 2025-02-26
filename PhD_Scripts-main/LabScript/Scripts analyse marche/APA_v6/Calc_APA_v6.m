@@ -410,7 +410,7 @@ function uipushtool1_ClickedCallback(~, ~, ~)
 % hObject    handle fo1 uipushtool1 (see GCBO)
 global dossier_c3d APA TrialParams ResAPA APA_T TrialParams_T Subject_data liste_marche Notocord
 
-%try
+try
     %Choix manuel des fichiers
     [files, dossier_c3d] = uigetfile('*.c3d; *.xls','Choix du/des fichier(s) c3d ou notocord(xls)','Multiselect','on'); % Ajouter plus tard les autres file types
     
@@ -461,17 +461,26 @@ global dossier_c3d APA TrialParams ResAPA APA_T TrialParams_T Subject_data liste
         set(findobj('tag','Group_APA'), 'Enable','On');
     end
     
-% catch ERR_Charg
+catch ERR_Charg
+    % Instead of a simple warning, display the full error report:
+    errMsg = getReport(ERR_Charg,'extended','hyperlinks','off');
+    
+    % Show a dialog with the error information
+    errordlg(errMsg, 'Error Loading Files');
+    
+    % Optionally rethrow the error so MATLAB stops and shows the debugger
+    rethrow(ERR_Charg);
+        
 %     warning(ERR_Charg.identifier,['Annulation chargement fichiers / ',ERR_Charg.message])
 %     waitfor(warndlg('Annulation chargement fichiers!'));
-%     
+    
     
     % Chargement des évènements si dispo dans le c3d
 %     try
 %     catch
 %     end
     
-%end
+end
 
 %% ajouter_acquisitions - Ajouter des acquisitions au sujet en cours de traitement
 % --- Ajout acquisitions au sujet courant
@@ -1743,7 +1752,7 @@ APA_Vitesses_Callback;
 
 %% data_preprocessing
 function [APA, TrialParams, ResAPA] = Data_Preprocessing(files,dossier,b_c)
-% Effectue le pré-traitement et stockage des données recueillies du répertoire d'étude (dossier)
+% Effectue le pré-traitement et stockage des données receuillies du répertoire d'étude (dossier)
 
 if nargin<2
     dossier = cd;
@@ -1754,29 +1763,29 @@ if nargin<3
     b_c = 'PF';
 end
 
-%% Lancement du chargement
+%%Lancement du chargement
 wb = waitbar(0);
 set(wb,'Name','Please wait... loading data');
 
-% Cas ou selection d'un fichier unique
+
+%Cas ou selection d'un fichier unique
 if iscell(files)
     nb_acq = length(files);
 else
-    nb_acq = 1;
+    nb_acq =1;
 end
-
 % initialisation
 try
     myFile = files{1}(1:end-4);
     ind_tag = find(myFile=='_');
-    myProt = myFile(1:ind_tag(1)-1);
-    mySession = myFile(ind_tag(1)+1 : ind_tag(2)-1);
-    mySubject = myFile(ind_tag(2)+1 : ind_tag(3)-1);
-    myTreat = myFile(ind_tag(3)+1 : ind_tag(4)-1);
+    myProt = myFile(1:ind_tag(1) - 1);
+    mySession = myFile(ind_tag(1) + 1 : ind_tag(2) - 1);
+    mySubject = myFile(ind_tag(2) + 1 : ind_tag(3) - 1);
+    myTreat = myFile(ind_tag(3) + 1 : ind_tag(4) - 1);
     if size(ind_tag,2) > 4
-        mySpeed = myFile(ind_tag(4)+1 : ind_tag(5)-1);
+        mySpeed = myFile(ind_tag(4) + 1 : ind_tag(5) - 1);
     else
-        mySpeed = myFile(ind_tag(4)+1 : end-4);
+        mySpeed = myFile(ind_tag(4) + 1 : end - 4);
     end
 catch
     myProt = 'Protocol';
@@ -1816,6 +1825,7 @@ delay = str2num(cell2mat(inputdlg('Quel est le délai du trigger (en sec)?','Dela
 
 cpt = 0;
 if nb_acq == 1; files = {files}; end
+
 for i = 1:nb_acq
     
     myTrialName = upper(files{i}(1:end-4));
@@ -1824,13 +1834,13 @@ for i = 1:nb_acq
     waitbar(i/nb_acq,wb,['Lecture fichier:' ,strrep(myFile,'_','-')]);
     try
         %======================================================================
-        % Initialisation des structures
+        % initialisation des structures
         
         %======================================================================
-        % Lecture du fichier
+        %Lecture du fichier
         DATA = lire_donnees_c3d_all(fullfile(dossier,myFile));
         h = btkReadAcquisition(fullfile(dossier,myFile));
-        Freq_ana = btkGetAnalogFrequency(h); %% on conserve les données PF à la fréquence de base pour export
+        Freq_ana = btkGetAnalogFrequency(h); %% Modif' v6, on conserve les données PF à la fréquence de base pour export .lena
         t_all = (0:btkGetAnalogFrameNumber(h)-1)*1/Freq_ana;
         Fin = round(find(DATA.actmec(:,9)<70,1,'first'));  %%%% Choix ou on coupe l'acquisition!!! (defaut = PF)
         if isempty(Fin) || strcmp(b_c,'Oui')
@@ -1843,124 +1853,77 @@ for i = 1:nb_acq
             Fin = length(t_all);
         end
         
-        % Traitement des efforts au sol
-        [forceplates, ~] = btkGetForcePlatforms(h);
+        % traitement des efforts au sol
+        [forceplates, ~] = btkGetForcePlatforms(h) ;
         av = btkGetAnalogs(h);
-        channels = fieldnames(forceplates(1).channels);
-        analog_RPLATEFORME = nan(size(av.(channels{1}),1), length(channels));
-        for kk = 1:length(channels)
+        channels=fieldnames(forceplates(1).channels);
+        analog_RPLATEFORME=nan(size(av.(channels{1}),1),length(channels));
+        for kk=1:length(channels)
             analog_RPLATEFORME(:,kk) = av.(channels{kk});
         end
-        RES = Analog_2_forces_plates(analog_RPLATEFORME, forceplates(1).corners', forceplates(1).origin');
-        RES = double(RES);
+        RES=Analog_2_forces_plates(analog_RPLATEFORME,forceplates(1).corners',forceplates(1).origin');
+        RES=double(RES);
         
         clear Data
         Data = RES(1:Fin,7:12)'; % Données analog_SURFACE
-        Trial_APA.GroundWrench = Signal(Data, Freq_ana, 'tag', {'FX','FY','FZ','MX','MY','MZ'}, ...
-            'units', {'N','N','N','Nmm','Nmm','Nmm'}, 'TrialNum', myNum, 'TrialName', myTrialName);
+        Trial_APA.GroundWrench = Signal(Data,Freq_ana,'tag',{'FX','FY','FZ','MX','MY','MZ'},...
+            'units',{'N','N','N','Nmm','Nmm','Nmm'},'TrialNum',myNum,'TrialName',myTrialName);
         
-        % Traitement de la position du CP
+        % traitement de la position du CP
         t = t_all(1:Fin);
         CP = RES(1:Fin,1:3);
         CP_filt = NaN*ones(size(CP));
         l = ~isnan(CP(:,1));
         CP_pre = CP(l,:);
-        % Filtrage des données PF: filtre FIR d'ordre 50 et fréquence de coupure 45Hz
-        CP_post = filtrage(CP_pre, 'fir', 50, 45, Freq_ana);
+        %Filtrage des données PF: filtre à réponse impulsionnel finie d'ordre 50 et de fréquence de coupure 45Hz
+        CP_post = filtrage(CP_pre,'fir',50,45,Freq_ana); %%%% A changer?
         try
             CP_filt(l,:) = CP_post;
             % On complète le vecteur CP par la dernière valeur lue sur la PF
             CP0 = CP_post(end,:);
-            dim_buff = Fin - sum(l);
-            CP_filt(~l,:) = repmat(CP0, dim_buff, 1);
+            dim_buff = Fin-sum(l);
+            CP_filt(~l,:) = repmat(CP0,dim_buff,1);
         catch empty_CP
-            warning(empty_CP.identifier, '%s', empty_CP.message)
+            warning(empty_CP.identifier,'%s',empty_CP.message)
             CP_filt = CP;
         end
         
         clear Data
         Data = CP_filt(:,[2 1])';
-        Trial_APA.CP_Position = Signal(Data, Freq_ana, 'tag', {'X','Y'}, ...
-            'units', {'mm','mm'}, 'TrialNum', myNum, 'TrialName', myTrialName);
+        Trial_APA.CP_Position = Signal(Data,Freq_ana,'tag',{'X','Y'},...
+            'units',{'mm','mm'},'TrialNum',myNum,'TrialName',myTrialName);
         
-        %%%%%%% SEGMENTATION STEP %%%%%%%%%
-               % Demander si l'utilisateur souhaite segmenter l'acquisition avant détection automatique
-        segmentChoice = questdlg('Segmenter l''acquisition avant détection automatique des événements ?', ...
-            'Segmentation', 'Oui', 'Non', 'Non');
-        if strcmp(segmentChoice, 'Oui')
-            [csvFile, csvPath] = uigetfile('*.csv', 'Sélectionnez le fichier CSV avec les timestamps de segmentation');
-            if isequal(csvFile, 0)
-                disp('Segmentation annulée, utilisation de l''acquisition complète.');
-            else
-                csvFilePath = fullfile(csvPath, csvFile);
-                segTimestamps = readtable(csvFilePath);
-
-                % Créer le sous-dossier "segment_vicon" s'il n'existe pas
-                segDir = '\\iss\pf-marche\01_rawdata\01_RawData\01_Donnees_Vicon_Brutes\PERCEPT\MOc_58_19-07-2024\V1\segment_vicon_test';
-                if ~exist(segDir, 'dir')
-                    mkdir(segDir);
-                end
-
-                % t_all contient le vecteur temps complet de l'acquisition
-                % et que Trial_APA est la structure contenant vos signaux, ici CP_Position par exemple.
-                numSegments = height(segTimestamps);
-                for seg = 1:numSegments
-                    segStart = segTimestamps.StartTime(seg);
-                    segEnd   = segTimestamps.EndTime(seg);
-                    segIdx = find(t >= segStart & t <= segEnd);
-                    if isempty(segIdx)
-                        warning('Aucune donnée trouvée pour la segmentation entre %f et %f secondes.', segStart, segEnd);
-                    else
-                        % Extraire la portion de signal pour ce segment
-                        segCP_Data = Trial_APA.CP_Position.Data(:, segIdx);
-                        segTime = t(segIdx);
-
-                        % On copie la structure de Trial_APA et on met à jour les données segmentées
-                        segmentData = Trial_APA; % copie complète de la structure
-                        segmentData.CP_Position.Data = segCP_Data;
-                        % Vous pouvez ajouter d'autres signaux ou stocker le vecteur temps
-                        segmentData.Time = segTime;
-
-                        % Sauvegarder le segment dans le sous-dossier
-                        segFileName = fullfile(segDir, sprintf('%s_segment_%d.mat', myTrialName, seg));
-                        save(segFileName, 'segmentData');
-                        fprintf('Segment %d sauvegardé dans : %s\n', seg, segFileName);
-                    end
-                end
-                disp('Segmentation terminée.');
-            end
-        end
-
-        %%%%%%% FIN DU STEP DE SEGMENTATION %%%%%%%%%
         
         %======================================================================
-        % Extraction des marqueurs temporels d'initiation du pas
+        % Extraction des marqueurs temporels d'inititation du pas
+        % Extraction du temps de l'instruction (à partir du FSW) pour le calcul du temps de réaction
+
         Trial_TrialParams.EventsTime = NaN(1,7);
         Trial_TrialParams.EventsNames = {'TR','T0','HO','FO1','FC1','FO2','FC2'};
         Trial_TrialParams.TrialName = myTrialName;
         Trial_TrialParams.TrialNum = myNum;
         Trial_TrialParams.Description = '';
         
-        if isfield(DATA, 'ANLG')
-            signal = btkGetAnalog(h, 'GO');
+        if isfield(DATA,'ANLG')
+            signal = btkGetAnalog(h,'GO');
             if any(isnan(signal))
-                signal = btkGetAnalog(h, 'FSW'); %% Le trigger est sur un canal nommé 'FSW'
+                signal = btkGetAnalog(h,'FSW'); %% Le trigger est sur un canal nommé 'FSW'
             end
             
             if ~any(isnan(signal))
                 signal = signal - nanmean(signal);
                 try
-                    TR_ind = find(signal>0.2, 1, 'first');
-                    Trial_TrialParams.EventsTime(1) = TR_ind / DATA.ANLG.Fech;
+                    TR_ind = find(signal>0.2,1,'first');
+                    Trial_TrialParams.EventsTime(1) = TR_ind/DATA.ANLG.Fech;
                 catch GO_start
-                    warning(GO_start.identifier, '%s', GO_start.message)
+                    warning(GO_start.identifier,'%s',GO_start.message)
                     Trial_TrialParams.EventsTime(1) = t(1);
                 end
             else
                 disp('Pas de go sonore!');
                 Trial_TrialParams.EventsTime(1) = t(1);
             end
-        elseif delay > 0
+        elseif delay >0
             Trial_TrialParams.EventsTime(1) = delay;
         else
             disp('Pas de go sonore!');
@@ -1968,42 +1931,238 @@ for i = 1:nb_acq
         end
         
 %         try
-%             % Extraction des événements notés sur Nexus (VICON)
+%             % extraction des evts du pas notés sur Nexus (VICON) // Modifié par AVH 24/11/2016
+% %             evts = sort(DATA.events.temps - t(1));
+% %             Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
+%             
 %             ev = btkGetEvents(h);
-%             evts = sort(struct2array(ev));
+%             evts = sort(struct2array(btkGetEvents(h)));
 %             Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
-%         catch ERR % Détection automatique
-%             warning(ERR.identifier, '%s', ERR.message)
-%             disp(['Pas d''évènements du pas ' myFile]);
-%             disp('...Détection automatique des évènements');
-%             evts = calcul_APA_all(CP_filt, t) - t(1);
-%             Trial_TrialParams.EventsTime(2:7) = [evts(1) + t(1), evts(2)-0.01, evts(2:5)];
-%             disp('...Terminé!');
-%         end
-%         
+%             
+% %         catch ERR % Détection automatique
+% %             warning(ERR.identifier,'%s',ERR.message)
+% %             disp(['Pas d''évènements du pas ' myFile]);
+% %             disp('...Détection automatique des évènements');
+% %             evts = calcul_APA_all(CP_filt,t) - t(1);
+% %             Trial_TrialParams.EventsTime(2:7) = [evts(1) + t(1), evts(2)-0.01, evts(2:5)]; % 1er evt biomécanique
+% %             disp('...Terminé!');
+% %         end
+        
+        
         %======================================================================
-        % Calcul des vitesses du CG et autres traitements
-        waitbar(i/length(files), wb, ['Calculs préliminaires vitesses et APA, marche ' num2str(i) '/' num2str(nb_acq)]);
-        % (Le reste de votre code de traitement suit ici...)
+        % Calcul des vitesses du CG
+        waitbar(i/length(files),wb,['Calculs préliminaires vitesses et APA, marche' num2str(i) '/' num2str(nb_acq)]);
         
-        % Calcul de la vitesse, dérivation, filtrage, etc.
-        % ...
+        V_CG = [];
+        Fres = Trial_APA.GroundWrench.Data(1:3,:)';
         
-        % Calcul automatique des APA et stockage dans la structure
-        Trial_Res_APA = calcul_auto_APA_marker_v2(Trial_APA, Trial_TrialParams, []);
-        Trial_Res_APA = calculs_parametres_initiationPas_v5(Trial_APA, Trial_TrialParams, Trial_Res_APA);
+        % Extraction du poids
+        P = mean(Fres(20:Freq_ana/2,:),1); % on prend la moyenne de la composante Z sur la 1ère demi-seconde de l'acquisition
+        if ~exist('Fin','var')
+            Fin = round(find(Fres(:,3)<10,1,'first')); % Dernière frame sur la PF
+            if isempty(Fin)
+                Fin = length(Fres);
+            end
+        end
+        
+        gravite = 9.80928; % observatoire gravimétrique de strasbourg
+        M = P/gravite;
+        Acc = (Fres-repmat(P,length(Fres),1))./repmat(M,length(Fres),1); % Accéleration = GRF/m
+        
+        %Préconditionnement du vecteur réaction sur la bonne durée (pour l'intégration)
+        Fin_pf = find(Fres(:,3)<15,1,'first');
+        if  isempty(Fin_pf)
+            Fin_pf = length(Fres);
+        end
+        Fres = (Fres - repmat(P,length(Fres),1))./(P(3)/gravite); % Vecteur (GRF - P) à integré
+        
+        % Intégration
+        t_PF=(0:Fin-1).*1/Freq_ana; % on ajoute la variable temporelle
+        V_new=zeros(length(t_PF),3);
+        for ii=1:3
+            y=Fres(:,ii);
+            try % via la toolbox 'Curve Fitting'
+                y_t = csaps(t_PF,y);  % on créé une spline
+                intgrf = fnint(y_t); % on intègre
+                V_new(:,ii)= fnval(intgrf,t_PF);
+            catch ERR % sinon par intégration numérique par la méthode des trapèzes
+                disp(ERR)
+                V_new(:,ii) = cumtrapz(t_PF,y); %Intégration grossière par la méthode des trapèzes
+            end
+        end
+        
+        % Pour la visu, on remplace toutes les valeurs suivant la PF par la dernière valeure
+        V0 = V_new(Fin_pf,:);
+        dim_end = length(V_new)-Fin_pf;
+        V_new(Fin_pf+1:end,:) = repmat(V0,dim_end,1);
+        
+        % stockage
+        clear Data
+        Data = V_new(:,[2 1 3])';
+        Trial_APA.CG_Speed = Signal(Data,Freq_ana,'tag',{'X','Y','Z'},...
+            'units',{'m/s','m/s','m/s'},'TrialNum',myNum,'TrialName',myTrialName);
+        
+        % Dérivation
+        if exist('DATA','var')
+            % Calcul du Centre de Gravité du sujet
+            try
+                CG_Vic = squeeze(extraire_coordonnees_v2(DATA,{'CentreOfMass'}))'; % Calculé par Plug-In-Gait
+                CoM = squeeze(barycentre_v2(extraire_coordonnees_v2(DATA,{'RASI','LASI','RPSI','LPSI'})))'; % Calculé comme barycentre des épines iliaques du bassin
+                Fech_vid = round(Freq_ana * length(DATA.coord)/length(DATA.actmec)); % On réestime la fréquence d'échantillonage vidéo
+                
+                Fin_vid = round(Fin * Fech_vid/Freq_ana); % On réestime la dernière 'frame' vidéo
+                t_vid=(0:Fin_vid-1).*1/Fech_vid; % on ajoute la variable temporelle
+                VCoM=zeros(length(t_vid),3);
+                V_CG=zeros(length(t_vid),3);
+                
+                %On retire les NaN avant dérivation et filtrage
+                l = sum(isnan(CoM(1:Fin_vid,:)),2)>1;
+                ll = sum(isnan(CG_Vic(1:Fin_vid,:)),2)>1;
+                
+                for ii=1:3
+                    y=CoM(~l,ii);
+                    %Dérivation barycentre marqueurs bassin
+                    y_t_vid = csaps(t_vid(~l),y);  % on créé une spline
+                    derCoM = fnder(y_t_vid); % on dérive
+                    VCoM_pre= fnval(derCoM,t_vid(~l))./1000;
+                    VCoM(~l,ii) = filtrage(VCoM_pre,'b',3,5,Fech_vid); %Lissage (filtre passe-bas de ButterWorth à 5Hz)
+                    
+                    %Dérivation CG Plug-In-Gait
+                    if ~isnan(CG_Vic)
+                        yy = CG_Vic(~ll,ii);
+                        try
+                            yy_t = csaps(t_vid(~ll),yy);
+                            derCG = fnder(yy_t);
+                            V_CG((~ll),ii) = fnval(derCG,t_vid(~ll))/1000;
+                        catch ERR
+                            warning(ERR.identifier,'%s',ERR.message)
+                            V_CG((~ll),ii) = derive_MH_VAH(yy,Fech_vid)/1000;
+                        end
+                    end
+                end
+                
+                % Interpolation du vecteur dérivé (sur-échantillonnage à Fech)
+                if Fech_vid<Freq_ana
+                    try
+                        %                         VCoM = interp1(t_vid,VCoM,t_PF);
+                        V_CG = interp1(t_vid,V_CG,t_PF);
+                    catch ERR
+                        warning(ERR.identifier,'%s',ERR.message)
+                        disp('Pas d''interpolation à la vitesse derivée');
+                    end
+                end
+            catch ERR
+                warning(ERR.identifier,'%s',ERR.message)
+                disp('Pas de données vidéos pour le calcul du CG' );
+                
+            end
+        end
+        
+        % stockage
+        clear Data
+        Data = V_CG(:,[2 1 3])';
+        Trial_APA.CG_Speed_d = Signal(Data,Freq_ana,'tag',{'X','Y','Z'},...
+            'units',{'m/s','m/s','m/s'},'TrialNum',myNum,'TrialName',myTrialName);
+        
+        clear Data
+        Data = filtrage(Acc,'fir',30,20,Freq_ana)';
+        Data = Data([2 1 3],:);
+        Trial_APA.CG_Acceleration = Signal(Data,Freq_ana,'tag',{'X','Y','Z'},...
+            'units',{'m.s-2','m.s-2','m.s-2'},'TrialNum',myNum,'TrialName',myTrialName);
+        
+        clear Data
+        Data = dot(Trial_APA.CG_Speed.Data,Trial_APA.GroundWrench.Data(1:3,:),1);
+        Trial_APA.CG_Power = Signal(Data,Freq_ana,'tag',{'X','Y','Z'},...
+            'units',{'W','W','W'},'TrialNum',myNum,'TrialName',myTrialName);
+        
+        % on ajoute les données de trajectoires des marqueurs talons (si données ciném dispos)
+        try
+        cellfind = @(string)(@(cell_contents)(strcmp(string,cell_contents)));
+        indx = 1:length(DATA.noms);
+        Freq_kin = btkGetPointFrequency(h);
+        Fin_cin = floor(Fin/(Freq_ana/Freq_kin)); % pour savoir où on coupe les données cinématiques
+        % R_HEE
+        idx_RHEE = indx(cellfun(cellfind('RHEE'),DATA.noms));
+        clear Data,
+        Data = DATA.coord(1:Fin_cin,(idx_RHEE-1)*3+1:idx_RHEE*3)';
+        Trial_APA.RHEE = Signal(Data,Freq_kin,'tag',{'X','Y','Z'},'units',{'mm','mm','mm'},'TrialNum',myNum,'TrialName',myTrialName);
+        % L_HEE
+        idx_LHEE = indx(cellfun(cellfind('LHEE'),DATA.noms));
+        clear Data,
+        Data = DATA.coord(1:Fin_cin,(idx_LHEE-1)*3+1:idx_LHEE*3)';
+        Trial_APA.LHEE = Signal(Data,Freq_kin,'tag',{'X','Y','Z'},'units',{'mm','mm','mm'},'TrialNum',myNum,'TrialName',myTrialName);
+        catch
+            warning('Pas de marqueurs sur talons disponibles');
+        end
+        champs = {'Cote','t_Reaction','t_APA','APA_antpost','APA_lateral','StepWidth','t_swing1',...
+            't_DA','t_swing2','t_cycle_marche','Longueur_pas','V_swing1','Vy_FO1','t_VyFO1','Vm','t_Vm',...
+            'VML_absolue','Freq_InitiationPas','Cadence','VZmin_APA','V1','V2','Diff_V','Freinage',...
+            't_chute','t_freinage','t_V1','t_V2'};
+        Trial_Res_APA={};
+        for j = 1 : length(champs)
+            Trial_Res_APA.(champs{j})=[];
+        end
+        
+        Trial_Res_APA = calcul_auto_APA_marker_v2(Trial_APA, Trial_TrialParams,Trial_Res_APA);
+        Trial_Res_APA = calculs_parametres_initiationPas_v5(Trial_APA, Trial_TrialParams,Trial_Res_APA);
         Trial_TrialParams.StartingFoot = Trial_Res_APA.Cote;
         
-        cpt = cpt + 1;
+        cpt = cpt+1;
         APA.Trial(cpt) = Trial_APA;
         TrialParams.Trial(cpt) = Trial_TrialParams;
         ResAPA.Trial(cpt) = Trial_Res_APA;
     catch Err_load
-        warning(Err_load.identifier, '%s', Err_load.message)
+        warning(Err_load.identifier,'%s',Err_load.message)
         disp(['Erreur de chargement pour ' myFile])
+        
+        
     end
 end
 close(wb);
+
+% Now ask the user if they want to segment the (big) trial(s):
+choice = questdlg('Do you want to segment the Vicon recording into individual trials?', ...
+    'Segment Vicon Recording', 'Yes','No','No');
+
+if strcmp(choice, 'Yes')
+    % Prompt user to select the CSV file with segmentation timestamps
+    [csvFile, csvPath] = uigetfile('*.csv', 'Select CSV File with Segmentation Timestamps');
+    
+    if isequal(csvFile, 0)
+        disp('No CSV file selected; no segmentation will be performed.');
+    else
+        % Read the CSV file (must have columns: StartTime, EndTime, TrialID)
+        segTable = readtable(fullfile(csvPath, csvFile));
+
+        % For example, assume you only have ONE big trial in APA.Trial(1).
+        % If you have more, adapt accordingly.
+        bigTrial = APA.Trial(1);
+        
+        % Segment that single bigTrial into multiple smaller ones:
+        segmentedTrials = segmentTrial(bigTrial, segTable);  
+        % (We'll define segmentTrial below.)
+
+        % Update the global structures
+        APA.Trial = segmentedTrials;
+        % If you have corresponding TrialParams / ResAPA,
+        % you might either clear them or rebuild them from scratch.
+        % For now, just demonstrate replacing with empty or later re-compute:
+        TrialParams.Trial = [];
+        ResAPA.Trial = [];
+
+        % Update the GUI list
+        global liste_marche
+        liste_marche = cellfun(@(t) t.TrialName, segmentedTrials, 'UniformOutput', false);
+        set(findobj('tag','listbox1'),'String', liste_marche);
+
+        disp('Segmentation completed; multiple trials now in APA.Trial.');
+        disp('You can now annotate each segment individually in the GUI.');
+    end
+else
+    disp('No segmentation chosen; proceeding with the original recording(s).');
+end
+
+% End of Data_Preprocessing
 
 %% Graph selection
 function graph_zoom(hObject, ~, ~)

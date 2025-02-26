@@ -46,7 +46,7 @@ todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
-todo.seg             = 0; % segment data per step
+todo.seg             = 1; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
 todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha
@@ -138,7 +138,7 @@ if ~argin
     %subject = complet(~strcmp(complet, 'BEm_000a'));
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = { 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC' }%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = { 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1' }%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -156,33 +156,6 @@ FileName = '*_POSTOP_*_GNG_GAIT_*_LFP';
 
 % frequency bandes
 FqBdes = [1 4 12 13 20 21 35 36 60 61 80];     %#ok<NASGU> 
-
-% Create Dir to save Raw/Clean LFP and Raw/CleanTF maps 
-for s = 1:numel(subject)
-    patientDir = fullfile(FigDir, subject{s});
-    MAGIC.batch.EnsureDir(patientDir);
-
-    for ev = 1:numel(event)
-        eventName = event{ev};
-        eventDir = fullfile(patientDir, eventName);
-        
-        % Assign directory variables
-        rawLFPDir = fullfile(patientDir, 'Raw_LFP');
-        cleanLFPDir = fullfile(patientDir, 'Cleaned_LFP');
-        rawTFDir = fullfile(eventDir, 'Raw_TF');
-        cleanTFDir = fullfile(eventDir, 'Cleaned_TF');
-
-        % Ensure directories exist
-        MAGIC.batch.EnsureDir(eventDir);
-        MAGIC.batch.EnsureDir(rawLFPDir);
-        MAGIC.batch.EnsureDir(cleanLFPDir);
-        MAGIC.batch.EnsureDir(rawTFDir);
-        MAGIC.batch.EnsureDir(cleanTFDir);
-    end
-end
-
-
-
 
 %%
 suff1   = [segType '_' ChannelMontage];                       %#ok<NASGU>
@@ -245,6 +218,15 @@ end
 
 % for each patients
 for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
+    % Define the patient directory under FigDir (or a separate base if desired)
+    patientDir = fullfile(FigDir, subject{s});
+    MAGIC.batch.EnsureDir(patientDir);
+
+    % Create patient-level directories for LFP data
+    rawLFPDir   = fullfile(patientDir, 'Raw_LFP');
+    cleanLFPDir = fullfile(patientDir, 'Cleaned_LFP');
+    MAGIC.batch.EnsureDir(rawLFPDir);
+    MAGIC.batch.EnsureDir(cleanLFPDir);
     
     disp(subject{s})
     RecDir = dir(fullfile(InputDir, subject{s}));
@@ -390,6 +372,16 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 
                       
             for e = event % e = e{1}; e = e(1)
+                eventName = e{1};  % extract the string from the cell
+                eventDir  = fullfile(patientDir, eventName);
+                MAGIC.batch.EnsureDir(eventDir);
+
+                % Create directories for TF maps inside the event folder
+                rawTFDir   = fullfile(eventDir, 'Raw_TF');
+                cleanTFDir = fullfile(eventDir, 'Cleaned_TF');
+                MAGIC.batch.EnsureDir(rawTFDir);
+                MAGIC.batch.EnsureDir(cleanTFDir);
+                disp (rawTFDir)
                 if iscell(seg)
                     seg{1}.reset;
                     seg{2}.reset;
