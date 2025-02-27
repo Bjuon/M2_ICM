@@ -46,7 +46,7 @@ todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
-todo.seg             = 1; % segment data per step
+todo.seg             = 0; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
 todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha
@@ -138,7 +138,7 @@ if ~argin
     %subject = complet(~strcmp(complet, 'BEm_000a'));
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = { 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1' }%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FOG_S', 'FOG_E', 'TURN_S', 'FC1' 'FO', 'FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -381,7 +381,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 cleanTFDir = fullfile(eventDir, 'Cleaned_TF');
                 MAGIC.batch.EnsureDir(rawTFDir);
                 MAGIC.batch.EnsureDir(cleanTFDir);
-                disp (rawTFDir)
+               
                 if iscell(seg)
                     seg{1}.reset;
                     seg{2}.reset;
@@ -438,11 +438,12 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     end
                 end
 %                 toc
-                if todo.plotTF
-                    load([OutputFileName suff1 '_TF_' suff '_' event{1} '.mat'], 'dataTF')
+                if todo.plotTF && existTF == true
+
+                    load([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
                     if todo.plotTF == 1
                         disp('Plotting Raw TF')
-                        MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], rawTFDir, TimePlot);
+                        MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
 
                         %             elseif todo.plotTF == 2
                         %                 MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
@@ -459,11 +460,14 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                             MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
                         end
                     end
+                    else
+                                disp(['No TF file for event ' e{1} ', skipping plot.']);
+
                     end
                 end
             end
         end
-        
+           
         
         
       

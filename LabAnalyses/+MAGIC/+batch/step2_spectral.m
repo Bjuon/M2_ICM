@@ -137,7 +137,7 @@ else
                 dataTF(end).info('trial') = temp(trial).info('trial');
             end
         end
-    elseif ~isempty(e)
+    else
         for trial = 1:numel(TF)
             if ~exist('dataTF', 'var')
                 dataTF(1) = Segment('process', {...
@@ -156,5 +156,13 @@ else
         existTF = true;
     end
     %TF(1).plot('log', false)
-end
+    
+else
+    disp(['pas de ' e ' trouvés'])
+    dataTF = [];
+    existTF = false;
+    existTF_clean = false; 
+    return;
+    end
+
 end

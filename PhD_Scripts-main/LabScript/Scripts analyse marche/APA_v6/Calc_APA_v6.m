@@ -465,14 +465,15 @@ try
     
 catch ERR_Charg
     % Instead of a simple warning, display the full error report:
-    errMsg = getReport(ERR_Charg,'extended','hyperlinks','off');
-    
-    % Show a dialog with the error information
-    errordlg(errMsg, 'Error Loading Files');
-    
-    % Optionally rethrow the error so MATLAB stops and shows the debugger
+    errMsg = getReport(ERR_Charg, 'extended', 'hyperlinks', 'off');
+
+    % Display the error report in the MATLAB console
+    disp(errMsg);
+
+    % Optionally, rethrow the error so MATLAB stops and shows the debugger
     rethrow(ERR_Charg);
-        
+
+%         
 %     warning(ERR_Charg.identifier,['Annulation chargement fichiers / ',ERR_Charg.message])
 %     waitfor(warndlg('Annulation chargement fichiers!'));
     
@@ -1755,6 +1756,7 @@ APA_Vitesses_Callback;
 %% data_preprocessing
 function [APA, TrialParams, ResAPA] = Data_Preprocessing(files,dossier,b_c)
 % Effectue le pré-traitement et stockage des données receuillies du répertoire d'étude (dossier)
+global Freq_ana h DATA
 
 if nargin<2
     dossier = cd;
@@ -1932,23 +1934,23 @@ for i = 1:nb_acq
             Trial_TrialParams.EventsTime(1) = t(1);
         end
         
-%         try
-%             % extraction des evts du pas notés sur Nexus (VICON) // Modifié par AVH 24/11/2016
-% %             evts = sort(DATA.events.temps - t(1));
-% %             Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
-%             
-%             ev = btkGetEvents(h);
-%             evts = sort(struct2array(btkGetEvents(h)));
-%             Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
-%             
-% %         catch ERR % Détection automatique
-% %             warning(ERR.identifier,'%s',ERR.message)
-% %             disp(['Pas d''évènements du pas ' myFile]);
-% %             disp('...Détection automatique des évènements');
-% %             evts = calcul_APA_all(CP_filt,t) - t(1);
-% %             Trial_TrialParams.EventsTime(2:7) = [evts(1) + t(1), evts(2)-0.01, evts(2:5)]; % 1er evt biomécanique
-% %             disp('...Terminé!');
-% %         end
+        try
+            extraction des evts du pas notés sur Nexus (VICON) // Modifié par AVH 24/11/2016
+            evts = sort(DATA.events.temps - t(1));
+            Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
+            
+            ev = btkGetEvents(h);
+            evts = sort(struct2array(btkGetEvents(h)));
+            Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
+            
+        catch ERR % Détection automatique
+            warning(ERR.identifier,'%s',ERR.message)
+            disp(['Pas d''évènements du pas ' myFile]);
+            disp('...Détection automatique des évènements');
+            evts = calcul_APA_all(CP_filt,t) - t(1);
+            Trial_TrialParams.EventsTime(2:7) = [evts(1) + t(1), evts(2)-0.01, evts(2:5)]; % 1er evt biomécanique
+            disp('...Terminé!');
+        end
         
         
         %======================================================================
@@ -2142,19 +2144,25 @@ if strcmp(choice, 'Yes')
         disp('No CSV file selected; no segmentation will be performed.');
     else
         segTable = readtable(fullfile(csvPath, csvFile)); 
-        % For simplicity, assume segmentation on the first big trial:
-        bigTrial = APA.Trial(1);
-        segmentedTrials = segmentTrial(bigTrial, segTable);
-        APA.Trial = [segmentedTrials{:}];  % Convert cell array to structure array
+        % For simplicity, segment only the first file for now
+        bigT  = APA.Trial(1);
+        bigTP = TrialParams.Trial(1);
+        bigR  = ResAPA.Trial(1);
 
-        % Clear or reinitialize TrialParams and ResAPA as needed:
-        TrialParams.Trial = [];
-        ResAPA.Trial = [];
+        [segT, segTP, segR] = segmentAllTrials(bigT, bigTP, bigR, segTable);
+
+        % Convert from cell array to structure array
+        APA.Trial         = [segT{:}];
+        TrialParams.Trial = [segTP{:}];
+        ResAPA.Trial      = [segR{:}];
+
+        % Update the GUI list
         global liste_marche
-        liste_marche = cellfun(@(t) t.TrialName, segmentedTrials, 'UniformOutput', false);
+        liste_marche = arrayfun(@(x) x.TrialName, APA.Trial, 'UniformOutput', false);
         set(findobj('tag','listbox1'),'String', liste_marche);
-        disp('Segmentation completed; multiple trials now in APA.Trial.');
-        disp('You can now annotate each segment individually in the GUI.');
+        disp('Segmentation completed; multiple sub-trials now in APA.Trial, TrialParams.Trial, ResAPA.Trial.');
+
+
     end
 else
     disp('No segmentation chosen; proceeding with the original recording(s).');
