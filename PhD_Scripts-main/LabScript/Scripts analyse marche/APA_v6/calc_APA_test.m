@@ -1,4 +1,4 @@
-function varargout = Calc_APA_v6_intact(varargin)
+function varargout = Calc_APA_v6(varargin)
 % CALC_APA_V6 MATLAB code for Calc_APA_v6.fig
 %      CALC_APA_V6, by itself, creates a new CALC_APA_V6 or raises the existing
 %      singleton*.
@@ -413,12 +413,12 @@ global dossier_c3d APA TrialParams ResAPA APA_T TrialParams_T Subject_data liste
 try
     %Choix manuel des fichiers
     [files, dossier_c3d] = uigetfile('*.c3d; *.xls','Choix du/des fichier(s) c3d ou notocord(xls)','Multiselect','on'); % Ajouter plus tard les autres file types
-    
-    %Initialisation
+
     Subject_data = {};
-    
+
     %Extraction des données d'intérêts
-    button_cut = questdlg('Lire toute l''acquisition?','Durée acquisition','Oui','PF','PF');
+    button_cut = questdlg('Lire toute l''acquisition?','Durée acquisition','Oui','PF','PF');    
+
     [APA_T, TrialParams_T, ResAPA] = Data_Preprocessing(files,dossier_c3d(1:end-1),button_cut);
     APA = APA_T;
     TrialParams = TrialParams_T;
@@ -451,6 +451,7 @@ try
     %Mise à jour de la liste
     set(findobj('tag','listbox1'), 'Value',1);
     liste_marche = arrayfun(@(i) APA.Trial(i).CP_Position.TrialName, 1:length(APA.Trial),'uni',0);
+
     set(findobj('tag','listbox1'),'String',liste_marche);
     
     set(findobj('tag','time_normalize'), 'Enable','On');
@@ -470,6 +471,10 @@ catch ERR_Charg
 
     % Optionally, rethrow the error so MATLAB stops and shows the debugger
     rethrow(ERR_Charg);
+
+%         
+%     warning(ERR_Charg.identifier,['Annulation chargement fichiers / ',ERR_Charg.message])
+%     waitfor(warndlg('Annulation chargement fichiers!'));
     
     
     % Chargement des évènements si dispo dans le c3d
@@ -1750,6 +1755,7 @@ APA_Vitesses_Callback;
 %% data_preprocessing
 function [APA, TrialParams, ResAPA] = Data_Preprocessing(files,dossier,b_c)
 % Effectue le pré-traitement et stockage des données receuillies du répertoire d'étude (dossier)
+global Freq_ana h DATA
 
 if nargin<2
     dossier = cd;
@@ -1771,8 +1777,6 @@ if iscell(files)
 else
     nb_acq =1;
 end
-if nb_acq == 1; files = {files}; end
-
 % initialisation
 try
     myFile = files{1}(1:end-4);
@@ -1822,45 +1826,76 @@ ResAPA.removedTrials = [];
 % On demande si enrg commence avant trigger ou non
 delay = str2num(cell2mat(inputdlg('Quel est le délai du trigger (en sec)?','Delay Trigger',1,{'0'})));
 
+cpt = 0;
+if nb_acq == 1; files = {files}; end
 
-% ----- NEW SEGMENTATION STEP -----
-if contains(upper(files{1}), 'PERCEPT')
-    segAns = questdlg('Filename contains PERCEPT. Do you want to segment the file?','Segmentation','Yes','No','No');
-    if strcmp(segAns,'Yes')
-        [csvFile, csvPath] = uigetfile('*.csv','Select CSV segmentation file');
-        if isequal(csvFile,0)
-            warndlg('No CSV file selected. Proceeding without segmentation.');
+% Check if segmentation is needed (file contains 'PERCEPT')
+if any(cellfun(@(f) contains(upper(f), 'PERCEPT'), files))
+    [csvFile, csvPath] = uigetfile('*.csv', 'Select CSV File with StartTime/EndTime');
+    if isequal(csvFile, 0)
+        disp('No CSV selected; processing full files.');
+        segmentedFiles = cellfun(@(f) fullfile(dossier, f), files, 'UniformOutput', false);
+    else
+        segTable = readtable(fullfile(csvPath, csvFile));
+        if ~ismember('StartTime', segTable.Properties.VariableNames) || ...
+           ~ismember('EndTime', segTable.Properties.VariableNames)
+            error('CSV must contain columns "StartTime" and "EndTime".');
+        end
+        if ismember('TrialID', segTable.Properties.VariableNames)
+            trialIDs = segTable.TrialID;
         else
-            segTable = readtable(fullfile(csvPath, csvFile));
-            hTemp = btkReadAcquisition(fullfile(dossier, files{1}));
-            Freq_temp = btkGetAnalogFrequency(hTemp);
-            t_all_temp = (0:btkGetAnalogFrameNumber(hTemp)-1)/Freq_temp;
-            totalTime = t_all_temp(end);
-            if segTable.EndTime(end) > totalTime
-                warndlg('Last CSV segment exceeds file duration.');
-            end
-            nSeg = height(segTable);
-            newFiles = cell(1, nSeg);
-            for k = 1:nSeg
-                st = segTable.StartTime(k);
-                et = segTable.EndTime(k);
-                if width(segTable) >= 3 && ~isempty(segTable.Trial_ID{k})
-                    suffix = segTable.Trial_ID{k};
-                else
-                    suffix = ['seg' num2str(k)];
+            trialIDs = (1:height(segTable))';
+        end
+        segmentedFiles = {};
+        for i = 1:nb_acq
+            fullFile = fullfile(dossier, files{i});
+            if contains(upper(files{i}), 'PERCEPT')
+                h_tmp = btkReadAcquisition(fullFile);
+                Freq_ana = btkGetAnalogFrequency(h_tmp);
+                totalFrames = btkGetAnalogFrameNumber(h_tmp);
+                t_all = (0:totalFrames-1) * (1/Freq_ana);
+                DATA = lire_donnees_c3d_all(fullFile);
+                Fin = round(find(DATA.actmec(:,9) < 70, 1, 'first'));
+                if isempty(Fin) || strcmp(b_c, 'Oui')
+                    Fin = length(t_all);
                 end
-                newFileName = [files{1}(1:end-4) '_' suffix '.c3d'];
-                newFiles{k} = newFileName;
-                extractC3DSegment(fullfile(dossier, files{1}), fullfile(dossier, newFileName), st, et);
+                totalDuration = t_all(Fin);
+                segTable.StartTime(segTable.StartTime > totalDuration) = totalDuration;
+                segTable.EndTime(segTable.EndTime > totalDuration) = totalDuration;
+                newFiles = segment_single_file(fullFile, segTable.StartTime, segTable.EndTime, trialIDs, b_c);
+                segmentedFiles = [segmentedFiles; newFiles];
+            else
+                segmentedFiles = [segmentedFiles; {fullFile}];
             end
-            files = newFiles;
-            nb_acq = nSeg;
         end
     end
+else
+    segmentedFiles = cellfun(@(f) fullfile(dossier, f), files, 'UniformOutput', false);
 end
-% ---------------------------------
 
+% Process each segmented file
 cpt = 0;
+APA.removedTrials = [];
+TrialParams.removedTrials = [];
+ResAPA.removedTrials = [];
+for i = 1:length(segmentedFiles)
+    myFile = segmentedFiles{i};
+    [~, name, ~] = fileparts(myFile);
+    myTrialName = upper(name);
+    myNum = str2double(myTrialName(end-3:end));  % Adjust as needed
+    waitbar(i/length(segmentedFiles), wb, ['Processing file: ' myTrialName]);
+
+    DATA = lire_donnees_c3d_all(myFile);
+    h_tmp = btkReadAcquisition(myFile);
+    Freq_ana = btkGetAnalogFrequency(h_tmp);
+    t_all = (0:btkGetAnalogFrameNumber(h_tmp)-1)*1/Freq_ana;
+    Fin = round(find(DATA.actmec(:,9) < 70, 1, 'first'));
+    if isempty(Fin) || strcmp(b_c, 'Oui')
+        Fin = length(t_all);
+    end
+end
+
+
 for i = 1:nb_acq
     
     myTrialName = upper(files{i}(1:end-4));
@@ -1966,9 +2001,9 @@ for i = 1:nb_acq
         end
         
         try
-            % extraction des evts du pas notés sur Nexus (VICON) // Modifié par AVH 24/11/2016
-%             evts = sort(DATA.events.temps - t(1));
-%             Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
+            extraction des evts du pas notés sur Nexus (VICON) // Modifié par AVH 24/11/2016
+            evts = sort(DATA.events.temps - t(1));
+            Trial_TrialParams.EventsTime(2:7) = evts(1:6) + t(1);
             
             ev = btkGetEvents(h);
             evts = sort(struct2array(btkGetEvents(h)));
@@ -2149,9 +2184,12 @@ for i = 1:nb_acq
     catch Err_load
         warning(Err_load.identifier,'%s',Err_load.message)
         disp(['Erreur de chargement pour ' myFile])
+        
+        
     end
 end
 close(wb);
+
 
 %% Graph selection
 function graph_zoom(hObject, ~, ~)

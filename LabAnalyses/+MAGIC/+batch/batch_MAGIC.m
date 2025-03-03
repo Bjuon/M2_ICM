@@ -46,7 +46,7 @@ todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
-todo.seg             = 0; % segment data per step
+todo.seg             = 1; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
 todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha
@@ -66,7 +66,7 @@ tBlock                    = 0.5;                %0.5; % 0.1 ; 0.5
 fqStart                   = 1;
 hpFilt                    = 1;                  % 0 if no highpass filter on data before segmentation, else 1
 segType                   = 'step'  ;           %'trial'; % 'step', if seg per step
-ChannelMontage            = 'extended';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
+ChannelMontage            = 'classic';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
 TimePlot                  = {'event'}; % Args in for plot_TF   %TimePlot = {'all', '10s', '05s', 'marche','artefact_watch'};
 Artefact_Rejection_Method = 'TF';               % 'TraceBrut' , 'TF',  'none'
 
@@ -134,11 +134,11 @@ if ~argin
 %     subject   = {'SAs_000a','BEm_000a','REa_0526'};
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
-    subject   = {'BEm_000a'}
+    subject   = complet(1:end-1)
     %subject = complet(~strcmp(complet, 'BEm_000a'));
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FOG_S', 'FOG_E', 'TURN_S', 'FC1' 'FO', 'FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FO', 'FC', 'FC1', 'TURN_E', 'FOG_S', 'FOG_E', 'TURN_S', 'FO1'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 

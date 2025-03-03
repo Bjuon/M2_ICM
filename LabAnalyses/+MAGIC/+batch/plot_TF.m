@@ -22,7 +22,10 @@ for t = 1 : numel(dataTF)
         end
         
         FigName = [fileName '_' TimePlot{TP} '_' med '_' sprintf('%02i', trial_num)];
-        fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 29.7 84]);
+        if strcmp(file(end-1:end), 'FO') || strcmp(file(end-1:end), 'FC')
+            FigName = [FigName '_step_' num2str(dataTF(t).info('trial').nStep)];
+        end
+        fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 20 84]);
         
             
         for ch = 1:nb_ch
