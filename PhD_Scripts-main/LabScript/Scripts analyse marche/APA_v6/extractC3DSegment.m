@@ -12,6 +12,13 @@ function extractC3DSegment(inputFile, outputFile, startTime, endTime)
 %   Note: If the computed segment end frame exceeds the total number of frames in the file,
 %         the segment end is clipped to the file's last frame and a warning is displayed.
 %
+    acq = btkReadAcquisition(inputFile);
+    freq = btkGetAnalogFrequency(acq);
+    totalFrames = btkGetAnalogFrameNumber(acq);
+    totalDuration = totalFrames / freq;
+    fprintf('Total Duration: %.2f seconds\n', totalDuration);
+    btkCloseAcquisition(acq);
+
 
     % Read the original C3D file
     try
@@ -29,6 +36,7 @@ function extractC3DSegment(inputFile, outputFile, startTime, endTime)
     % Convert startTime and endTime (in seconds) to frame indices (assuming time 0 corresponds to frame 1)
     frameStart = round(startTime * freq) + 1;
     frameEnd   = round(endTime * freq) + 1;
+    disp(frameEnd)
 
     % Adjust frameStart if it is below the first frame
     if frameStart < firstFrame

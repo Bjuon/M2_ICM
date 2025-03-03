@@ -1,4 +1,4 @@
-function varargout = Calc_APA_v6_intact(varargin)
+function varargout = Calc_APA_v6(varargin)
 % CALC_APA_V6 MATLAB code for Calc_APA_v6.fig
 %      CALC_APA_V6, by itself, creates a new CALC_APA_V6 or raises the existing
 %      singleton*.

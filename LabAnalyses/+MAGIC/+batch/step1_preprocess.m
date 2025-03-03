@@ -68,6 +68,8 @@ for f = 1 : numel(files)
         data.filter(h(i,j,k));
         data.fix();
     end
+    
+    
     % Rename data.values{1,1} to rawLFP_data
     rawLFP_data = data.values{1,1};
 
@@ -137,7 +139,10 @@ for f = 1 : numel(files)
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts
         disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
-        [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
+       % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
+        [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefacts_detection_ica(data);
+        %[Artefacts, Cleaned_Data] =  MAGIC.batch.Artefacts_detection_ml(data);
+        
 
     end
     % --- Replot Cleaned LFP ---
