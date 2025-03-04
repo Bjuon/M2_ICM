@@ -12,12 +12,6 @@ function extractC3DSegment(inputFile, outputFile, startTime, endTime)
 %   Note: If the computed segment end frame exceeds the total number of frames in the file,
 %         the segment end is clipped to the file's last frame and a warning is displayed.
 %
-    acq = btkReadAcquisition(inputFile);
-    freq = btkGetAnalogFrequency(acq);
-    totalFrames = btkGetAnalogFrameNumber(acq);
-    totalDuration = totalFrames / freq;
-    fprintf('Total Duration: %.2f seconds\n', totalDuration);
-    btkCloseAcquisition(acq);
 
 
     % Read the original C3D file
@@ -27,31 +21,40 @@ function extractC3DSegment(inputFile, outputFile, startTime, endTime)
         error('Failed to read C3D file "%s": %s', inputFile, ME.message);
     end
 
-    % Get sampling frequency and frame boundaries
-    freq = btkGetAnalogFrequency(acq);
-    totalFrames = btkGetAnalogFrameNumber(acq);
-    firstFrame = btkGetFirstFrame(acq);
+      % --- Modified code to use marker (point) data ---
+    freq = btkGetPointFrequency(acq);
+    totalFrames = btkGetPointFrameNumber(acq);
+    firstFrame = btkGetFirstFrame(acq);  % (if these refer to marker frames, they remain valid)
     lastFrame  = btkGetLastFrame(acq);
 
-    % Convert startTime and endTime (in seconds) to frame indices (assuming time 0 corresponds to frame 1)
+    % Debug prompt: Display acquisition details
+    duration = totalFrames / freq;
+    fprintf('Debug: Sampling Frequency: %.2f Hz, Total Frames: %d, Duration: %.2f seconds\n', freq, totalFrames, duration);
+
+    % --- After converting startTime and endTime to frame indices ---
     frameStart = round(startTime * freq) + 1;
     frameEnd   = round(endTime * freq) + 1;
-    disp(frameEnd)
+    fprintf('Debug: startTime = %.2f s -> computed frameStart = %d\n', startTime, frameStart);
+    fprintf('Debug: endTime = %.2f s -> computed frameEnd = %d\n', endTime, frameEnd);
+    disp(frameEnd)  % (if you still want to display this)
 
-    % Adjust frameStart if it is below the first frame
+    % --- In the boundary check for frameStart ---
     if frameStart < firstFrame
         warning('Segment start frame (%d) is below the first frame (%d). Adjusting to first frame.', frameStart, firstFrame);
+        fprintf('Debug: Adjusting frameStart from %d to %d\n', frameStart, firstFrame);
         frameStart = firstFrame;
     end
 
-    % Adjust frameEnd if it exceeds the file's last frame
+    % --- In the boundary check for frameEnd ---
     if frameEnd > lastFrame
         warning('Segment end frame (%d) exceeds the file''s last frame (%d). Clipping to file end.', frameEnd, lastFrame);
+        fprintf('Debug: Clipping frameEnd from %d to %d\n', frameEnd, lastFrame);
         frameEnd = lastFrame;
     end
 
-    % Ensure the adjusted frame range is valid
+    % --- Before error if frameStart > frameEnd ---
     if frameStart > frameEnd
+        fprintf('Debug: Final frame indices: frameStart = %d, frameEnd = %d\n', frameStart, frameEnd);
         btkCloseAcquisition(acq);
         error('Adjusted frame range is invalid: start frame %d is after end frame %d.', frameStart, frameEnd);
     end

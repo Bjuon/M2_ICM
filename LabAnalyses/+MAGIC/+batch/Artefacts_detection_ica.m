@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_ica(data)
+function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefacts_detection_ica(data)
 % Artefact_detection_ica - Clean LFP data using ICA-based artifact removal via rica.
 % Inputs:
 %   data - Structure with fields:
@@ -12,7 +12,7 @@ k = 5; % Threshold multiplier
 X = data.values{1,1}; % LFP data (samples x channels)
 numChannels = size(X,2);
 
-% Compute mean and center data manually to avoid relying on Mdl.Offset
+% Compute mean and center data manually 
 Xmean = mean(X,1);
 X_centered = X - Xmean;
 

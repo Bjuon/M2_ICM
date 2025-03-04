@@ -1841,7 +1841,12 @@ if contains(upper(files{1}), 'PERCEPT')
             end
             nSeg = height(segTable);
             newFiles = cell(1, nSeg);
-            for k = 1:nSeg
+            
+            segFolder = fullfile(dossier, 'temp_seg');
+            if ~exist(segFolder, 'dir')
+                mkdir(segFolder);
+            end
+           for k = 1:nSeg
                 st = segTable.StartTime(k);
                 et = segTable.EndTime(k);
                 if width(segTable) >= 3 && ~isempty(segTable.Trial_ID{k})
@@ -1850,9 +1855,9 @@ if contains(upper(files{1}), 'PERCEPT')
                     suffix = ['seg' num2str(k)];
                 end
                 newFileName = [files{1}(1:end-4) '_' suffix '.c3d'];
-                newFiles{k} = newFileName;
-                extractC3DSegment(fullfile(dossier, files{1}), fullfile(dossier, newFileName), st, et);
-            end
+                newFiles{k} = fullfile(segFolder, newFileName);  % Store full file path
+                extractC3DSegment(fullfile(dossier, files{1}), newFiles{k}, st, et);
+           end
             files = newFiles;
             nb_acq = nSeg;
         end
