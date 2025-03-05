@@ -110,7 +110,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_ML');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_EMD_Hilbert');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -134,11 +134,11 @@ if ~argin
 %     subject   = {'SAs_000a','BEm_000a','REa_0526'};
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
-    subject   = complet(1:end-1)
-    %subject = complet(~strcmp(complet, 'BEm_000a'));
+%    subject   = complet(1:end-1)
+    subject = {'FRj_0610'}
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FO1', 'FC', 'FC1', 'TURN_E', 'FOG_S', 'FOG_E', 'TURN_S', 'FO1'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FO1', 'FC1', 'FO', 'FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -441,9 +441,9 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 if todo.plotTF && existTF == true
 
                     load([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
-                    if todo.plotTF == 1
-                        disp('Plotting Raw TF')
-                        MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
+%                     if todo.plotTF == 1
+%                         disp('Plotting Raw TF')
+%                         MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
 
                         %             elseif todo.plotTF == 2
                         %                 MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
@@ -463,7 +463,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     else
                                 disp(['No TF file for event ' e{1} ', skipping plot.']);
 
-                    end
+                    %end
                 end
             end
         end

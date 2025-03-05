@@ -42,6 +42,31 @@ for i = 1:numComp
     end
 end
 
+
+figure;
+for i = 1:numComp
+    % Left column: Original IC
+    MAGIC.batch.subplot_tight(numComp, 2, 2*i - 1, [0.01 0.03]); % Adjust margins as needed
+    plot(icasig(:, i));
+    title(['IC ' num2str(i) ' - Original']);
+    xlabel('Samples'); ylabel('Amplitude');
+    
+    % Right column: Cleaned IC
+    MAGIC.batch.subplot_tight(numComp, 2, 2*i, [0.01 0.03]);
+    plot(Cleaned_IC(:, i));
+    title(['IC ' num2str(i) ' - Cleaned']);
+    xlabel('Samples'); ylabel('Amplitude');
+end
+sgtitle('Independent Components Before and After Cleaning');
+%  plot the artifact detection matrix 
+figure;
+imagesc(Artifact_IC);
+colorbar;
+title('Artifact Detection Matrix');
+xlabel('Independent Components');
+ylabel('Samples');
+
+
 % Reconstruct cleaned data manually using TransformWeights and add back mean
 Cleaned_Data_centered = Cleaned_IC * Mdl.TransformWeights';
 Cleaned_Data = Cleaned_Data_centered + Xmean;

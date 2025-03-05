@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefacts_detection_ml(data)
+function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_mathys_ml(data)
 % Artefacts_detection_ml - Machine Learning-based artifact removal for LFP.
 % Uses unsupervised clustering (K-means) to classify and remove artifacts.
 %

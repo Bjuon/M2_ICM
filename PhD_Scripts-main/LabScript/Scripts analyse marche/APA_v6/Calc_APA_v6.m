@@ -1868,10 +1868,12 @@ end
 cpt = 0;
 for i = 1:nb_acq
     
-    myTrialName = upper(files{i}(1:end-4));
-    myNum = str2double(files{i}(end-5:end-4));
+    [~, name, ~] = fileparts(files{i});
+    myTrialName = upper(name);    myNum = str2double(files{i}(end-5:end-4));
     myFile = files{i};
-    waitbar(i/nb_acq,wb,['Lecture fichier:' ,strrep(myFile,'_','-')]);
+    msg = ['Lecture fichier: ' , strrep(myFile, '_', '-')];
+    msg = strrep(msg, '\', '\\');
+    waitbar(i/nb_acq, wb, msg);    
     try
         %======================================================================
         % initialisation des structures
