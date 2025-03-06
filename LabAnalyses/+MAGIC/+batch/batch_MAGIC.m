@@ -36,7 +36,7 @@ global hpFilt
 global reject_table
 global tasks
 
-global rawLFPDir cleanLFPDir rawTFDir cleanTFDir
+global rawLFPDir cleanLFPDir rawTFDir cleanTFDir artefacts_results_Dir
 global run
 
 
@@ -225,6 +225,8 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
     % Create patient-level directories for LFP data
     rawLFPDir   = fullfile(patientDir, 'Raw_LFP');
     cleanLFPDir = fullfile(patientDir, 'Cleaned_LFP');
+    artefacts_results_Dir = fullfile(patientDir, 'Artefacts_results');
+    MAGIC.batch.EnsureDir(artefacts_results_Dir);
     MAGIC.batch.EnsureDir(rawLFPDir);
     MAGIC.batch.EnsureDir(cleanLFPDir);
     
