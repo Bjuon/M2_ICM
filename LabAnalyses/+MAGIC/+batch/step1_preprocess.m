@@ -25,7 +25,7 @@ global med run
 global rawLFPDir cleanLFPDir
 
 
-todo.plotRawLFP         = 1; % Set to 1 to enable plotting of raw LFP data.
+todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 1; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
 
@@ -141,10 +141,10 @@ for f = 1 : numel(files)
         disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
        % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
        % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
-        % [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
-        % [Cleaned_Data] = MAGIC.batch.Artefact_dection_mathys_ajdc;
+      %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd(data, 10);
+         [Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);
         
-        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
+      %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
 
     end
     % --- Replot Cleaned LFP ---

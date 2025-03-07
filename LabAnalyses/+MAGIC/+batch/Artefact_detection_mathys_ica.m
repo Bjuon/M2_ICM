@@ -8,7 +8,7 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefacts_detection_ica
 %   Artefacts_Detected_per_Sample - Binary matrix indicating artifact locations.
 %   Cleaned_Data - Data after artifact removal using ICA.
 
-k = 5; % Threshold multiplier
+k = 2; % Threshold multiplier
 X = data.values{1,1}; % LFP data (samples x channels)
 numChannels = size(X,2);
 
