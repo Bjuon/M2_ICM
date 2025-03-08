@@ -96,7 +96,7 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-localMode = false;  
+localMode = true;  
 if localMode
     startpath = "F:\Programing\M2\Data_ICM";
 else
@@ -136,6 +136,8 @@ if ~argin
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
 %    subject   = complet(1:end-1)
     subject = {'FRj_0610'}
+        subject = {'Bem_000a'}
+
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 event    = {'FO1', 'FC1', 'FO', 'FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};

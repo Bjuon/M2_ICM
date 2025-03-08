@@ -1,7 +1,7 @@
 % Abstract Process class 
 classdef(Abstract) Process < hgsetget & matlab.mixin.Copyable
    properties
-      info@containers.Map % Information about process
+      info % Information about process (containers.Map)
    end
    properties(SetAccess = immutable, Hidden)
       timeUnit            % Time representation (TODO)
@@ -74,14 +74,14 @@ classdef(Abstract) Process < hgsetget & matlab.mixin.Copyable
       history = false     % Boolean indicating add queueable methods (TODO)
    end
    properties(Transient)
-      segment@Segment     % Reference to parent Segment
+      segment             % Reference to parent Segment object
    end
    properties(Abstract)
      trailingInd_         % Cell array for expanding trailing dimension
    end
    properties(SetAccess = protected, Hidden, Transient)
-      loadListener_@event.proplistener % lazyLoad listener
-      evalListener_@event.listener     % deferredEval listener
+      loadListener_       % lazyLoad listener (event.proplistener)
+      evalListener_       % deferredEval listener (event.listener)
    end
    properties(SetAccess = immutable)
       serializeOnSave = false 
@@ -303,6 +303,22 @@ classdef(Abstract) Process < hgsetget & matlab.mixin.Copyable
          if ~isempty(self.queue) && any(~[self.queue{:,3}])
             isRunnable = true;
          end
+      end
+      
+      function set.info(self, value)
+         % Ensure info is a containers.Map object
+         if ~isempty(value) && ~isa(value, 'containers.Map')
+             error('Process:InvalidType', 'info must be a containers.Map object');
+         end
+         self.info = value;
+      end
+      
+      function set.segment(self, value)
+         % Ensure segment is a Segment object or empty
+         if ~isempty(value) && ~isa(value, 'Segment')
+             error('Process:InvalidType', 'segment must be a Segment object');
+         end
+         self.segment = value;
       end
       
       % Assignment for object arrays

@@ -27,7 +27,7 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
 todo.plot_results = 1; 
 global artefacts_results_Dir med run;
 
-%% Parameters (modify these to tweak the detection sensitivity)
+%% Parameters 
 artefact_threshold = 8;       % Threshold multiplier (higher = less sensitive)
 tf_window_size = 0.5;         % Window size in seconds (matches 500ms artefact blocks)
 freq_range = [0 70];          % Frequency range to analyze for artefacts (Hz)
