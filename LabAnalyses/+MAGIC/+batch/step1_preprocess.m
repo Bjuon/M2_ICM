@@ -141,7 +141,7 @@ for f = 1 : numel(files)
         disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
        % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
         [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
-       % [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd(data, 10);
+      %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd(data, 7);
         % [Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);
         
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
