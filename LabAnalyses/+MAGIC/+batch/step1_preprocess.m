@@ -25,7 +25,7 @@ global med run
 global rawLFPDir cleanLFPDir
 
 
-todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
+todo.plotRawLFP         = 1; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 1; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
 
