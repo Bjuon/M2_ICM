@@ -108,19 +108,6 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_math
             fprintf('Channel %d: no artifacts detected\n', iChannel);
         end
     end
-    
-    % Force the output to be double - add extra protection
-    Cleaned_Data = double(full(Cleaned_Data));
-
-    % Ensure there are no logical values in the matrix
-    if islogical(Cleaned_Data)
-        warning('Cleaned_Data is logical - forcing conversion to double');
-        Cleaned_Data = double(Cleaned_Data);
-    end
-
-    % Remove any NaN or Inf values
-    Cleaned_Data(isnan(Cleaned_Data)) = 0;
-    Cleaned_Data(isinf(Cleaned_Data)) = 0;
 
     % Debug info to check the data type and range
     fprintf('FINAL Cleaned_Data type: %s, class: %s, size: [%d x %d]\n', ...
@@ -132,11 +119,9 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_math
     Artefacts_Detected_per_Sample(1,1) = fs;
     
     % Visualize results and save figures (in try-catch to prevent errors)
-    try
-        plot_source_separation(lfp, Cleaned_Data, S, idx_keep, fs, artefacts_results_Dir, med, run);
-    catch err
-        warning('Error in plot_source_separation: %s', err.message);
-    end
+    
+     plot_source_separation(lfp, Cleaned_Data, S, idx_keep, fs, artefacts_results_Dir, med, run);
+    
     
     fprintf('Number of identified clean sources: %d out of %d\n', length(idx_keep), size(S, 2));
     fprintf('Artifact threshold used: %.2f\n', artifact_threshold);
@@ -296,7 +281,6 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
     
     % Check if save_dir is too long, use a shorter backup path if needed
     if length(save_dir) > 150  % Leave room for filenames
-        warning('Save directory path is very long. Images may be saved to temporary directory: %s', alt_save_dir);
         if ~exist(alt_save_dir, 'dir')
             mkdir(alt_save_dir);
         end
@@ -373,7 +357,6 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
             fprintf('Saved figure to: %s\n', filepath);
         catch err
             % If original path fails, try with shorter temp directory
-            warning('Error saving to original path: %s. Trying alternate location.', err.message);
             filepath = fullfile(alt_save_dir, filename);
             saveas(fig, filepath);
             fprintf('Saved figure to alternate location: %s\n', filepath);
@@ -405,7 +388,6 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
         saveas(fig_all, filepath);
         fprintf('Saved figure to: %s\n', filepath);
     catch err
-        warning('Error saving to original path: %s. Trying alternate location.', err.message);
         filepath = fullfile(alt_save_dir, filename);
         saveas(fig_all, filepath);
         fprintf('Saved figure to alternate location: %s\n', filepath);
@@ -446,7 +428,6 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
         saveas(fig_mask, filepath);
         fprintf('Saved figure to: %s\n', filepath);
     catch err
-        warning('Error saving to original path: %s. Trying alternate location.', err.message);
         filepath = fullfile(alt_save_dir, filename);
         saveas(fig_mask, filepath);
         fprintf('Saved figure to alternate location: %s\n', filepath);
