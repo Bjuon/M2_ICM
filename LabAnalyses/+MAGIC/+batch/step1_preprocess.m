@@ -140,11 +140,12 @@ for f = 1 : numel(files)
     if todo.detectArtifacts
         disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
        % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
-        [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
+      %  [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd(data, 7);
-        % [Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);
-        
+       %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);        
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
+
+         [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBAR(data)
 
     end
     % --- Replot Cleaned LFP ---
@@ -471,6 +472,18 @@ for f = 1 : numel(files)
         % Create a new SampledProcess for raw data using a numeric matrix
         choppedRaw(tIdx) = SampledProcess('values', rawLFP_data(idx, :), ...
                                           'Fs', data.Fs, 'labels', data.labels);
+                                      
+%         if ~isnumeric(Cleaned_Data) || islogical(Cleaned_Data)
+%             warning('Cleaned_Data is not numeric or is logical! Converting to double.');
+%             Cleaned_Data = double(full(Cleaned_Data));
+%         end
+% 
+%     % Make sure we have valid numeric data before passing to SampledProcess
+%     if any(isnan(Cleaned_Data(:))) || any(isinf(Cleaned_Data(:)))
+%         warning('NaN or Inf values found in Cleaned_Data. Replacing with zeros.');
+%         Cleaned_Data(isnan(Cleaned_Data)) = 0;
+%         Cleaned_Data(isinf(Cleaned_Data)) = 0;
+%     end
 
         % Similarly, for the cleaned data
         choppedCleaned(tIdx) = SampledProcess('values', Cleaned_Data(idx, :), ...

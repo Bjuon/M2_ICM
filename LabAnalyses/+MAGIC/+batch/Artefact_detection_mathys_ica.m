@@ -1,7 +1,7 @@
 function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_ica(data)
 % Extract relevant components from LFP data using ICA within 1-70 Hz range
 
-todo.plot_results = 0; % OPTIMIZATION: Set to 0 by default, enable only when needed
+todo.plot_results = 1
 global artefacts_results_Dir med run;
 
 % Extract data
@@ -12,9 +12,6 @@ Fs = data.Fs;
 % Center data
 Xmean = mean(raw_data, 1);
 X_centered = raw_data - Xmean;
-
-% OPTIMIZATION: Reduce number of ICA components if channels > 20
-num_components = min(num_channels, max(10, round(num_channels/2)));
 
 % Perform ICA - with reduced dimensionality
 fprintf('Performing ICA decomposition with %d components (of %d channels)...\n', num_components, num_channels);
@@ -66,8 +63,6 @@ for batch = 1:ceil(num_components/batch_size)
 end
 
 fprintf('Found %d components with frequency in 1-70 Hz range\n', sum(selected_ics));
-
-% OPTIMIZATION: Only process the selected ICs
 selected_indices = find(selected_ics);
 for i = selected_indices
     comp = icasig(:, i);
@@ -76,7 +71,7 @@ for i = selected_indices
     Artifact_IC(:, i) = art_idx;
     
     if any(art_idx)
-        idxGood = find(~art_idx);  % Use tilde instead of exclamation mark
+        idxGood = find(~art_idx);  
         if numel(idxGood) >= 2
             Cleaned_IC(art_idx, i) = interp1(idxGood, comp(idxGood), find(art_idx), 'linear', 'extrap');
         else
@@ -85,12 +80,10 @@ for i = selected_indices
     end
 end
 
-% OPTIMIZATION: Only reconstruct with selected components
 selected_ic_matrix = zeros(size(icasig));
 selected_ic_matrix(:, selected_ics) = Cleaned_IC(:, selected_ics);
 Cleaned_Data = selected_ic_matrix * Mdl.TransformWeights' + Xmean;
 
-% OPTIMIZATION: Simplified artifact detection - vectorized where possible
 ch_artifact_masks = false(num_samples, num_channels);
 
 % Check and display TransformWeights dimensions
@@ -107,7 +100,7 @@ for ch = 1:channels_to_process
     
     % Only process contributions from selected ICs
     for i = selected_indices
-        if i <= tw_rows && ch <= tw_cols  % Add safety check for bounds
+        if i <= tw_rows && ch <= tw_cols  
             contribution = abs(Mdl.TransformWeights(i, ch));
             if contribution > 0.2 % Only significant components
                 ch_artifact_mask = ch_artifact_mask | Artifact_IC(:, i);
@@ -183,7 +176,7 @@ hold on;
 
 % Highlight selected ICs
 highlight = zeros(1, length(dominant_freqs));
-highlight(selected_ics) = dominant_freqs(selected_ics);  % FIXED: Changed square brackets to parentheses
+highlight(selected_ics) = dominant_freqs(selected_ics);  
 bar(1:length(dominant_freqs), highlight, 'FaceColor', [0.2 0.7 0.3]);
 
 title('IC Frequency Distribution - Selected Components (1-70 Hz)');

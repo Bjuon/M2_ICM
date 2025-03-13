@@ -9,51 +9,51 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_math
     % Outputs:
     %   Artefacts_Detected_per_Sample - Binary matrix indicating artifact locations [samples x channels].
     %   Cleaned_Data - Data after artifact removal [samples x channels].
-    %
-    % The processing steps are:
-    %   1. Preliminary bandpass filtering over 0-70 Hz.
-    %   2. Computation of covariance matrices over narrow frequency bands (0-70 Hz in 5 Hz steps).
-    %   3. Joint diagonalization of these covariance matrices.
-    %   4. Identification of the relevant sources (artifact removal).
-    %   5. Reconstruction of the cleaned LFP signals.
-    %
-    % Parameters to tweak:
-    %   - freqs: Frequency bands used for covariance calculation (0:5:70 Hz)
-    %   - band_width: Width of each frequency band (�2 Hz)
-    %   - artifact_threshold: Threshold for artifact detection (higher = less sensitive)
     
-global artefacts_results_Dir med run;
+    global artefacts_results_Dir med run;
 
-
-    % Define parameters (moved here to be accessible in main function)
-    artifact_threshold = 0.6;  % Threshold for artifact detection
+    %% Parameters to tweak
+    % Frequency ranges
+    freq_min = 0;           % Minimum frequency for analysis (Hz)
+    freq_max = 70;          % Maximum frequency for analysis (Hz)
+    freq_step = 5;          % Step size for frequency bands (Hz)
+    band_width = 2;         % Width of each frequency band (Hz)
     
-    % Extract LFP data and sampling frequency
+    % Artifact detection
+    artifact_threshold = 0.4;   % Threshold for artifact detection (higher = less sensitive)
+    kurtosis_weight = 0.7;      % Weight for kurtosis in artifact scoring (0-1)
+    power_weight = 0.3;         % Weight for power in artifact scoring (0-1)
+    
+    % Artifact mask
+    outlier_threshold = 5;      % MAD multiplier for artifact samples
+    min_artifact_duration = 0.1; % Minimum artifact duration in seconds
+    
+    % Extract LFP data and sampling frequency - USING THE SAME PATTERN AS THE WORKING FUNCTION
     lfp = data.values{1,1};
     fs = data.Fs;
     [N, nb_chan] = size(lfp);
     
-    % Initialize artifact detection matrix
-    Artefacts_Detected_per_Sample = zeros(size(lfp));
+    % Initialize output matrices - EXACTLY LIKE THE WORKING FUNCTION
+    % Start with original data as the basis for cleaned data
+    Cleaned_Data = double(data.values{1,1});  % Ensure it's double type from the start
+    Artefacts_Detected_per_Sample = zeros(size(Cleaned_Data));
     
     % Create global directory for saving figures if it doesn't exist
     artefact_detection_Dir = fullfile(fileparts(mfilename('fullpath')), 'artefact_detection_results');
-    if ~exist(artefact_detection_Dir, 'dir')
+    if (~exist(artefact_detection_Dir, 'dir'))
         mkdir(artefact_detection_Dir);
     end
     
-    %% 1. Preliminary Filtering: bandpass filter the signal from 1 to 70 Hz.
-    % The bandpass function filters the input signal between the specified low and high cutoff frequencies.
-    lfp_filtered = bandpass(lfp, [1 70], fs);
+    %% 1. Preliminary Filtering: bandpass filter the signal from 1 to freq_max Hz.
+    lfp_filtered = bandpass(lfp, [1 freq_max], fs);
     
     %% 2. Compute Covariance Matrices over Frequency Bands
-    % Define frequencies of interest from 1 to 70 Hz in steps of 5 Hz.
-    freqs = 0:5:70;
+    freqs = freq_min:freq_step:freq_max;
     CovMatrices = {};
     for f = freqs
-        % Isolate a narrow band around each frequency f (�2 Hz).
+        % Isolate a narrow band around each frequency f (±band_width Hz).
         % Using a small positive value (0.1) as minimum to ensure valid bandpass parameters
-        Xf = bandpass(lfp_filtered, [max(0.1, f-2) f+2], fs);
+        Xf = bandpass(lfp_filtered, [max(0.1, f-band_width) f+band_width], fs);
         % The cov function computes the covariance matrix for the filtered segment.
         CovMatrices{end+1} = cov(Xf);
     end
@@ -68,10 +68,12 @@ global artefacts_results_Dir med run;
     
     %% 4. Artifact Identification / Source Selection
     % Identify artifact sources using kurtosis and power analysis
-    idx_keep = identify_clean_sources(S, fs, artifact_threshold);
+    idx_keep = identify_clean_sources(S, fs, artifact_threshold, kurtosis_weight, power_weight, freq_max);
     
     % Track which samples are affected by artifacts
-    artifact_mask = identify_artifact_samples(S, idx_keep, fs);
+    artifact_mask = identify_artifact_samples(S, idx_keep, fs, outlier_threshold, min_artifact_duration);
+    
+    % Use binary mask for artifacts (matching the working function)
     Artefacts_Detected_per_Sample = repmat(artifact_mask, 1, nb_chan);
     
     % Select only the identified clean sources
@@ -82,20 +84,60 @@ global artefacts_results_Dir med run;
     if isempty(idx_keep)
         % All sources marked as artifacts - unlikely but handle just in case
         warning('All sources marked as artifacts. Using original filtered signal.');
-        Cleaned_Data = lfp_filtered;
+        temp_cleaned = lfp_filtered;
     else
         % Normal reconstruction with clean sources
         A = pinv(B');  % Using pseudo-inverse for better stability than inv()
-        Cleaned_Data = S_clean * A(idx_keep, :);
+        temp_cleaned = S_clean * A(idx_keep, :);
     end
+    
+    % Apply the cleaned data ONLY at the artifact points, keeping original data elsewhere
+    for iChannel = 1:nb_chan
+        % Get the artifact indices for this channel
+        artifact_indices = find(Artefacts_Detected_per_Sample(:, iChannel));
+        
+        if ~isempty(artifact_indices)
+            % Replace only the artifact points with reconstructed data
+            Cleaned_Data(artifact_indices, iChannel) = temp_cleaned(artifact_indices, iChannel);
+            
+            % For debug: count how many samples were replaced
+            percent_replaced = 100 * length(artifact_indices) / N;
+            fprintf('Channel %d: replaced %.2f%% of samples (%d out of %d)\n', ...
+                iChannel, percent_replaced, length(artifact_indices), N);
+        else
+            fprintf('Channel %d: no artifacts detected\n', iChannel);
+        end
+    end
+    
+    % Force the output to be double - add extra protection
+    Cleaned_Data = double(full(Cleaned_Data));
+
+    % Ensure there are no logical values in the matrix
+    if islogical(Cleaned_Data)
+        warning('Cleaned_Data is logical - forcing conversion to double');
+        Cleaned_Data = double(Cleaned_Data);
+    end
+
+    % Remove any NaN or Inf values
+    Cleaned_Data(isnan(Cleaned_Data)) = 0;
+    Cleaned_Data(isinf(Cleaned_Data)) = 0;
+
+    % Debug info to check the data type and range
+    fprintf('FINAL Cleaned_Data type: %s, class: %s, size: [%d x %d]\n', ...
+        class(Cleaned_Data), class(Cleaned_Data(1,1)), size(Cleaned_Data, 1), size(Cleaned_Data, 2));
+    fprintf('FINAL Cleaned_Data range: min=%.4f, max=%.4f, unique values=%d\n', ...
+        min(Cleaned_Data(:)), max(Cleaned_Data(:)), length(unique(Cleaned_Data(:))));
     
     % Store sampling frequency in first element
     Artefacts_Detected_per_Sample(1,1) = fs;
     
-    % Visualize results and save figures
-    plot_source_separation(lfp, Cleaned_Data, S, idx_keep, fs, artefacts_results_Dir, med, run);
+    % Visualize results and save figures (in try-catch to prevent errors)
+    try
+        plot_source_separation(lfp, Cleaned_Data, S, idx_keep, fs, artefacts_results_Dir, med, run);
+    catch err
+        warning('Error in plot_source_separation: %s', err.message);
+    end
     
-    % Add debug information about source selection
     fprintf('Number of identified clean sources: %d out of %d\n', length(idx_keep), size(S, 2));
     fprintf('Artifact threshold used: %.2f\n', artifact_threshold);
 end
@@ -124,7 +166,7 @@ function B = simple_joint_diag(CovMatrices)
 end
 
 %% Source identification
-function idx_keep = identify_clean_sources(S, fs, artifact_threshold)
+function idx_keep = identify_clean_sources(S, fs, artifact_threshold, kurtosis_weight, power_weight, freq_max)
     % Identify clean sources (non-artifact) based on spectral analysis and kurtosis
     [n_samples, n_sources] = size(S);
     
@@ -137,9 +179,9 @@ function idx_keep = identify_clean_sources(S, fs, artifact_threshold)
         % Calculate kurtosis (high kurtosis often indicates artifacts)
         source_kurtosis(i) = kurtosis(S(:,i));
         
-        % Calculate power in the 0-70 Hz band
+        % Calculate power in the 0-freq_max Hz band
         [pxx, f] = pwelch(S(:,i), [], [], [], fs);
-        idx_band = f >= 0 & f <= 70;
+        idx_band = f >= 0 & f <= freq_max;
         source_power(i) = mean(pxx(idx_band));
     end
     
@@ -148,7 +190,7 @@ function idx_keep = identify_clean_sources(S, fs, artifact_threshold)
     source_power = (source_power - min(source_power)) / (max(source_power) - min(source_power) + eps);
     
     % Combine metrics (higher value = more likely to be artifact)
-    artifact_score = 0.7 * source_kurtosis + 0.3 * source_power;
+    artifact_score = kurtosis_weight * source_kurtosis + power_weight * source_power;
     
     % Print debug info about artifact scores
     fprintf('Artifact scores for each source:\n');
@@ -172,7 +214,7 @@ function idx_keep = identify_clean_sources(S, fs, artifact_threshold)
 end
 
 %% Identify which samples are affected by artifacts
-function artifact_mask = identify_artifact_samples(S, clean_idx, fs)
+function artifact_mask = identify_artifact_samples(S, clean_idx, fs, outlier_threshold, min_artifact_duration)
     % Create a mask of samples affected by artifacts
     
     % Get indices of artifact sources
@@ -196,13 +238,13 @@ function artifact_mask = identify_artifact_samples(S, clean_idx, fs)
     mad_energy = mad(energy, 1);
     
     % Threshold for high-energy samples
-    threshold = med_energy + 5 * mad_energy;
+    threshold = med_energy + outlier_threshold * mad_energy;
     
     % Create mask
     artifact_mask = energy > threshold;
     
     % Apply minimum duration constraint (group short segments)
-    min_duration_samples = round(0.1 * fs);  % 100 ms
+    min_duration_samples = round(min_artifact_duration * fs);
     artifact_mask = smooth_mask(artifact_mask, min_duration_samples);
 end
 
@@ -229,7 +271,6 @@ function smooth_mask = smooth_mask(mask, min_length)
 end
 
 %% Visualization function
-%% Visualization function
 function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_dir, med, run)
     % Create time vector once for all plots
     t = (0:size(original, 1)-1) / fs;
@@ -239,15 +280,27 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
         mkdir(save_dir);
     end
     
-    % Create filename prefix including med and run info
+    % Create a shortened filename prefix for med and run
     if ~isempty(med) && ~isempty(run)
-        filename_prefix = sprintf('med%s_run%s_', med, run);
+        filename_prefix = sprintf('m%s_r%s_', med, run);
     else
         filename_prefix = '';
     end
     
     % Display save directory for debugging
     fprintf('Saving figures to: %s\n', save_dir);
+    
+    % Get a shorter version of the save directory for final path checking
+    [~, short_dir_name] = fileparts(save_dir);
+    alt_save_dir = fullfile(tempdir, short_dir_name);
+    
+    % Check if save_dir is too long, use a shorter backup path if needed
+    if length(save_dir) > 150  % Leave room for filenames
+        warning('Save directory path is very long. Images may be saved to temporary directory: %s', alt_save_dir);
+        if ~exist(alt_save_dir, 'dir')
+            mkdir(alt_save_dir);
+        end
+    end
     
     % Plot all channels
     [~, num_channels] = size(original);
@@ -311,10 +364,21 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
         yticks([]);
         grid on;
         
-        % Save figure for this channel with med/run info
-        savefig_path = fullfile(save_dir, sprintf('%schannel_%02d_artifact_removal.fig', filename_prefix, ch));
-        saveas(fig, savefig_path);
-        fprintf('Saved figure to: %s\n', savefig_path);
+        % Use a MUCH shorter filename (ch_XX.png)
+        try
+            % Try with the original directory first
+            filename = sprintf('%sch_%02d.png', filename_prefix, ch);
+            filepath = fullfile(save_dir, filename);
+            saveas(fig, filepath);
+            fprintf('Saved figure to: %s\n', filepath);
+        catch err
+            % If original path fails, try with shorter temp directory
+            warning('Error saving to original path: %s. Trying alternate location.', err.message);
+            filepath = fullfile(alt_save_dir, filename);
+            saveas(fig, filepath);
+            fprintf('Saved figure to alternate location: %s\n', filepath);
+        end
+        
         close(fig);
     end
     
@@ -334,13 +398,21 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
     ylabel('Amplitude');
     grid on;
     
-    % Save figures with med/run info
-    savefig_path = fullfile(save_dir, sprintf('%sall_channels_comparison.fig', filename_prefix));
-    saveas(fig_all, savefig_path);
-    fprintf('Saved figure to: %s\n', savefig_path);
+    % Use shorter filename
+    try
+        filename = sprintf('%sall_ch.png', filename_prefix);
+        filepath = fullfile(save_dir, filename);
+        saveas(fig_all, filepath);
+        fprintf('Saved figure to: %s\n', filepath);
+    catch err
+        warning('Error saving to original path: %s. Trying alternate location.', err.message);
+        filepath = fullfile(alt_save_dir, filename);
+        saveas(fig_all, filepath);
+        fprintf('Saved figure to alternate location: %s\n', filepath);
+    end
+    
     close(fig_all);
     
-    % Use the pre-computed artifact mask instead of recalculating
     % Create the artifact mask for visualization
     [n_samples, n_sources] = size(sources);
     artifact_idx = setdiff(1:n_sources, idx_keep);
@@ -367,8 +439,18 @@ function plot_source_separation(original, cleaned, sources, idx_keep, fs, save_d
     ylim([-0.1, 1.1]);
     grid on;
     
-    savefig_path = fullfile(save_dir, sprintf('%sartifact_mask.fig', filename_prefix));
-    saveas(fig_mask, savefig_path);
-    fprintf('Saved figure to: %s\n', savefig_path);
+    % Use shorter filename
+    try
+        filename = sprintf('%smask.png', filename_prefix);
+        filepath = fullfile(save_dir, filename);
+        saveas(fig_mask, filepath);
+        fprintf('Saved figure to: %s\n', filepath);
+    catch err
+        warning('Error saving to original path: %s. Trying alternate location.', err.message);
+        filepath = fullfile(alt_save_dir, filename);
+        saveas(fig_mask, filepath);
+        fprintf('Saved figure to alternate location: %s\n', filepath);
+    end
+    
     close(fig_mask);
 end

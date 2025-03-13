@@ -27,6 +27,8 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
 todo.plot_results = 1; 
 global artefacts_results_Dir med run;
 
+
+
 %% Parameters 
 artefact_threshold = 8;       % Threshold multiplier (higher = less sensitive)
 tf_window_size = 0.5;         % Window size in seconds (matches 500ms artefact blocks)
@@ -157,7 +159,7 @@ Stats.percent_removed = 100 * sum(sum(Artefacts_Detected_per_Sample)) / (num_sam
 fprintf('Detection complete: %d artefact blocks found (%.2f%% of signal)\n', ...
     Stats.total_artefacts, Stats.percent_removed);
 
-% Calculate cleaned signal TF energy for comparison (using first channel as example)
+% (Optional) Compute TF energy for the first channel or remove if not needed
 if num_channels > 0
     [~, ~, ~, P_clean] = spectrogram(Cleaned_Data(:, 1), window_samples, overlap_samples, [], Fs, 'yaxis');
     Stats.tf_energy.cleaned = mean(P_clean(freq_indices, :), 1);
@@ -166,25 +168,25 @@ end
 % Store sampling frequency for reference
 Artefacts_Detected_per_Sample(1,1) = Fs;
 
-% Visualize results if no output arguments
+%% Visualize results for EACH channel (plot all channels)
 if todo.plot_results 
-  
-    % Generate an adaptive filename based on medication state and run ID
-    filename = sprintf('artefact_results_%s_run%s.png', med, run);
-    
-    % Create figure
-    fig = figure('Name', ['artefact Detection Results - ' med ' Run ' run], 'Position', [100, 100, 1200, 800]);
-    set(fig, 'WindowState', 'maximized'); % Ensure figure is maximized
+  for ch = 1:num_channels
+    % Create a unique filename for each channel
+    filename = sprintf('artefact_results_%s_run%s_ch%d.png', med, run, ch);
 
-    
-    % Use the same figure to plot results (don't create a new figure inside this function)
-    plot_artefact_results(raw_data, Cleaned_Data, Artefacts_Detected_per_Sample, Stats, Fs, fig);
-    
-    % Save the figure with adaptive filename
+    % Create a new figure for this channel
+    fig = figure('Name', ['Artefact Detection Results - ' med ' Run ' run ...
+                          ' Channel ' num2str(ch)], 'Position', [100, 100, 1200, 800]);
+    set(fig, 'WindowState', 'maximized');
+
+    % Call your plotting function, passing the channel number directly
+    plot_artefact_results(raw_data, Cleaned_Data, Artefacts_Detected_per_Sample, Stats, Fs, fig, ch);
+
+    % Save the figure
     savepath = fullfile(artefacts_results_Dir, filename);
     saveas(fig, savepath);
-    fprintf('Results saved to: %s\n', savepath);
-end
+    fprintf('Channel %d results saved to: %s\n', ch, savepath);
+  end
 end
 
 
@@ -198,7 +200,10 @@ function blocks = findcontblocks(mask)
 end
 
 %% Helper function to plot artefact detection and removal results
-function plot_artefact_results(original, cleaned, artefact_mask, stats, Fs, fig_handle)
+function plot_artefact_results(original, cleaned, artefact_mask, stats, Fs, fig_handle,ch)
+
+     % Use the channel 'ch' passed from the main function
+    ch_to_plot = ch;
 
     figure(fig_handle);    
     % Get a representative channel with artefacts
@@ -287,4 +292,4 @@ function plot_artefact_results(original, cleaned, artefact_mask, stats, Fs, fig_
         'Units', 'normalized', 'HorizontalAlignment', 'center', ...
         'FontSize', 10, 'FontWeight', 'bold');
 end
-
+end

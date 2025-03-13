@@ -14,8 +14,28 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
 %   Cleaned_Data - Data after artefact removal, filtered in 0-70 Hz range.
 %   Stats - Structure with quantification metrics of detected artefacts
 
-todo.plot_results = 1;
 global artefacts_results_Dir med run;
+
+%% Parameters (tweak these values inside the function)
+% EMD parameters
+MaxNumIMF             = 20;      % Maximum number of IMFs for EMD
+SiftRelativeTolerance = 0.01;    % Tolerance for sifting
+SiftMaxIterations     = 5;       % Maximum iterations for sifting
+
+% Artefact detection parameters
+artefact_threshold    = 8;       % Threshold multiplier (higher = less sensitive)
+smoothing_span        = 15;      % Smoothing parameter for energy calculation (in samples or adjust as needed)
+time_block_threshold  = 0.45;    % Minimum duration (in seconds) to consider as block artefact
+
+% Frequency and filtering parameters
+freq_range            = [0 70];  % Frequency range to analyze for artefacts (Hz)
+
+% Spectrogram parameters
+tf_window_size        = 0.5;     % Window size in seconds (matches 500ms artefact blocks)
+SpectrogramOverlapFactor = 0.75; % Overlap factor for spectrogram analysis
+
+% Plotting toggle
+todo.plot_results = 1;
 
 % Extract raw data and sampling rate
 raw_data = data.values{1,1};
@@ -40,15 +60,14 @@ for iChannel = 1:num_channels
     signal = raw_data(:, iChannel);
     
     % Perform EMD decomposition
-    try
-        [imfs, ~] = emd(signal, 'MaxNumIMF', 20, 'SiftRelativeTolerance', 0.01, 'SiftMaxIterations', 8);
-    catch
-        [imfs, ~] = emd(signal);
-    end
+    [imfs, ~] = emd(signal, 'MaxNumIMF', MaxNumIMF, ...
+                           'SiftRelativeTolerance', SiftRelativeTolerance, ...
+                           'SiftMaxIterations', SiftMaxIterations);
+    
     [nSamples, nIMFs] = size(imfs);
     
     % Process IMFs - Get relevant frequency components and detect artifacts
-    [artifact_mask, beta_imfs, selected_imfs_idx, dom_freqs] = processAndDetect(imfs, Fs);
+    [artifact_mask, beta_imfs, selected_imfs_idx, dom_freqs] = processAndDetect(imfs, Fs, freq_range, artefact_threshold, smoothing_span, time_block_threshold);
     
     % Store IMF selection info 
     Stats.imf_stats(iChannel).channel = iChannel;
@@ -112,18 +131,14 @@ Stats.percent_removed = 100 * sum(sum(Artefacts_Detected_per_Sample)) / (num_sam
 fprintf('Detection complete: %d artefact segments found (%.2f%% of signal)\n', ...
     Stats.total_artefacts, Stats.percent_removed);
 
-% Calculate basic energy measures for first channel
-if num_channels > 0
-    % Simplified spectrogram analysis - only compute for original and cleaned signals
-    window_size = round(0.5 * Fs);
-    overlap = round(window_size * 0.75);
-    [~, F, ~, P] = spectrogram(raw_data(:, 1), window_size, overlap, [], Fs, 'yaxis');
-    freq_idx = F >= 0 & F <= 70;
-    Stats.tf_energy.original = mean(P(freq_idx, :), 1);
-    
-    [~, ~, ~, P_clean] = spectrogram(Cleaned_Data(:, 1), window_size, overlap, [], Fs, 'yaxis');
-    Stats.tf_energy.cleaned = mean(P_clean(freq_idx, :), 1);
-end
+% Calculate basic energy measures 
+window_size = round(tf_window_size * Fs);
+overlap = round(window_size * SpectrogramOverlapFactor);
+[~, F, ~, P] = spectrogram(raw_data(:, 1), window_size, overlap, [], Fs, 'yaxis');
+freq_idx = F >= freq_range(1) & F <= freq_range(2);
+Stats.tf_energy.original = mean(P(freq_idx, :), 1);
+[~, ~, ~, P_clean] = spectrogram(Cleaned_Data(:, 1), window_size, overlap, [], Fs, 'yaxis');
+Stats.tf_energy.cleaned = mean(P_clean(freq_idx, :), 1);
 
 % Visualize results if requested
 if todo.plot_results
@@ -165,8 +180,8 @@ end
 end
 %% Helper Functions
 
-function [artifact_mask, beta_imfs, selected_imfs_idx, dominant_frequencies] = processAndDetect(imfs, Fs)
-    % Combined function to process IMFs and detect artifacts
+function [artifact_mask, beta_imfs, selected_imfs_idx, dominant_frequencies] = processAndDetect(imfs, Fs, freq_range, artefact_threshold, smoothing_span, time_block_threshold)
+     % Combined function to process IMFs and detect artifacts
     [nSamples, nIMFs] = size(imfs);
     dominant_frequencies = zeros(1, nIMFs);
     beta_imfs = [];
@@ -180,28 +195,24 @@ function [artifact_mask, beta_imfs, selected_imfs_idx, dominant_frequencies] = p
         f_dom = dominant_frequency_hilbert(current_imf, Fs);
         dominant_frequencies(iImf) = f_dom;
         
-        % Select IMFs in 1-70 Hz range
-        if f_dom >= 1 && f_dom <= 70
+        % Select IMFs within the specified frequency range
+        if f_dom >= freq_range(1) && f_dom <= freq_range(2)
             beta_imfs = [beta_imfs, current_imf];
             selected_imfs_idx = [selected_imfs_idx, iImf];
         end
         
-        % Simplified artifact detection in one pass 
+        % Artifact detection 
         imf_energy = current_imf.^2;
-        energy_envelope = movmean(imf_energy, round(0.1*Fs));
-        energy_thresh = median(energy_envelope) + 5*mad(energy_envelope);
+        energy_envelope = movmean(imf_energy, smoothing_span);
+        energy_thresh = median(energy_envelope) + artefact_threshold * mad(energy_envelope);
         energy_artifacts = energy_envelope > energy_thresh;
         
-        % Combine detection criteria
-        combined_artifacts = energy_artifacts;
-
-        % Apply minimum artifact duration with median filter
+        % Combine detection criteria and apply duration filtering
         try
-            filtered_artifacts = medfilt1(double(combined_artifacts), round(0.05*Fs)) > 0;
+            filtered_artifacts = medfilt1(double(energy_artifacts), round(time_block_threshold * Fs)) > 0;
             artifact_mask = artifact_mask | filtered_artifacts;
         catch
-            % If medfilt fails, just use unfiltered result
-            artifact_mask = artifact_mask | combined_artifacts;
+            artifact_mask = artifact_mask | energy_artifacts;
         end
     end
 end
@@ -229,7 +240,7 @@ end
 %     [~, idx_max] = max(psd);
 %     f_dom = frequencies(idx_max);
 % end
-% J'ai essay� le PSD sans succ�s
+% J'ai essayé le PSD sans succés
 
 function blocks = findContiguousBlocks(mask)
     % Find start and end indices of contiguous blocks of true values
