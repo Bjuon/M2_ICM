@@ -33,16 +33,12 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_math
     fs = data.Fs;
     [N, nb_chan] = size(lfp);
     
-    % Initialize output matrices - EXACTLY LIKE THE WORKING FUNCTION
+    % Initialize output matrices - 
     % Start with original data as the basis for cleaned data
     Cleaned_Data = double(data.values{1,1});  % Ensure it's double type from the start
     Artefacts_Detected_per_Sample = zeros(size(Cleaned_Data));
     
-    % Create global directory for saving figures if it doesn't exist
-    artefact_detection_Dir = fullfile(fileparts(mfilename('fullpath')), 'artefact_detection_results');
-    if (~exist(artefact_detection_Dir, 'dir'))
-        mkdir(artefact_detection_Dir);
-    end
+    
     
     %% 1. Preliminary Filtering: bandpass filter the signal from 1 to freq_max Hz.
     lfp_filtered = bandpass(lfp, [1 freq_max], fs);
