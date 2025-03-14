@@ -22,9 +22,10 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
     params.freq_range = [0 70];           % Frequency range of interest (Hz)
     params.max_components_per_ch = 5;     % Maximum number of ICA components per channel
     params.artifact_threshold = 3;        % Multiplier for threshold in artifact detection
-    params.min_artifact_duration = 0.2;     % Minimum artifact duration (in seconds)
+    params.min_artifact_duration = 0.2;   % Minimum artifact duration (in seconds)
     params.merging_window = 0.05;         % Merge artifacts separated by less than this window (in seconds)
     params.plot_results = 1;              % Set to 1 to plot results
+    params.downsample_factor = 100;       % Factor to downsample data for ICA processing
     
     global artefacts_results_Dir med run
 
@@ -57,16 +58,47 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
         channel_mean = mean(channel_data);
         X_centered = channel_data - channel_mean;
         
-        try
-            % Apply ICA using rica for robustness
+        
+            % Memory-efficient approach: Downsample data for ICA processing
+            channel_data_ds = downsample(channel_data, params.downsample_factor);
+            X_centered_ds = channel_data_ds - mean(channel_data_ds);
+            
+            % Apply ICA on downsampled data with memory-efficient approach
             num_components = params.max_components_per_ch;
-            Mdl = rica(X_centered', num_components, 'IterationLimit', 1000);
-            icasig = transform(Mdl, X_centered');
-            % Ensure the ICA output is organized as time x components
-            if size(icasig, 2) ~= num_components
-                icasig = icasig';
+            
+            % Additional downsampling if needed for very large datasets
+            data_length = length(X_centered_ds);
+            if data_length > 10000
+                fprintf('Large dataset, applying additional optimizations for channel %d...\n', ch);
+                
+                % Option 1: Use PCA first to reduce dimensions before ICA
+                [coeff, score] = pca(X_centered_ds, 'NumComponents', min(length(X_centered_ds), 500));
+                X_reduced = score(:, 1:min(size(score, 2), num_components*3)); % Keep 3x components
+                
+                % Apply rica on the reduced data
+                Mdl = rica(X_reduced', num_components, 'IterationLimit', 500);
+                icasig_ds = transform(Mdl, X_reduced');
+            else
+                % For smaller datasets, use standard approach
+                Mdl = rica(X_centered_ds', num_components, 'IterationLimit', 1000);
+                icasig_ds = transform(Mdl, X_centered_ds');
             end
             
+            if size(icasig_ds, 2) ~= num_components
+                icasig_ds = icasig_ds';
+            end
+            
+            % Upsample ICA components back to original signal length
+            icasig = zeros(num_samples, num_components);
+            for i = 1:num_components
+                icasig(:, i) = interp1(...
+                    linspace(1, num_samples, length(icasig_ds(:, i))), ...
+                    icasig_ds(:, i), ...
+                    1:num_samples, ...
+                    'pchip', 'extrap');
+            end
+            
+            % Rest of the existing component processing continues as before
             % Initialize arrays to store component-level metrics
             dominant_freqs = zeros(1, num_components);
             spectral_power = zeros(1, num_components);
@@ -94,7 +126,7 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
                 [~, f_spec, ~, P] = spectrogram(signal, hamming(params.window_length), params.overlap, params.nfft, Fs);
                 % Focus on frequencies in the target range
                 freq_idx = find(f_spec >= params.freq_range(1) & f_spec <= params.freq_range(2));
-                if ~isempty(freq_idx)
+                if (~isempty(freq_idx))
                     P_band = P(freq_idx, :);
                     power_profile = mean(P_band, 1);
                     power_profile = power_profile / mean(power_profile);
@@ -179,12 +211,7 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
             scaling_factor = std(channel_data) / (std(reconstructed) + eps);
             Cleaned_Data(:, ch) = reconstructed * scaling_factor + channel_mean;
             
-        catch ME
-            warning('ICA failed on channel %d: %s', ch, ME.message);
-            Stats.channels_stats(ch).name = sprintf('Channel %d', ch);
-            Stats.channels_stats(ch).artefacts = 0;
-            Stats.channels_stats(ch).percent = 0;
-            Stats.channels_stats(ch).error = ME.message;
+     
         end
     end
     
@@ -270,7 +297,7 @@ function plot_ica_results(raw_data, Cleaned_Data, Artefacts_Detected_per_Sample,
     
     % Create directory for channel-specific plots
     channel_plots_dir = fullfile(artefacts_results_Dir, sprintf('%s_run%s_channels_ica', med, run));
-    if ~exist(channel_plots_dir, 'dir')
+    if (~exist(channel_plots_dir, 'dir'))
         mkdir(channel_plots_dir);
     end
     
@@ -321,7 +348,7 @@ function plot_ica_results(raw_data, Cleaned_Data, Artefacts_Detected_per_Sample,
     f_idx = f_clean <= 70;
     imagesc(t_clean, f_clean(f_idx), 10*log10(P_clean(f_idx,:)));
     axis xy;
-    title(sprintf('Cleaned TF Map - Ch %d (0-70 Hz)', max_ch));
+    title(sprintf('Cleaned TF Map - Ch %d (0-70 Hz)'));
     xlabel('Time (s)'); ylabel('Frequency (Hz)');
     colorbar;
     

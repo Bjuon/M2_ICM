@@ -20,22 +20,23 @@ global artefacts_results_Dir med run;
 % EMD parameters
 MaxNumIMF             = 20;      % Maximum number of IMFs for EMD
 SiftRelativeTolerance = 0.01;    % Tolerance for sifting
-SiftMaxIterations     = 5;       % Maximum iterations for sifting
+SiftMaxIterations     = 15;       % Maximum iterations for sifting
 
 % Artefact detection parameters
-artefact_threshold    = 8;       % Threshold multiplier (higher = less sensitive)
-smoothing_span        = 15;      % Smoothing parameter for energy calculation (in samples or adjust as needed)
-time_block_threshold  = 0.45;    % Minimum duration (in seconds) to consider as block artefact
+artefact_threshold    = 2;       % Threshold multiplier (higher = less sensitive)
+smoothing_span        = 5;      % Smoothing parameter for energy calculation (in samples or adjust as needed)
+time_block_threshold  = 0.25;    % Minimum duration (in seconds) to consider as block artefact
 
 % Frequency and filtering parameters
 freq_range            = [0 70];  % Frequency range to analyze for artefacts (Hz)
 
-% Spectrogram parameters
+% Spectrogram parameters for PSD visualization 
 tf_window_size        = 0.5;     % Window size in seconds (matches 500ms artefact blocks)
 SpectrogramOverlapFactor = 0.75; % Overlap factor for spectrogram analysis
 
-% Plotting toggle
-todo.plot_results = 1;
+% Plotting toggle - SEPARATED controls
+todo.plot_artifacts = 1;     % Toggle for artifact detection results (PSD clean , raw overall signal, IMFs picked...)
+todo.plot_imfs = 1;          % Toggle for IMF visualizations
 
 % Extract raw data and sampling rate
 raw_data = data.values{1,1};
@@ -48,7 +49,8 @@ Artefacts_Detected_per_Sample = zeros(size(Cleaned_Data));
 Stats = struct('total_artefacts', 0, 'percent_removed', 0, ...
     'channels_stats', struct('name', {}, 'artefacts', {}, 'percent', {}), ...
     'imf_stats', struct('channel', {}, 'selected_imfs', {}, 'dominant_freq', {}), ...
-    'tf_energy', struct(), 'enhanced_detection', struct('segments', 0, 'percent', 0));
+    'tf_energy', struct(), 'enhanced_detection', struct('segments', 0, 'percent', 0), ...
+    'all_imfs', struct('channel', {}, 'imfs', {}));  % Added to store IMFs for all channels
 
 fprintf('Processing %d channels using EMD method...\n', num_channels);
 
@@ -66,8 +68,14 @@ for iChannel = 1:num_channels
     
     [nSamples, nIMFs] = size(imfs);
     
+    % Store all IMFs for visualization
+    Stats.all_imfs(iChannel).channel = iChannel;
+    Stats.all_imfs(iChannel).imfs = imfs;
+    
     % Process IMFs - Get relevant frequency components and detect artifacts
     [artifact_mask, beta_imfs, selected_imfs_idx, dom_freqs] = processAndDetect(imfs, Fs, freq_range, artefact_threshold, smoothing_span, time_block_threshold);
+    
+    
     
     % Store IMF selection info 
     Stats.imf_stats(iChannel).channel = iChannel;
@@ -140,8 +148,8 @@ Stats.tf_energy.original = mean(P(freq_idx, :), 1);
 [~, ~, ~, P_clean] = spectrogram(Cleaned_Data(:, 1), window_size, overlap, [], Fs, 'yaxis');
 Stats.tf_energy.cleaned = mean(P_clean(freq_idx, :), 1);
 
-% Visualize results if requested
-if todo.plot_results
+% Visualize artifact detection results if requested
+if todo.plot_artifacts
     % Create a directory for individual channel plots
     channel_plots_dir = fullfile(artefacts_results_Dir, sprintf('%s_run%s_channels', med, run));
     if ~exist(channel_plots_dir, 'dir')
@@ -162,7 +170,7 @@ if todo.plot_results
     fprintf('Summary results saved to: %s\n', savepath);
     
     % Plot and save individual channel results
-    fprintf('Generating plots for all %d channels...\n', num_channels);
+    fprintf('Generating artifact detection plots for all %d channels...\n', num_channels);
     for ch = 1:num_channels
         ch_fig = figure('Name', sprintf('EMD Channel %d - %s Run %s', ch, med, run), 'Position', [100, 100, 1200, 800]);
         set(ch_fig, 'WindowState', 'maximized');
@@ -173,9 +181,40 @@ if todo.plot_results
         ch_savepath = fullfile(channel_plots_dir, ch_filename);
         saveas(ch_fig, ch_savepath);
         close(ch_fig);  % Close to prevent too many open figures
-        fprintf('  Channel %d plot saved\n', ch);
+        fprintf('  Channel %d artifact plot saved\n', ch);
     end
-    fprintf('All channel plots saved to: %s\n', channel_plots_dir);
+    fprintf('All artifact plots saved to: %s\n', channel_plots_dir);
+end
+
+% Plot IMF decomposition for each channel (COMPLETELY SEPARATE section)
+if todo.plot_imfs
+    % Create a SEPARATE directory for IMF plots
+    imf_plots_dir = fullfile(artefacts_results_Dir, sprintf('%s_run%s_IMF_visualization', med, run));
+    if ~exist(imf_plots_dir, 'dir')
+        mkdir(imf_plots_dir);
+    end
+    
+    % Plot IMFs for each channel
+    fprintf('\nGenerating IMF visualization plots for all %d channels...\n', num_channels);
+    for ch = 1:num_channels
+        imf_fig = figure('Name', sprintf('EMD IMFs Channel %d - %s Run %s', ch, med, run), ...
+            'Position', [100, 100, 1500, 1000]);
+        set(imf_fig, 'WindowState', 'maximized');
+        
+        % Call the dedicated IMF visualization function
+        plotIMFsWithOffset(Stats.all_imfs(ch).imfs, Fs, imf_fig, ch);
+        
+        % Save with distinct naming convention
+        imf_filename = sprintf('IMF_visualization_channel_%02d_%s_run%s.png', ch, med, run);
+        imf_savepath = fullfile(imf_plots_dir, imf_filename);
+        saveas(imf_fig, imf_savepath);
+        fig_filename = sprintf('IMF_visualization_channel_%02d_%s_run%s.fig', ch, med, run);
+        fig_savepath = fullfile(imf_plots_dir, fig_filename);
+        savefig(imf_fig, fig_savepath);
+        close(imf_fig);  % Close to prevent too many open figures
+        fprintf('  Channel %d IMF visualization saved\n', ch);
+    end
+    fprintf('All IMF visualizations saved to: %s\n', imf_plots_dir);
 end
 end
 %% Helper Functions
@@ -346,4 +385,56 @@ function plotResults(original, cleaned, artefact_mask, stats, Fs, fig_handle, ch
         stats.total_artefacts, stats.percent_removed), ...
         'Units', 'normalized', 'HorizontalAlignment', 'center', ...
         'FontSize', 10, 'FontWeight', 'bold');
+end
+
+function plotIMFsWithOffset(imfs, Fs, fig_handle, channel)
+    % Plot all IMFs for a given channel using subplots
+    % Inputs:
+    %   imfs - Matrix of IMFs (samples x IMFs)
+    %   Fs - Sampling frequency
+    %   fig_handle - Figure handle
+    %   channel - Channel number for title
+    
+    figure(fig_handle);
+    
+    % Get dimensions
+    [nSamples, nIMFs] = size(imfs);
+    
+    % Create time vector
+    t = (0:nSamples-1) / Fs;
+    
+    % Create subplots for each IMF (one IMF per row)
+    for iImf = 1:nIMFs
+        subplot(nIMFs, 1, iImf);
+        plot(t, imfs(:, iImf), 'LineWidth', 1);
+        grid on;
+        
+        % Add y-axis label with IMF number
+        ylabel(sprintf('IMF %d', iImf), 'FontWeight', 'bold');
+        
+        % Only add title to the top subplot
+        if iImf == 1
+            title(sprintf('Channel %d: IMF Decomposition', channel), 'FontSize', 14);
+        end
+        
+        % Only add x-axis label to the bottom subplot
+        if iImf < nIMFs
+            set(gca, 'XTickLabel', []); % Hide X labels for all but bottom subplot
+        else
+            xlabel('Time (s)', 'FontSize', 12);
+        end
+        
+        % Keep same x-axis limits for all subplots
+        xlim([t(1), t(end)]);
+        
+        % Add dominant frequency information if available
+        if exist('dominant_frequencies', 'var') && ~isempty(dominant_frequencies)
+            text(0.01, 0.85, sprintf('f_{dom} = %.1f Hz', dominant_frequencies(iImf)), ...
+                 'Units', 'normalized', 'FontSize', 9);
+        end
+    end
+    
+    % Adjust subplot spacing
+    set(gcf, 'Position', get(0, 'Screensize')); % Maximize figure
+    set(gcf, 'Color', 'white');
 end
