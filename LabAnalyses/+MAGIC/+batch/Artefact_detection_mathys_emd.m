@@ -286,7 +286,17 @@ function blocks = findContiguousBlocks(mask)
     edges = diff([0; mask(:); 0]);
     starts = find(edges == 1);
     ends = find(edges == -1) - 1;
-    blocks = [starts, ends];
+    
+    % Ensure starts and ends have the same length
+    min_length = min(length(starts), length(ends));
+    
+    % Create blocks using only matched pairs
+    if min_length > 0
+        blocks = [starts(1:min_length), ends(1:min_length)];
+    else
+        % Return empty array with correct shape if no blocks found
+        blocks = zeros(0, 2);
+    end
 end
 
 function plotResults(original, cleaned, artefact_mask, stats, Fs, fig_handle, ch_to_plot)
