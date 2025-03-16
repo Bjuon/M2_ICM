@@ -96,7 +96,7 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-localMode = false;  
+localMode = true;  
 if localMode
     startpath = "F:\Programing\M2\Data_ICM";
 else
@@ -153,7 +153,7 @@ end
 tasks = {'GOi', 'GOc', 'NoGO'};
 
 %MAGIC file name 
-FileName = '*_POSTOP_*_GNG_GAIT_*_LFP';
+FileName = '*_POSTOP_*_GNG_GAIT_*_LFP'; % RAW for monopolar
 
 % frequency bandes
 FqBdes = [1 4 12 13 20 21 35 36 60 61 80];     %#ok<NASGU> 

@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_emd(data, channel_to_plot)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_emd(data)
 % Artefact_detection_mathys_emd - Detect and remove artefacts using Empirical Mode Decomposition (EMD)
 % and extract components in 1-70 Hz range.
 %
@@ -17,6 +17,12 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
 global artefacts_results_Dir med run;
 
 %% Parameters (tweak these values inside the function)
+
+removeFirstIMF       = false;   % If true, discard IMF #1 from reconstruction
+removeLastIMF        = false;   % If true, discard the last IMF from reconstruction
+outlierRemovalFactor = 2;       % k*MAD threshold to detect outliers (increase/decrease as needed)
+
+
 % EMD parameters
 MaxNumIMF             = 20;      % Maximum number of IMFs for EMD
 SiftRelativeTolerance = 0.01;    % Tolerance for sifting
@@ -28,13 +34,13 @@ smoothing_span        = 5;      % Smoothing parameter for energy calculation (in
 time_block_threshold  = 0.25;    % Minimum duration (in seconds) to consider as block artefact
 
 % Frequency and filtering parameters
-freq_range            = [0 70];  % Frequency range to analyze for artefacts (Hz)
+freq_range            = [1 70];  % Frequency range to analyze for artefacts (Hz)
 
 % Spectrogram parameters for PSD visualization 
 tf_window_size        = 0.5;     % Window size in seconds (matches 500ms artefact blocks)
 SpectrogramOverlapFactor = 0.75; % Overlap factor for spectrogram analysis
 
-% Plotting toggle - SEPARATED controls
+% Plotting toggle 
 todo.plot_artifacts = 1;     % Toggle for artifact detection results (PSD clean , raw overall signal, IMFs picked...)
 todo.plot_imfs = 1;          % Toggle for IMF visualizations
 
@@ -60,6 +66,23 @@ for iChannel = 1:num_channels
     
     % Get current channel data
     signal = raw_data(:, iChannel);
+
+    if outlierRemovalFactor > 0
+        medianVal = median(signal);
+        madVal    = mad(signal, 1);   % median absolute deviation
+        lowerBnd  = medianVal - outlierRemovalFactor * madVal;
+        upperBnd  = medianVal + outlierRemovalFactor * madVal;
+        
+        % Find outliers
+        outlierMask = (signal < lowerBnd) | (signal > upperBnd);
+        if any(outlierMask)
+            % Interpolate outliers
+            goodIdx = find(~outlierMask);
+            badIdx  = find(outlierMask);
+            signal(outlierMask) = interp1(goodIdx, signal(goodIdx), ...
+                                          badIdx, 'pchip', 'extrap');
+        end
+    end
     
     % Perform EMD decomposition
     [imfs, ~] = emd(signal, 'MaxNumIMF', MaxNumIMF, ...
@@ -101,26 +124,23 @@ for iChannel = 1:num_channels
     Stats.enhanced_detection.percent = Stats.enhanced_detection.percent + percent_removed;
     
     % Reconstruct signal - Apply artifact removal and sum selected IMFs
-    if ~isempty(beta_imfs)
-        % Handle artifacts by interpolation
+   if ~isempty(beta_imfs)
+        % Interpolate any artifact sections in each selected IMF
         if any(artifact_mask)
             good_idx = find(~artifact_mask);
-            if (~isempty(good_idx))
-                artifact_idx = find(artifact_mask);
-                for i = 1:size(beta_imfs, 2)
-                    signal_segment = beta_imfs(:, i);
-                    if ~isempty(artifact_idx)
-                        signal_segment(artifact_mask) = interp1(good_idx, signal_segment(good_idx), ...
-                            artifact_idx, 'pchip', 'extrap');
-                        beta_imfs(:, i) = signal_segment;
-                    end
-                end
+            bad_idx  = find(artifact_mask);
+            for iImf = 1:size(beta_imfs, 2)
+                sig_imf = beta_imfs(:, iImf);
+                sig_imf(bad_idx) = interp1(good_idx, sig_imf(good_idx), bad_idx, 'pchip', 'extrap');
+                beta_imfs(:, iImf) = sig_imf;
             end
         end
         Cleaned_Data(:, iChannel) = sum(beta_imfs, 2);
     else
-        Cleaned_Data(:, iChannel) = zeros(nSamples, 1);
-    end
+        Cleaned_Data(:, iChannel) = zeros(num_samples, 1);
+   end
+     % After reconstruction, limit the clean signal to the range computed from MAD.
+    Cleaned_Data(:, iChannel) = min(max(Cleaned_Data(:, iChannel), lowerBnd), upperBnd);
     
     % Store artifact mask
     Artefacts_Detected_per_Sample(:, iChannel) = artifact_mask;
@@ -156,19 +176,6 @@ if todo.plot_artifacts
         mkdir(channel_plots_dir);
     end
     
-    % Plot overall summary
-    filename = sprintf('emd_artefact_results_%s_run%s.png', med, run);
-    fig = figure('Name', ['EMD Artefact Detection - ' med ' Run ' run], 'Position', [100, 100, 1200, 800]);
-    set(fig, 'WindowState', 'maximized');
-    
-    % Plot summary results with specified channel
-    plotResults(raw_data, Cleaned_Data, Artefacts_Detected_per_Sample, Stats, Fs, fig, channel_to_plot);
-    
-    % Save summary plot
-    savepath = fullfile(artefacts_results_Dir, filename);
-    saveas(fig, savepath);
-    fprintf('Summary results saved to: %s\n', savepath);
-    
     % Plot and save individual channel results
     fprintf('Generating artifact detection plots for all %d channels...\n', num_channels);
     for ch = 1:num_channels
@@ -186,7 +193,7 @@ if todo.plot_artifacts
     fprintf('All artifact plots saved to: %s\n', channel_plots_dir);
 end
 
-% Plot IMF decomposition for each channel (COMPLETELY SEPARATE section)
+% Plot IMF decomposition for each channel 
 if todo.plot_imfs
     % Create a SEPARATE directory for IMF plots
     imf_plots_dir = fullfile(artefacts_results_Dir, sprintf('%s_run%s_IMF_visualization', med, run));
