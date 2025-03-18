@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_emd(data, imf_index)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_emd(data)
 % Artefact_detection_mathys_emd - Detect and remove artefacts using Empirical Mode Decomposition (EMD)
 % and extract components in 4-55 Hz range.
 %

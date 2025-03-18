@@ -31,7 +31,7 @@ SiftRelativeTolerance = 0.01;    % Tolerance for sifting
 SiftMaxIterations     = 15;       % Maximum iterations for sifting
 
 % Artefact detection parameters
-artefact_threshold    = 2;       % Threshold multiplier (higher = less sensitive)
+artefact_threshold    = 4;       % Threshold multiplier (higher = less sensitive)
 smoothing_span        = 5;      % Smoothing parameter for energy calculation (in samples or adjust as needed)
 time_block_threshold  = 0.25;    % Minimum duration (in seconds) to consider as block artefact
 

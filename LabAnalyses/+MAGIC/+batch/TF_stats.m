@@ -8,6 +8,8 @@ function TF_stats(OutputFileName, dataTF, FigDir, e)
 global tasks
 global reject_table
 global tBlock
+global source_index 
+
 % 
 % local.todo.Speccond  = 1;
 % local.todo.Spectime  = 1;
@@ -599,7 +601,7 @@ if local.todo.ttestCert
     end
     for th = 1 : numel(thresh)
         if local.todo.svgExport ; saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Certitude_' FigName  '_' thresh{th} '.svg']), 'svg') ; end
-        saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Certitude_' FigName  '_' thresh{th} '.png']), 'png')
+        saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Certitude_' FigName  '_' thresh{th}, source_index '.png']), 'png')
     end
     close('all')
     

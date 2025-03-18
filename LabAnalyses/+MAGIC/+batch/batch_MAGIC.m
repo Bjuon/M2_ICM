@@ -39,6 +39,7 @@ global tasks
 global rawLFPDir cleanLFPDir rawTFDir cleanTFDir artefacts_results_Dir
 global run
 global ChannelMontage
+global source_index 
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
@@ -96,7 +97,7 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-localMode = false;  
+localMode = true;  
 if localMode
     startpath = "F:\Programing\M2\Data_ICM";
 else
@@ -216,7 +217,7 @@ end
 if     strcmp(Artefact_Rejection_Method,'TF') && norm ~= 4 && todo.TF
     fprintf(2,'Probleme dans le rejet d''artefact')
 end
-for imf_index = 1:17
+for source_index = 1:17
     % for each patients
     for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
         % Define the patient directory under FigDir (or a separate base if desired)
@@ -299,7 +300,7 @@ for imf_index = 1:17
                     AlsoIncludeWrongEvent = false ;
                 end
     
-                seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, imf_index) %protocol, subject{s});
+                seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, source_index) %protocol, subject{s});
                 %save preprocess data
                 save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
                 disp('seg done')
