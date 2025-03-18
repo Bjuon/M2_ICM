@@ -8,23 +8,40 @@ function TF_stats(OutputFileName, dataTF, FigDir, e)
 global tasks
 global reject_table
 global tBlock
+% 
+% local.todo.Speccond  = 1;
+% local.todo.Spectime  = 1;
+% local.todo.ttest_Pat = 1;
+% local.todo.ttestCert = 1;
+% local.todo.ttestCond = 1;
+% 
+% local.todo.svgExport = 0;
+% local.todo.RejArtefa = 0;
+% local.todo.AutoArtef = 1;
+% local.todo.HideFigs  = 0;
+% 
+% lengthFig = 40 ;  % 29.7
+% HeightFig = 160 ;  % 21
+% 
+% thresh = {'tstat', 'p05', 'p001'};
 
-local.todo.Speccond  = 1;
-local.todo.Spectime  = 1;
+
+
+local.todo.Speccond  = 0;
+local.todo.Spectime  = 0;
 local.todo.ttest_Pat = 1;
-local.todo.ttestCert = 1;
-local.todo.ttestCond = 1;
+local.todo.ttestCert = 0;
+local.todo.ttestCond = 0;
 
 local.todo.svgExport = 0;
 local.todo.RejArtefa = 0;
-local.todo.AutoArtef = 1;
-local.todo.HideFigs  = 0;
+local.todo.AutoArtef = 0;
+local.todo.HideFigs  = 1;
 
 lengthFig = 40 ;  % 29.7
 HeightFig = 160 ;  % 21
 
-thresh = {'tstat', 'p05', 'p001'};
-
+thresh = {'tstat'};
 
 
 [~, filename] = fileparts(OutputFileName);
@@ -311,6 +328,9 @@ for tsk = 1 : numel(tasks)
         for th = 1 : numel(thresh)
             if local.todo.svgExport ; saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['OffOn_' FigName  '_' thresh{th} '.svg']), 'svg') ; end
             saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['OffOn_' FigName  '_' thresh{th} '.png']), 'png')
+
+            saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Pat_' FigName  '_' thresh{th} '.fig']), 'fig');
+
         end
         close('all')
     end

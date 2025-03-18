@@ -37,7 +37,7 @@ classdef(Abstract) Process < hgsetget & matlab.mixin.Copyable
       labels              % Label for each element of non-leading dimension
       quality             % Scalar information for each non-leading dimension
    end
-   properties(SetAccess = protected, Transient, GetObservable)
+   properties( Transient, GetObservable) % Set acess =protected 
       times = {}          % Current event/sample times
       values = {}         % Current attribute/value associated with each time
    end

@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_emd(data, imf_index)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_emd_oneIMFs(data, imf_index)
 % Artefact_detection_mathys_emd - Detect and remove artefacts using Empirical Mode Decomposition (EMD)
 % and extract components in 4-55 Hz range.
 %
@@ -131,24 +131,43 @@ for iChannel = 1:num_channels
     Stats.enhanced_detection.segments = Stats.enhanced_detection.segments + num_artifacts;
     Stats.enhanced_detection.percent = Stats.enhanced_detection.percent + percent_removed;
     
-    % Reconstruct signal - Apply artifact removal and sum selected IMFs
-   if ~isempty(beta_imfs)
-        % Interpolate any artifact sections in each selected IMF
+    if exist('imf_index', 'var') && ~isempty(imf_index) && imf_index <= nIMFs
+        % Use only the specified IMF for reconstruction
+        beta_imfs = imfs(:, imf_index);
+        selected_imfs_idx = imf_index;
+        
+        % Interpolate any artifact sections in the selected IMF
         if any(artifact_mask)
             good_idx = find(~artifact_mask);
             bad_idx  = find(artifact_mask);
-            for iImf = 1:size(beta_imfs, 2)
-                sig_imf = beta_imfs(:, iImf);
-                sig_imf(bad_idx) = interp1(good_idx, sig_imf(good_idx), bad_idx, 'pchip', 'extrap');
-                beta_imfs(:, iImf) = sig_imf;
-            end
+            sig_imf = beta_imfs;
+            sig_imf(bad_idx) = interp1(good_idx, sig_imf(good_idx), bad_idx, 'pchip', 'extrap');
+            beta_imfs = sig_imf;
         end
-        Cleaned_Data(:, iChannel) = sum(beta_imfs, 2);
+        
+        Cleaned_Data(:, iChannel) = beta_imfs;
     else
-        Cleaned_Data(:, iChannel) = zeros(num_samples, 1);
-   end
-     % After reconstruction, limit the clean signal to the range computed from MAD.
+        % Original reconstruction logic
+        if ~isempty(beta_imfs)
+            % Interpolate any artifact sections in each selected IMF
+            if any(artifact_mask)
+                good_idx = find(~artifact_mask);
+                bad_idx  = find(artifact_mask);
+                for iImf = 1:size(beta_imfs, 2)
+                    sig_imf = beta_imfs(:, iImf);
+                    sig_imf(bad_idx) = interp1(good_idx, sig_imf(good_idx), bad_idx, 'pchip', 'extrap');
+                    beta_imfs(:, iImf) = sig_imf;
+                end
+            end
+            Cleaned_Data(:, iChannel) = sum(beta_imfs, 2);
+        else
+            Cleaned_Data(:, iChannel) = zeros(num_samples, 1);
+        end
+    end
+
+    % After reconstruction, limit the clean signal to the range computed from MAD.
     Cleaned_Data(:, iChannel) = min(max(Cleaned_Data(:, iChannel), lowerBnd), upperBnd);
+    
     
     % Store artifact mask
     Artefacts_Detected_per_Sample(:, iChannel) = artifact_mask;

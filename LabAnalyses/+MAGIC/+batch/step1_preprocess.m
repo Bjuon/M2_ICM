@@ -10,8 +10,7 @@
                         % What is max_dur for magic ?
 
 
-%function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, rawLFPDir, cleanedLFPDir, rawTFDir)
-function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent)
+function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, imf_index)
 clear seg
 load 'shared/FIR_highpassMAGIC.mat'
 f_count = 0;
@@ -23,12 +22,12 @@ global max_dur
 
 global med run
 global rawLFPDir cleanLFPDir
+global ChannelMontage
 
 
 todo.plotRawLFP         = 1; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 1; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
-
 
 % for each files:
 for f = 1 : numel(files)
@@ -54,9 +53,9 @@ for f = 1 : numel(files)
     
 %     %find trials
     run = files(f).name(end-12:end-10);
-    
+ 
     %load data
-    load(fullfile(OutputPath, [strtok(files(f).name, '.') '_raw.mat']))
+    load(fullfile(OutputPath, [strtok(files(f).name, '.') '_' ChannelMontage '_raw.mat']))       %#ok<LOAD> 
     %load(fullfile(OutputPath, [strtok(files(f).name, '.') '_ica.mat'])
 
     
@@ -125,7 +124,7 @@ for f = 1 : numel(files)
     FOG_E  = metadata.Label('name','FOG_E'); % no duration
     
     
-     % --- Plot Raw LFP ---
+%      --- Plot Raw LFP ---
     if todo.plotRawLFP
         % Calculate y_min and y_max and Plot raw LFP using the plotLFP function
         [y_min, y_max] = MAGIC.batch.plotLFP(data, rawLFP_data, files(f), rawLFPDir, [], [], 'Raw');
@@ -134,20 +133,21 @@ for f = 1 : numel(files)
 
         Artefacts_Detected_per_Sample = zeros(size(data.values{1, 1}));
         Artefacts_Detected_per_Sample(1,1) = data.Fs;
-      %  [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
+        [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
                 
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts
         disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
        % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
-        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
+      % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
+       [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, imf_index)
        %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);        
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
         %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBAR(data)
 
     end
-    % --- Replot Cleaned LFP ---
+%     --- Replot Cleaned LFP ---
     if todo.plotCleanedLFP
         MAGIC.batch.plotLFP(data, Cleaned_Data, files(f), cleanLFPDir, y_min, y_max, 'Cleaned');
     end
