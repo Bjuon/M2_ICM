@@ -24,10 +24,9 @@ global med run
 global rawLFPDir cleanLFPDir
 global ChannelMontage
 
-
-todo.plotRawLFP         = 1; % Set to 1 to enable plotting of raw LFP data.
+todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
-todo.plotCleanedLFP     = 1; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
+todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
 
 % for each files:
 for f = 1 : numel(files)
@@ -307,7 +306,7 @@ for f = 1 : numel(files)
                                         if  exist('artifacts', 'var') %&& ~isempty(artifacts.values{t})
                                             % check if artifact during trial
                                             artifacts.reset; setWindow(artifacts, win);
-                                            if ~isempty(artifacts.values{t})
+                                            if ~isempty(artifacts.alues{t})
                                                 trials{count}.quality = 0;
                                             else
                                                 trials{count}.quality = 1;
@@ -472,17 +471,7 @@ for f = 1 : numel(files)
         choppedRaw(tIdx) = SampledProcess('values', rawLFP_data(idx, :), ...
                                           'Fs', data.Fs, 'labels', data.labels);
                                       
-%         if ~isnumeric(Cleaned_Data) || islogical(Cleaned_Data)
-%             warning('Cleaned_Data is not numeric or is logical! Converting to double.');
-%             Cleaned_Data = double(full(Cleaned_Data));
-%         end
-% 
-%     % Make sure we have valid numeric data before passing to SampledProcess
-%     if any(isnan(Cleaned_Data(:))) || any(isinf(Cleaned_Data(:)))
-%         warning('NaN or Inf values found in Cleaned_Data. Replacing with zeros.');
-%         Cleaned_Data(isnan(Cleaned_Data)) = 0;
-%         Cleaned_Data(isinf(Cleaned_Data)) = 0;
-%     end
+
 
         % Similarly, for the cleaned data
         choppedCleaned(tIdx) = SampledProcess('values', Cleaned_Data(idx, :), ...
@@ -501,10 +490,10 @@ for f = 1 : numel(files)
                 error(['labels of segment ' num2str(t) ' differs from 1st segment'])
             end
         end
-            % Create a single Segment that has three processes:
-        %   1) Raw data SampledProcess
-        %   2) Cleaned data SampledProcess
-        %   3) EventProcess
+%              Create a single Segment that has three processes:
+%              1) Raw data SampledProcess
+%              2) Cleaned data SampledProcess
+%              3) EventProcess
         seg_raw(count) = Segment('process', {choppedRaw(t),     EventProcess('events', event{t}, 'tStart', 0, 'tEnd', win(t,2) - win(t,1))}, 'labels', {'data','event'});
         seg_clean(count)= Segment('process',{choppedCleaned(t), EventProcess('events', event{t}, 'tStart', 0, 'tEnd', win(t,2) - win(t,1))}, 'labels', {'data','event'});
 

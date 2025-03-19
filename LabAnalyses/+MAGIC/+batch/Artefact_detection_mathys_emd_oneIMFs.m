@@ -64,10 +64,18 @@ fprintf('Processing %d channels using EMD method...\n', num_channels);
 
 % Loop over each channel in the data
 for iChannel = 1:num_channels
-    fprintf('Analyzing channel %d/%d...\n', iChannel, num_channels);
+    channel_name = data.labels(iChannel).name; % Get the channel name
+    fprintf('Analyzing channel %d/%d (%s)...\n', iChannel, num_channels, channel_name);
     
     % Get current channel data
     signal = raw_data(:, iChannel);
+
+     % Check if the channel is empty
+    if all(signal == 0)
+        warning('Channel %d (%s) is empty. Skipping analysis for this channel.', ...
+                iChannel, data.labels(iChannel).name);
+        continue;
+    end
 
     if outlierRemovalFactor > 0
         medianVal = median(signal);
@@ -113,18 +121,13 @@ for iChannel = 1:num_channels
     Stats.imf_stats(iChannel).selected_imfs = selected_imfs_idx;
     Stats.imf_stats(iChannel).dominant_freq = dom_freqs;
     
-    % Store example IMFs for first channel
-    if iChannel == 1
-        Stats.example_imfs = imfs;
-    end
-    
     % Update statistics
     artifact_runs = findContiguousBlocks(artifact_mask);
     num_artifacts = size(artifact_runs, 1);
     percent_removed = 100 * sum(artifact_mask) / nSamples;
     
     % Store statistics
-    Stats.channels_stats(iChannel).name = sprintf('Channel %d', iChannel);
+    Stats.channels_stats(iChannel).name = channel_name;    
     Stats.channels_stats(iChannel).artefacts = num_artifacts;
     Stats.total_artefacts = Stats.total_artefacts + num_artifacts;
     Stats.channels_stats(iChannel).percent = percent_removed;
@@ -204,18 +207,22 @@ if todo.plot_artifacts
     end
     
     % Plot and save individual channel results
-    fprintf('Generating artifact detection plots for all %d channels...\n', num_channels);
+     fprintf('Generating artifact detection plots for all %d channels...\n', num_channels);
     for ch = 1:num_channels
-        ch_fig = figure('Name', sprintf('EMD Channel %d - %s Run %s', ch, med, run), 'Position', [100, 100, 1200, 800]);
+        channel_name = data.labels(ch).name; % Get the channel name
+        ch_fig = figure('Name', sprintf('EMD Channel %d (%s) - %s Run %s', ch, channel_name, med, run), ...
+                        'Position', [100, 100, 1200, 800]);
         set(ch_fig, 'WindowState', 'maximized');
         
-        plotResults(raw_data, Cleaned_Data, Artefacts_Detected_per_Sample, Stats, Fs, ch_fig, ch);
+        % Pass the channel name to the plotResults function
+        plotResults(raw_data, Cleaned_Data, Artefacts_Detected_per_Sample, Stats, Fs, ch_fig, ch, channel_name);
         
-        ch_filename = sprintf('emd_channel_%02d_%s_run%s.png', ch, med, run);
+        % Save the plot with the channel name in the filename
+        ch_filename = sprintf('emd_channel_%02d_%s_%s_run%s.png', ch, channel_name, med, run);
         ch_savepath = fullfile(channel_plots_dir, ch_filename);
         saveas(ch_fig, ch_savepath);
         close(ch_fig);  % Close to prevent too many open figures
-        fprintf('  Channel %d artifact plot saved\n', ch);
+        fprintf('  Channel %d (%s) artifact plot saved\n', ch, channel_name);
     end
     fprintf('All artifact plots saved to: %s\n', channel_plots_dir);
 end
@@ -231,22 +238,25 @@ if todo.plot_imfs
     % Plot IMFs for each channel
     fprintf('\nGenerating IMF visualization plots for all %d channels...\n', num_channels);
     for ch = 1:num_channels
-        imf_fig = figure('Name', sprintf('EMD IMFs Channel %d - %s Run %s', ch, med, run), ...
-            'Position', [100, 100, 1500, 1000]);
+        channel_name = data.labels(ch).name; % Get the channel name
+        imf_fig = figure('Name', sprintf('EMD IMFs Channel %d (%s) - %s Run %s', ch, channel_name, med, run), ...
+                         'Position', [100, 100, 1500, 1000]);
         set(imf_fig, 'WindowState', 'maximized');
         
         % Call the dedicated IMF visualization function
-        plotIMFsWithOffset(Stats.all_imfs(ch).imfs, Fs, imf_fig, ch);
+        plotIMFsWithOffset(Stats.all_imfs(ch).imfs, Fs, imf_fig, ch, channel_name);
         
-        % Save with distinct naming convention
-        imf_filename = sprintf('IMF_visualization_channel_%02d_%s_run%s.png', ch, med, run);
+        % Save with distinct naming convention, including the channel name
+        imf_filename = sprintf('IMF_visualization_channel_%02d_%s_%s_run%s.png', ch, channel_name, med, run);
         imf_savepath = fullfile(imf_plots_dir, imf_filename);
         saveas(imf_fig, imf_savepath);
-        fig_filename = sprintf('IMF_visualization_channel_%02d_%s_run%s.fig', ch, med, run);
+        
+        fig_filename = sprintf('IMF_visualization_channel_%02d_%s_%s_run%s.fig', ch, channel_name, med, run);
         fig_savepath = fullfile(imf_plots_dir, fig_filename);
         savefig(imf_fig, fig_savepath);
+        
         close(imf_fig);  % Close to prevent too many open figures
-        fprintf('  Channel %d IMF visualization saved\n', ch);
+        fprintf('  Channel %d (%s) IMF visualization saved\n', ch, channel_name);
     end
     fprintf('All IMF visualizations saved to: %s\n', imf_plots_dir);
 end
@@ -333,7 +343,7 @@ function blocks = findContiguousBlocks(mask)
     end
 end
 
-function plotResults(original, cleaned, artefact_mask, stats, Fs, fig_handle, ch_to_plot)
+function plotResults(original, cleaned, artefact_mask, stats, Fs, fig_handle, ch_to_plot, channel_name)
     % Plot EMD artifact detection and removal results 
     figure(fig_handle);
     
@@ -359,7 +369,7 @@ function plotResults(original, cleaned, artefact_mask, stats, Fs, fig_handle, ch
             set(h, 'HandleVisibility', 'off');
         end
     end
-    title(sprintf('Channel %d: Original vs Cleaned Signal (EMD Method)', ch_to_plot));
+    title(sprintf('Channel %d (%s): Original vs Cleaned Signal (EMD Method)', ch_to_plot, channel_name));
     
     dummy_patch = patch(nan, nan, [0.9 0.9 0.2], 'FaceAlpha', 0.3, 'EdgeColor', 'none');
     legend([h1, h2, dummy_patch], 'Raw', 'Cleaned', 'Artefacts', 'Location', 'best');
@@ -431,7 +441,7 @@ function plotResults(original, cleaned, artefact_mask, stats, Fs, fig_handle, ch
         'FontSize', 10, 'FontWeight', 'bold');
 end
 
-function plotIMFsWithOffset(imfs, Fs, fig_handle, channel)
+function plotIMFsWithOffset(imfs, Fs, fig_handle, channel, channel_name)
     % Plot all IMFs for a given channel using subplots
     % Inputs:
     %   imfs - Matrix of IMFs (samples x IMFs)
@@ -458,7 +468,7 @@ function plotIMFsWithOffset(imfs, Fs, fig_handle, channel)
         
         % Only add title to the top subplot
         if iImf == 1
-            title(sprintf('Channel %d: IMF Decomposition', channel), 'FontSize', 14);
+            title(sprintf('Channel %d (%s): IMF Decomposition', channel, channel_name), 'FontSize', 14);
         end
         
         % Only add x-axis label to the bottom subplot

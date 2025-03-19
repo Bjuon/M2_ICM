@@ -329,9 +329,9 @@ for tsk = 1 : numel(tasks)
         
         for th = 1 : numel(thresh)
             if local.todo.svgExport ; saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['OffOn_' FigName  '_' thresh{th} '.svg']), 'svg') ; end
-            saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['OffOn_' FigName  '_' thresh{th} '.png']), 'png')
+    saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Pat_' FigName '_src' num2str(source_index) '_' thresh{th} '.png']), 'png');
 
-            saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Pat_' FigName  '_' thresh{th} '.fig']), 'fig');
+            saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Pat_' FigName  '_src' num2str(source_index) '_' thresh{th} '.fig']), 'fig');
 
         end
         close('all')
@@ -409,7 +409,7 @@ for tsk = 1 : numel(tasks)
             title(lfp_channels{lfp_ch})
         end
         if local.todo.svgExport ; saveas(Spec_fig, fullfile(FigDir, ['SpectrumOffOn_' FigName '.svg']), 'svg') ; end
-        saveas(Spec_fig, fullfile(FigDir, ['SpectrumOffOn_' FigName '.png']), 'png')
+        saveas(Spec_fig, fullfile(FigDir, ['SpectrumOffOn_' FigName, source_index '.png']), 'png')
         close('all')
     end
     
