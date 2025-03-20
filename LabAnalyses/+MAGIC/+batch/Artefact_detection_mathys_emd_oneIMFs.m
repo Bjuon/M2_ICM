@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detection_mathys_emd_oneIMFs(data, imf_index)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels] = Artefact_detection_mathys_emd_oneIMFs(data, imf_index)
 % Artefact_detection_mathys_emd - Detect and remove artefacts using Empirical Mode Decomposition (EMD)
 % and extract components in 4-55 Hz range.
 %
@@ -14,14 +14,18 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
 %   Artefacts_Detected_per_Sample - Binary matrix indicating artefact locations.
 %   Cleaned_Data - Data after artefact removal, filtered in 0-70 Hz range.
 %   Stats - Structure with quantification metrics of detected artefacts
+%   has_empty_channels - Flag indicating if any empty channels were detected
 
 global artefacts_results_Dir med run;
+
+% Initialize empty channel flag
+has_empty_channels = false;
 
 %% Parameters (tweak these values inside the function)
 
 removeFirstIMF       = false;   % If true, discard IMF #1 from reconstruction
 removeLastIMF        = false;   % If true, discard the last IMF from reconstruction
-outlierRemovalFactor = 2;       % k*MAD threshold to detect outliers (increase/decrease as needed)
+outlierRemovalFactor = 6;       % k*MAD threshold to detect outliers (increase/decrease as needed)
 
 
 % EMD parameters
@@ -51,6 +55,18 @@ raw_data = data.values{1,1};
 Fs = data.Fs;
 [num_samples, num_channels] = size(raw_data);
 
+    if ~isempty(imf_index) && imf_index <= num_channels
+        if all(raw_data(:, imf_index) == 0)
+            warning('Channel corresponding to source index %d (%s) is empty. Skipping analysis for this source index.', ...
+                imf_index, data.labels(imf_index).name);
+            has_empty_channels = true;
+            Artefacts_Detected_per_Sample = [];
+            Cleaned_Data = [];
+            Stats = [];
+            return;
+        end
+   end
+
 % Initialize outputs
 Cleaned_Data = raw_data;
 Artefacts_Detected_per_Sample = zeros(size(Cleaned_Data));
@@ -69,13 +85,6 @@ for iChannel = 1:num_channels
     
     % Get current channel data
     signal = raw_data(:, iChannel);
-
-     % Check if the channel is empty
-    if all(signal == 0)
-        warning('Channel %d (%s) is empty. Skipping analysis for this channel.', ...
-                iChannel, data.labels(iChannel).name);
-        continue;
-    end
 
     if outlierRemovalFactor > 0
         medianVal = median(signal);
@@ -134,7 +143,7 @@ for iChannel = 1:num_channels
     Stats.enhanced_detection.segments = Stats.enhanced_detection.segments + num_artifacts;
     Stats.enhanced_detection.percent = Stats.enhanced_detection.percent + percent_removed;
     
-    if exist('imf_index', 'var') && ~isempty(imf_index) && imf_index <= nIMFs
+    if exist('imf_index', 'var') && ~isempty (imf_index) && imf_index <= nIMFs
         % Use only the specified IMF for reconstruction
         beta_imfs = imfs(:, imf_index);
         selected_imfs_idx = imf_index;

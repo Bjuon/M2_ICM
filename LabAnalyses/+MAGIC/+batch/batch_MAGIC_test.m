@@ -110,7 +110,8 @@ end
 DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP');
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
-ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_EMD_test');
+ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_EMD_k6');
 
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
@@ -320,6 +321,11 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     
                     % Compute segmentation for the current source_index
                     seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, source_index);
+                      % If the segmentation returned empty (due to empty channel detection), skip this source index.
+                    if isempty(seg)
+                        warning('Segmentation skipped for source index %d due to empty channel(s).', source_index);
+                        continue;  % Skip to the next source_index iteration.
+                    end
                     % Save segmentation with source index in the filename
                     save([OutputFileName '_LFP' suff1 '_' ChannelMontage '_source' num2str(source_index) '.mat'], 'seg')
                     disp(['seg done for source index ' num2str(source_index)])

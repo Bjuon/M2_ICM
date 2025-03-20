@@ -10,7 +10,7 @@
                         % What is max_dur for magic ?
 
 
-function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, imf_index)
+function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, source_index)
 clear seg
 load 'shared/FIR_highpassMAGIC.mat'
 f_count = 0;
@@ -136,16 +136,24 @@ for f = 1 : numel(files)
                 
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts
-        disp(['Detecting and removing artefacts in raw LFP data ', med , ' state ' ,run,]);
+        disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run, ' IMFs ', num2str(source_index)]);
        % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
-       [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, imf_index);
+      [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, source_index);
        %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);        
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
         %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBAR(data)
 
     end
+      
+      % Check if any empty channels were detected
+      if has_empty_channels
+          warning('Empty channel(s) detected. Skipping source index %d for %s run %s', source_index, med, run);
+          seg = [];  % Return empty seg to indicate skipping
+          return;
+      end
+      
 %     --- Replot Cleaned LFP ---
     if todo.plotCleanedLFP
         MAGIC.batch.plotLFP(data, Cleaned_Data, files(f), cleanLFPDir, y_min, y_max, 'Cleaned');

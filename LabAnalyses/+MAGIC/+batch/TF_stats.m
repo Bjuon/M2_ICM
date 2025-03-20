@@ -222,7 +222,7 @@ for tsk = 1 : numel(tasks)
     end
     for th = 1 : numel(thresh)
         if local.todo.svgExport ; saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Pat_' FigName  '_' thresh{th} '.svg']), 'svg') ; end
-        saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Pat_' FigName  '_' thresh{th} '.png']), 'png')
+        saveas(TF_fig.(thresh{th}), fullfile(FigDir, ['Pat_' FigName '_src' num2str(source_index)  '_' thresh{th} '.png']), 'png')
     end
     close('all')
     
