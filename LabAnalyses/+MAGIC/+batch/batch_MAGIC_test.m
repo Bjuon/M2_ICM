@@ -44,7 +44,7 @@ global emdCache
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
-todo.raw             = 0; % create raw data
+todo.raw             = 1; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
@@ -114,7 +114,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_test');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_EMD');
 
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
@@ -140,11 +140,11 @@ if ~argin
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
 %    subject   = complet(1:end-1)
-    subject = {'FRj_0610'}
+    subject = {'FEp_0536'}
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FO1', 'FC1', 'FO', 'FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FC','FO1', 'FC1', 'FO'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -312,7 +312,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             disp([subject{s} ' : ' eventName ' at ' char(datetime('now'), 'dd-MM-uuuu_HH-mm-ss')])
             
             % For each event, loop over 17 source indices (IMFs)
-            for source_index = 2:17
+            for source_index = 1:17
                 % --- Segmentation ---
                 if todo.seg
                     % If you want to check for a wrong event flag based on event names:
@@ -434,7 +434,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 %                     
                     % Compute the spectral TF maps on clean data
                     if todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.TF == 5
-                        disp(['Computing spectral TF maps with IMFs LFP data ' run])
+                        disp(['Computing spectral TF maps with IMFs ' num2str(source_index) ' LFP data ' run])
                         [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, eventName, norm, Bsl, 'cleaned');
                         if existTF
                             % Save the TF results using the source index in the filename

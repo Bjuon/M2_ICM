@@ -27,6 +27,7 @@ global emdCache
 if isempty(emdCache)
     emdCache = struct();
 end
+global currentFileIdentifier
 
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
@@ -35,6 +36,11 @@ todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data a
 % for each files:
 for f = 1 : numel(files)
     clear data trig artifacts
+
+    % Determine a unique identifier for the current file
+    currentFileIdentifier = strtok(files(f).name, '.');  % e.g., file name without extension
+    
+    
     
 %% skip rejected run
 %     if ~(strcmp(files(f).name, 'PPNPitie_2017_06_08_LEn_GAITPARK_POSTOP_OFF_GI_SPON_001_LFP.Poly5') ...

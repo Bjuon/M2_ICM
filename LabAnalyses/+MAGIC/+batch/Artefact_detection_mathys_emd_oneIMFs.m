@@ -18,6 +18,13 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels
 
 global artefacts_results_Dir med run ;
 
+global emdCache currentFileIdentifier;  
+
+% Ensure currentFileIdentifier exists (it should be set by step1)
+if isempty(currentFileIdentifier)
+    error('currentFileIdentifier is not set. Please set it in the calling function.');
+end
+
 % Initialize empty channel flag
 has_empty_channels = false;
 
@@ -54,6 +61,29 @@ todo.plot_imfs = 0;          % Toggle for IMF visualizations
 raw_data = data.values{1,1};
 Fs = data.Fs;
 [num_samples, num_channels] = size(raw_data);
+
+% Ensure the file-specific cache is a scalar struct
+if ~isfield(emdCache, currentFileIdentifier) || ~isscalar(emdCache.(currentFileIdentifier))
+    tempS = struct();
+    tempS.imfs = cell(num_channels, 1);
+    tempS.settings = '';
+    emdCache.(currentFileIdentifier) = tempS;
+end
+
+
+currentSettings = sprintf(['MaxNumIMF=%d;numIMFs=%d;SiftRelativeTolerance=%.4f;SiftMaxIterations=%d;' ...
+                           'artefact_threshold=%d;smoothing_span=%.4f;time_block_threshold=%.2f;' ...
+                           'freq_range=[%d %d]'], ...
+    MaxNumIMF, numIMFs, SiftRelativeTolerance, SiftMaxIterations, ...
+    artefact_threshold, smoothing_span, time_block_threshold, ...
+    freq_range(1), freq_range(2));
+
+% If the settings stored in the cache differ from the current settings,
+% reinitialize the cache for this file so that stale data is not reused.
+if ~isequal(emdCache.(currentFileIdentifier).settings, currentSettings)
+    emdCache.(currentFileIdentifier).imfs = cell(num_channels, 1);
+    emdCache.(currentFileIdentifier).settings = currentSettings;
+end
 
     if ~isempty(imf_index) && imf_index <= num_channels
         if all(raw_data(:, imf_index) == 0)
@@ -102,27 +132,58 @@ for iChannel = 1:num_channels
                                           badIdx, 'pchip', 'extrap');
         end
     end
-    
-    % Perform EMD decomposition
-    [imfs, ~] = emd(signal, 'MaxNumIMF', MaxNumIMF, ...
-                           'SiftRelativeTolerance', SiftRelativeTolerance, ...
-                           'SiftMaxIterations', SiftMaxIterations);
-    
-    [nSamples, nIMFs] = size(imfs);
 
-     % Limit the IMFs to the set number (if more than desired were computed)
-    if nIMFs > numIMFs
-        imfs = imfs(:, 1:numIMFs);
-        nIMFs = numIMFs;
+
+    if isempty(emdCache.(currentFileIdentifier).imfs{iChannel})
+
+        
+        % Perform EMD decomposition
+        [imfs, ~] = emd(signal, 'MaxNumIMF', MaxNumIMF, ...
+                               'SiftRelativeTolerance', SiftRelativeTolerance, ...
+                               'SiftMaxIterations', SiftMaxIterations);
+        
+        [nSamples, nIMFs] = size(imfs);
+    
+         % Limit the IMFs to the set number (if more than desired were computed)
+        if nIMFs > numIMFs
+            imfs = imfs(:, 1:numIMFs);
+            nIMFs = numIMFs;
+        end
+
+         % Store computed IMFs in the cache for this channel under the current file ID
+        emdCache.(currentFileIdentifier).imfs{iChannel} = imfs;
+    else
+
+          % Retrieve precomputed IMFs from the file-specific cache
+        imfs = emdCache.(currentFileIdentifier).imfs{iChannel};
+        fprintf('Retrieved cached IMFs for channel %d\n', iChannel);  % Added print statement
+
+        [nSamples, nIMFs] = size(imfs);
     end
     
     % Store all IMFs for visualization
     Stats.all_imfs(iChannel).channel = iChannel;
     Stats.all_imfs(iChannel).imfs = imfs;
     
-    % Process IMFs - Get relevant frequency components and detect artifacts
-    [artifact_mask, beta_imfs, selected_imfs_idx, dom_freqs] = processAndDetect(imfs, Fs, freq_range, artefact_threshold, smoothing_span, time_block_threshold);
-    
+        % --- NEW CODE: Cache the processAndDetect results to avoid reprocessing ---
+      if ~isfield(emdCache.(currentFileIdentifier), 'procResults') || ...
+            length(emdCache.(currentFileIdentifier).procResults) < iChannel || ...
+            isempty(emdCache.(currentFileIdentifier).procResults{iChannel})
+        % Process IMFs to get detection outputs (this is the expensive step)
+        [artifact_mask, beta_imfs, selected_imfs_idx, dom_freqs] = processAndDetect(imfs, Fs, freq_range, artefact_threshold, smoothing_span, time_block_threshold);
+        % Store the processed results in the cache for this channel
+        emdCache.(currentFileIdentifier).procResults{iChannel} = struct(...
+            'artifact_mask', artifact_mask, ...
+            'beta_imfs', beta_imfs, ...
+            'selected_imfs_idx', selected_imfs_idx, ...
+            'dom_freqs', dom_freqs);
+    else
+        % Retrieve cached processed results for faster execution
+        artifact_mask     = emdCache.(currentFileIdentifier).procResults{iChannel}.artifact_mask;
+        beta_imfs         = emdCache.(currentFileIdentifier).procResults{iChannel}.beta_imfs;
+        selected_imfs_idx = emdCache.(currentFileIdentifier).procResults{iChannel}.selected_imfs_idx;
+        dom_freqs         = emdCache.(currentFileIdentifier).procResults{iChannel}.dom_freqs;
+     end
     
     
     % Store IMF selection info 
