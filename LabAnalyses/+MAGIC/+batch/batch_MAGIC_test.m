@@ -40,6 +40,7 @@ global rawLFPDir cleanLFPDir rawTFDir cleanTFDir artefacts_results_Dir
 global run
 global ChannelMontage
 global source_index 
+global emdCache
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
@@ -48,7 +49,7 @@ todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
 todo.seg             = 1; % segment data per step
-todo.TF              = 5; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
+todo.TF              = 3; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
 todo.plotTF          = 0; % 1 = plot TF, 2 = plotAlpha
 todo.PE              = 0;
@@ -56,6 +57,8 @@ todo.statsTF         = 1;
 todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
 todo.recomputeCleanedTF = 1; % Set to 1 to recompute spectral TF maps using the cleaned LFP data.
+
+todo.Tf_stats_raw = 1; % plot the raw TF stats 
 
 
 %normalization
@@ -111,7 +114,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_EMD_k6');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_test');
 
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
@@ -222,6 +225,7 @@ end
 % for each patients
 for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
     % Define the patient directory under FigDir (or a separate base if desired)
+    emdCache = [];  % Clear the cache to avoid using previous patient's EMD results
     patientDir = fullfile(FigDir, subject{s});
     MAGIC.batch.EnsureDir(patientDir);
 
@@ -251,7 +255,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             continue
         end
         
-        %output file ame
+        %output file name
         FileNameSplit  = strsplit(files(1).name, '_');
         OutputPath     = char(fullfile(OutputDir, subject{s}, RecDir(r).name, 'POSTOP'));
         OutputFileName = char(fullfile(OutputPath, strjoin(FileNameSplit([1:7 9:10]), '_')));
@@ -308,7 +312,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             disp([subject{s} ' : ' eventName ' at ' char(datetime('now'), 'dd-MM-uuuu_HH-mm-ss')])
             
             % For each event, loop over 17 source indices (IMFs)
-            for source_index = 1:17
+            for source_index = 2:17
                 % --- Segmentation ---
                 if todo.seg
                     % If you want to check for a wrong event flag based on event names:
@@ -320,7 +324,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     end
                     
                     % Compute segmentation for the current source_index
-                    seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, source_index);
+                    seg = MAGIC.batch.step1_preprocess_test(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, source_index);
                       % If the segmentation returned empty (due to empty channel detection), skip this source index.
                     if isempty(seg)
                         warning('Segmentation skipped for source index %d due to empty channel(s).', source_index);
@@ -332,7 +336,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 end
                 
                 % --- TF computation and export ---
-                if todo.TF || todo.PE || todo.meanTF || todo.statsTF || todo.extractLFP || todo.TF == 5
+                if todo.TF || todo.PE || todo.meanTF || todo.statsTF || todo.extractLFP
                     % Reload seg if needed when not computed in this block
                     if todo.seg == 0 && todo.extractInfos == 0
                         clear seg;
@@ -345,7 +349,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     protocol = protocol{6};
                     
                     %% Create baseline with rest (if needed)
-                    if ((todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.extractLFP) && norm > 0) || todo.meanTF || todo.TF == 5
+                    if ((todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.extractLFP) && norm > 0) || todo.meanTF
                         seg_complete = seg;
                         if iscell(seg)
                             seg = seg{1};
@@ -376,8 +380,59 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     else
                         Bsl = [];
                     end
-                    
-                    % Compute the spectral TF maps on raw data
+%                     if todo.Tf_stats_raw && source_index ==1
+% 
+%                         % Compute the spectral TF maps on raw data
+%                         if todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.TF == 5
+%                             disp(['Computing spectral TF maps with raw LFP data ' run])
+%                             [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, eventName, norm, Bsl, 'raw');
+%                             if existTF
+%                                 % Save the TF results using the source index in the filename
+%                                 tfFile = [OutputFileName suff1 '_TF_' suff '_' eventName '.mat'];
+%                                 save(tfFile, 'dataTF')
+%                             end
+%                         elseif todo.PE
+%                             dataPE = MAGIC.batch.step2b_PE(seg, eventName, norm);
+%                             save([OutputFileName suff1 '_PE_' suff '_' eventName '.mat'], 'dataPE')
+%                         elseif todo.meanTF || todo.TF == 2
+%                             load([OutputFileName suff1 '_TF_' suff '_' eventName '.mat'], 'dataTF')
+%                             existTF = 1;
+%                         elseif todo.extractLFP
+%                             MAGIC.batch.Export_timecourses(seg, eventName, norm, Bsl);
+%                         end
+%                         
+%                         % --- Export to CSV (or other formats) and compute TF stats ---
+%                         if (todo.TF==1 || todo.TF==2 || todo.TF==4) && strcmp(segType, 'step')
+%                             if existTF
+%                                 MAGIC.batch.step3_R([OutputFileName suff1 '_TF_' suff '_source' num2str(source_index) '_' eventName '.csv'], dataTF, e, protocol, Artefact_Rejection_Method, 'TF', Size_around_event, Acceptable_Artefacted_Sample_In_Window, todo.TF);
+%                             end
+%                         elseif todo.PE
+%                             MAGIC.batch.step3_R([OutputFileName suff1 '_PE_' eventName '.csv'], dataPE, e, protocol, Artefact_Rejection_Method, 'PE', Size_around_event, Acceptable_Artefacted_Sample_In_Window);
+%                         elseif todo.meanTF
+%                             if norm == 4 && strcmp(segType, 'trial')
+%                                 csvFile = [OutputFileName suff1 '_meanTF_l' suff '_' eventName '.csv'];
+%                             else
+%                                 csvFile = [OutputFileName suff1 '_meanTF_' suff '_' eventName '.csv'];
+%                             end
+%                             MAGIC.batch.step3_R(csvFile, dataTF, e, protocol, Artefact_Rejection_Method, 'meanTF', Size_around_event, Acceptable_Artefacted_Sample_In_Window);
+%                         end
+%                         
+%                         clear dataTF dataPE
+%                         
+%                         % --- TF statistics ---
+%                         if todo.statsTF
+%                             if ~exist(fullfile(FigDir, 'stats'), 'dir')
+%                                 mkdir(fullfile(FigDir, 'stats'))
+%                             end
+%                             tfStatsFile = [OutputFileName suff1 '_TF_' suff '_' eventName '.mat'];
+%                             if exist(tfStatsFile, 'file')
+%                                 load(tfStatsFile, 'dataTF')
+%                                 MAGIC.batch.TF_stats([OutputFileName suff1 '_TF_'  '_' eventName], dataTF, fullfile(FigDir, 'stats'), e)
+%                             end
+%                         end
+%                     end
+%                     
+                    % Compute the spectral TF maps on clean data
                     if todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.TF == 5
                         disp(['Computing spectral TF maps with IMFs LFP data ' run])
                         [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, eventName, norm, Bsl, 'cleaned');
@@ -425,6 +480,8 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                             MAGIC.batch.TF_stats([OutputFileName suff1 '_TF_' suff '_source' num2str(source_index) '_' eventName], dataTF, fullfile(FigDir, 'stats'), e)
                         end
                     end
+
+                    
                    
                     
                 end % End of if todo.TF/PE/meanTF/statsTF/extractLFP

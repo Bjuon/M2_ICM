@@ -9,8 +9,7 @@
                         % o add dbsDipole when ready
                         % What is max_dur for magic ?
 
-
-function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent)
+function seg = step1_preprocess_test(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, source_index)
 
 clear seg
 load 'shared/FIR_highpassMAGIC.mat'
@@ -24,6 +23,10 @@ global max_dur
 global med run
 global rawLFPDir cleanLFPDir
 global ChannelMontage
+global emdCache
+if isempty(emdCache)
+    emdCache = struct();
+end
 
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
@@ -133,20 +136,29 @@ for f = 1 : numel(files)
 
         Artefacts_Detected_per_Sample = zeros(size(data.values{1, 1}));
         Artefacts_Detected_per_Sample(1,1) = data.Fs;
-       % [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
+        [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
                 
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts
-       disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run]);
-
-        [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
+       
+        disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run, ' IMFs ', num2str(source_index)]);
+      %  [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
-        % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
+     %  [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
+        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, source_index);
        %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);        
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
         %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBAR(data)
 
-    end   
+    end
+      
+      % Check if any empty channels were detected
+      if  has_empty_channels
+          warning('Empty channel(s) detected. Skipping source index %d for %s run %s', source_index, med, run);
+          seg = [];  % Return empty seg to indicate skipping
+          return;
+      end
+      
 %     --- Replot Cleaned LFP ---
     if todo.plotCleanedLFP
         MAGIC.batch.plotLFP(data, Cleaned_Data, files(f), cleanLFPDir, y_min, y_max, 'Cleaned');

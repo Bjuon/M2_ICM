@@ -110,7 +110,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_EMD');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_test');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -249,7 +249,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             continue
         end
         
-        %output file ame
+        %output file name
         FileNameSplit  = strsplit(files(1).name, '_');
         OutputPath     = char(fullfile(OutputDir, subject{s}, RecDir(r).name, 'POSTOP'));
         OutputFileName = char(fullfile(OutputPath, strjoin(FileNameSplit([1:7 9:10]), '_')));
@@ -299,7 +299,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 AlsoIncludeWrongEvent = false ;
             end
 
-            seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent, source_index) %protocol, subject{s});
+            seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent); %protocol, subject{s});
             %save preprocess data
             save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
             disp('seg done')
@@ -320,7 +320,6 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 
         
         if todo.TF || todo.PE || todo.meanTF || todo.statsTF || todo.extractLFP
-            %if todo.TF == 1
             if todo.seg == 0 && todo.extractInfos == 0
                 clear seg infos
                 load([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'])       %#ok<LOAD> 
@@ -396,7 +395,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 disp([subject{s} ' : ' e{1} ' a ' char(datetime('now'), 'dd-MM-uuuu_HH-mm-ss')])
                 
                 % spectral calculation on raw data 
-                if todo.TF == 1 || todo.TF == 3 || todo.TF == 4 || todo.TF == 5
+                if todo.TF == 1 || todo.TF == 3 || todo.TF == 4 
                     disp(['Computing spectral TF maps with raw LFP data ',run])
                     [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'raw');
                     if existTF

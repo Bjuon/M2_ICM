@@ -16,7 +16,7 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels
 %   Stats - Structure with quantification metrics of detected artefacts
 %   has_empty_channels - Flag indicating if any empty channels were detected
 
-global artefacts_results_Dir med run;
+global artefacts_results_Dir med run ;
 
 % Initialize empty channel flag
 has_empty_channels = false;

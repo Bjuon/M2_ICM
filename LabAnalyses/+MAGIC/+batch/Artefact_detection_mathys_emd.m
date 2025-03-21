@@ -21,7 +21,7 @@ global artefacts_results_Dir med run;
 
 removeFirstIMF       = false;   % If true, discard IMF #1 from reconstruction
 removeLastIMF        = false;   % If true, discard the last IMF from reconstruction
-outlierRemovalFactor = 2;       % k*MAD threshold to detect outliers (increase/decrease as needed)
+outlierRemovalFactor = 6;       % k*MAD threshold to detect outliers (increase/decrease as needed)
 
 
 % EMD parameters
