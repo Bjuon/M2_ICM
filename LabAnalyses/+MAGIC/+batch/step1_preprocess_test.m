@@ -24,14 +24,16 @@ global med run
 global rawLFPDir cleanLFPDir
 global ChannelMontage
 global emdCache
-if isempty(emdCache)
-    emdCache = struct();
-end
+global subarCache
 global currentFileIdentifier
 
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
+
+if isempty(emdCache)
+    emdCache = struct()
+end
 
 % for each files:
 for f = 1 : numel(files)

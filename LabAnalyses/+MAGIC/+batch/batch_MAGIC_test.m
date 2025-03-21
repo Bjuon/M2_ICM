@@ -41,6 +41,7 @@ global run
 global ChannelMontage
 global source_index 
 global emdCache
+global SubarCache
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
@@ -226,6 +227,7 @@ end
 for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
     % Define the patient directory under FigDir (or a separate base if desired)
     emdCache = [];  % Clear the cache to avoid using previous patient's EMD results
+    SubarCache = []; 
     patientDir = fullfile(FigDir, subject{s});
     MAGIC.batch.EnsureDir(patientDir);
 
