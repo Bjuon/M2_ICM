@@ -9,9 +9,9 @@ if nargin < 2, source_index = []; end
 if nargin < 3, freezeArtifacts = true; end
 
 %% Parameters (all tweakable at the beginning)
-K = 300;                  % Number of surrogates
+K = 200;                  % Number of surrogates
 alpha = 95;               % Percentile threshold for surrogate coefficients
-J = 5;                    % Number of MODWT decomposition levels
+J = 10;                    % Number of MODWT decomposition levels
 waveletName = 'sym4';     % Type of wavelet
 
 todo.plot_result = 0; 
@@ -24,6 +24,8 @@ Fs = data.Fs;
 % Preallocate outputs
 Cleaned_Data = zeros(size(sMatrix));
 Artefacts_Detected_per_Sample = zeros(size(sMatrix));
+has_empty_channel = false;  % Initialize the flag for empty channels
+
 
 %% --- NEW CODE: Set up caching for SuBAR processing ---
 global subarCache currentFileIdentifier;
@@ -50,6 +52,14 @@ end
 for ch = 1:numChannels
     fprintf('Processing channel %d\n', ch);
     s = sMatrix(:, ch);
+
+     if all(s == 0)
+        warning('Channel %d (%s) is empty. Exiting function.', ch, data.labels(ch).name);
+        has_empty_channel = true;  % Set flag to true if the channel is empty
+        Artefacts_Detected_per_Sample = [];
+        Cleaned_Data = [];
+        return;
+    end
     
     % --- NEW CODE: Check cache for channel processing ---
     if isempty(subarCache.(currentFileIdentifier).W{ch})

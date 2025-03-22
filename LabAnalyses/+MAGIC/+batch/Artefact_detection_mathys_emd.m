@@ -19,9 +19,9 @@ global artefacts_results_Dir med run;
 
 %% Parameters (tweak these values inside the function)
 
-removeFirstIMF       = false;   % If true, discard IMF #1 from reconstruction
-removeLastIMF        = false;   % If true, discard the last IMF from reconstruction
 outlierRemovalFactor = 6;       % k*MAD threshold to detect outliers (increase/decrease as needed)
+IMFsToRemove = [3];  % Specify IMF indices to remove from reconstruction (e.g., [3] or [2,4])
+
 
 
 % EMD parameters
@@ -113,6 +113,14 @@ for iChannel = 1:num_channels
     
     % Process IMFs - Get relevant frequency components and detect artifacts
     [artifact_mask, beta_imfs, selected_imfs_idx, dom_freqs] = processAndDetect(imfs, Fs, freq_range, artefact_threshold, smoothing_span, time_block_threshold);
+
+    for imf_rm = IMFsToRemove
+        idxToRemove = find(selected_imfs_idx == imf_rm);
+        if ~isempty(idxToRemove)
+            beta_imfs(:, idxToRemove) = [];
+            selected_imfs_idx(idxToRemove) = [];
+        end
+    end
     
     
     
