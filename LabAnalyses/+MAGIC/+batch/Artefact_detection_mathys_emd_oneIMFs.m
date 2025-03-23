@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels] = Artefact_detection_mathys_emd_oneIMFs(data, imf_index)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channels] = Artefact_detection_mathys_emd_oneIMFs(data, imf_index)
 % Artefact_detection_mathys_emd - Detect and remove artefacts using Empirical Mode Decomposition (EMD)
 % and extract components in 4-55 Hz range.
 %
@@ -26,7 +26,7 @@ if isempty(currentFileIdentifier)
 end
 
 % Initialize empty channel flag
-has_empty_channels = false;
+is_empty_channels = false;
 
 %% Parameters (tweak these values inside the function)
 
@@ -89,7 +89,7 @@ end
         if all(raw_data(:, imf_index) == 0)
             warning('Channel corresponding to source index %d (%s) is empty. Skipping analysis for this source index.', ...
                 imf_index, data.labels(imf_index).name);
-            has_empty_channels = true;
+            is_empty_channels = true;
             Artefacts_Detected_per_Sample = [];
             Cleaned_Data = [];
             Stats = [];

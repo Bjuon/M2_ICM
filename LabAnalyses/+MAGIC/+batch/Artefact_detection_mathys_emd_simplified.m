@@ -29,7 +29,7 @@ MaxNumIMF            = 20;       % Maximum number of IMFs to compute using EMD
 numIMFs              = 17;       % Defined number of IMFs to retain (if more are computed, use the first numIMFs)
 SiftRelativeTolerance = 0.01;    % Tolerance for sifting in EMD
 SiftMaxIterations     = 15;      % Maximum iterations for sifting
-freq_range           = [4 55];   % Frequency range (Hz) for keeping IMFs based on dominant frequency
+freq_range           = [4 100];   % Frequency range (Hz) for keeping IMFs based on dominant frequency
 
 %% Extract Raw Data and Sampling Frequency
 raw_data = data.values{1,1};

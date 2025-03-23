@@ -150,26 +150,26 @@ for f = 1 : numel(files)
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts_EMD
         disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run, ' IMFs ', num2str(source_index)]);
-        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, source_index);
+        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channel] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, source_index);
     end
 
     if todo.detectArtifacts_SuBar
        disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run, ' Decomposition level ', num2str(source_index)]);
-                [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBAR(data, source_index)
+                [Artefacts_Detected_per_Sample, Cleaned_Data, is_empty_channel] = MAGIC.batch.Artefact_Detection_mathys_SuBAR(data, source_index);
 
     end
 
       %  [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
      %  [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
-      %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, has_empty_channels] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, source_index);
+      %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channel] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, source_index);
        %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);        
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
 
     
       
       % Check if any empty channels were detected
-      if  has_empty_channels
+      if  is_empty_channel
           warning('Empty channel(s) detected. Skipping source index %d for %s run %s', source_index, med, run);
           seg = [];  % Return empty seg to indicate skipping
           return;

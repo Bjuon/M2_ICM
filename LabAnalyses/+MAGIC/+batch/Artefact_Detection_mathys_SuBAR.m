@@ -1,5 +1,5 @@
 % --- Modified function header with additional optional inputs ---
-function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_Detection_mathys_SuBAR(data, source_index, freezeArtifacts)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, is_empty_channel] = Artefact_Detection_mathys_SuBAR(data, source_index, freezeArtifacts)
 % Optional inputs:
 %   source_index   - (optional) integer specifying which decomposition level (1...J) to use for reconstruction.
 %   freezeArtifacts - (optional) boolean flag: 
@@ -24,7 +24,7 @@ Fs = data.Fs;
 % Preallocate outputs
 Cleaned_Data = zeros(size(sMatrix));
 Artefacts_Detected_per_Sample = zeros(size(sMatrix));
-has_empty_channel = false;  % Initialize the flag for empty channels
+is_empty_channel = false;  % Initialize the flag for empty channels
 
 
 %% --- NEW CODE: Set up caching for SuBAR processing ---
@@ -55,7 +55,7 @@ for ch = 1:numChannels
 
      if all(s == 0)
         warning('Channel %d (%s) is empty. Exiting function.', ch, data.labels(ch).name);
-        has_empty_channel = true;  % Set flag to true if the channel is empty
+        is_empty_channel = true;  % Set flag to true if the channel is empty
         Artefacts_Detected_per_Sample = [];
         Cleaned_Data = [];
         return;
