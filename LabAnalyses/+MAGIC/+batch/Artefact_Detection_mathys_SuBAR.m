@@ -9,21 +9,35 @@ if nargin < 2, source_index = []; end
 if nargin < 3, freezeArtifacts = true; end
 
 %% Parameters (all tweakable at the beginning)
-K = 200;                  % Number of surrogates
+K = 300;                  % Number of surrogates
 alpha = 95;               % Percentile threshold for surrogate coefficients
 J = 10;                    % Number of MODWT decomposition levels
 waveletName = 'sym4';     % Type of wavelet
 
 todo.plot_result = 0; 
 
-% --- [Other existing parameters and data extraction remain unchanged] ---
 sMatrix = data.values{1,1};  % LFP matrix [samples x channels]
 Fs = data.Fs;
 [numSamples, numChannels] = size(sMatrix);
 
+
+% Check if source_index specifies a channel that is empty
+if ~isempty(source_index) && source_index <= numChannels
+    if all(sMatrix(:, source_index) == 0)
+        warning('Channel corresponding to source index %d (%s) is empty. Skipping analysis for this source index.', ...
+            source_index, data.labels(source_index).name);
+        is_empty_channel = true;
+        Artefacts_Detected_per_Sample = [];
+        Cleaned_Data = [];
+        return;
+    end
+end
+
 % Preallocate outputs
 Cleaned_Data = zeros(size(sMatrix));
 Artefacts_Detected_per_Sample = zeros(size(sMatrix));
+Artefacts_Detected_per_Sample(1,1) = Fs;  
+
 is_empty_channel = false;  % Initialize the flag for empty channels
 
 
@@ -50,18 +64,16 @@ end
 
 %% Process each channel independently
 for ch = 1:numChannels
-    fprintf('Processing channel %d\n', ch);
+    channel_name = data.labels(ch).name; % Get the channel name
+    fprintf('SuBar decomposition for channel %d/%d (%s)...\n', ch, numChannels, channel_name);
     s = sMatrix(:, ch);
 
      if all(s == 0)
-        warning('Channel %d (%s) is empty. Exiting function.', ch, data.labels(ch).name);
-        is_empty_channel = true;  % Set flag to true if the channel is empty
-        Artefacts_Detected_per_Sample = [];
-        Cleaned_Data = [];
-        return;
+        warning('Channel %d (%s) is empty.', ch, data.labels(ch).name);
+        continue;
     end
     
-    % --- NEW CODE: Check cache for channel processing ---
+    %  Check cache for channel processing ---
     if isempty(subarCache.(currentFileIdentifier).W{ch})
         % Compute the MODWT of the signal using the specified wavelet and levels
         % modwt: computes the maximal overlap discrete wavelet transform

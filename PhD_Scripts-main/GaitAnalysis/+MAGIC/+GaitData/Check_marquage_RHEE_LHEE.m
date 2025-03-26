@@ -4,8 +4,9 @@
 clear all; clc; close all; warning('off','MATLAB:print:FigureTooLargeForPage')
 cpt = 0 ; DemiAExcl  = {}; DemiALabel = {};
 
-todo_MarcheLancee = 0; % Or only LFP
+todo_MarcheLancee = 1; % Or only LFP
 ExitFolder = 'C:\Users\mathieu.yeche\OneDrive - ICM\Downloads' ;
+ExitFolder = '\\iss\home\mathys.marcellin\results_continious_gait'
 PlotAndSave = false ;   % time consuming
 
 [Patients, Folder, CondMed, ~]  = MAGIC.Patients.All('MAGIC_LFP',0);
@@ -16,6 +17,8 @@ PlotAndSave = false ;   % time consuming
 % Patients = {'FRJ',};
 % Patients = {'GAl','FEp','DEp','ALb','SOh','VIj'};
 % Patients = {'FRa'};
+
+Patients(strcmp(Patients, 'FRa')) = [];
 
 
                                             cnt = 0;
@@ -204,6 +207,11 @@ if ~ todo_MarcheLancee
     alertgiven = true ;
 end
 
+ if ~isfield(All_mks, 'RHEE') || ~isfield(All_mks, 'LHEE')
+            fprintf('Markers RHEE and/or LHEE are missing in file %s. Skipping to next file.\n', filename);
+            continue;  % Skip the rest of the processing for this file and continue with the next file in the loop
+ end
+
 if length(listtmp) > 3 && ~alertgiven
     for i = round(listtmp(4))-40 : round(DATA_Start_turn(nt))+20
         if sum(abs(All_mks.RHEE(i,:)-All_mks.RHEE(i-1,:))) > 40*200/Fs || sum(abs(All_mks.LHEE(i,:)-All_mks.LHEE(i-1,:))) > 40*200/Fs
@@ -214,6 +222,7 @@ if length(listtmp) > 3 && ~alertgiven
             fprintf(2, ['Pbm Marche lancée : ' filename ' frame ' num2str(i) '\n'])
             break
         end
+      
         
         if All_mks.RHEE(i, 1) - All_mks.LHEE(i, 1)  < -40 && i < round(DATA_Start_turn(nt)) - 20 && ~alertgiven && ~TalonChecked
             fprintf(2, ['Talons Inverse: ' filename ' frame ' num2str(i) ' of ' num2str(abs(round(All_mks.RHEE(i, 1) - All_mks.LHEE(i, 1)))) 'mm \n'])

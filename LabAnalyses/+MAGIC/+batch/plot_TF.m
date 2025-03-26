@@ -25,7 +25,9 @@ for t = 1 : numel(dataTF)
         if strcmp(file(end-1:end), 'FO') || strcmp(file(end-1:end), 'FC')
             FigName = [FigName '_step_' num2str(dataTF(t).info('trial').nStep)];
         end
-        fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 20 84]);
+        %fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 21 84]);  
+        fig = figure('Name', FigName ,'NumberTitle','off', 'units', 'centimeters', 'position', [5 5 29.7 21]); %a4
+
         
             
         for ch = 1:nb_ch

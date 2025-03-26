@@ -17,6 +17,8 @@ cpt = 0 ;
 % Patients = {'SOh',};
 % CondMed = {'OFF','ON'};
 [Patients, Folder, CondMed, ~]  = MAGIC.Patients.All('MAGIC_LFP',0);
+Patients(strcmp(Patients, 'FRa')) = [];
+
                                             cnt = 0;
                                             disp(['Nombre de patients : '  num2str(length(Patients))])
                                             Liste_Essais_Trop_Court = {};
@@ -329,6 +331,11 @@ DATA.Cadence_L = (length(Ev2.Left_Foot_Strike)-1) / ( (Ev2.Left_Foot_Strike(end)
 %%
 % ___Longueur Pas___________________________________________________________
 
+
+if ~isfield(All_mks, 'RHEE') || ~isfield(All_mks, 'LHEE')
+        fprintf('Markers RHEE and/or LHEE are missing in file %s. Skipping to next file.\n', filename);
+        continue;  % Skip the rest of the processing for this file and continue with the next file in the loop
+end
 for i = 1 : min(length(Ev2.Right_Foot_Strike), length(Ev2.Right_Foot_Off)) % checker si toujours correct avec min et non juste length(Ev2.Right_Foot_Strike)
         FS = Ev_Frames.Right_Foot_Strike(i);
         FO = Ev_Frames.Right_Foot_Off(i);    

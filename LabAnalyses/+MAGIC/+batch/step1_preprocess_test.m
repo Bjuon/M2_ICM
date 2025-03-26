@@ -32,9 +32,6 @@ todo.detectArtifacts_SuBar    = 1; % Set to 1 to enable surrogate plotting
 todo.detectArtifacts_EMD = 0; 
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
 
-if isempty(emdCache)
-    emdCache = struct();
-end
 
 % for each files:
 for f = 1 : numel(files)
@@ -145,7 +142,7 @@ for f = 1 : numel(files)
 
         Artefacts_Detected_per_Sample = zeros(size(data.values{1, 1}));
         Artefacts_Detected_per_Sample(1,1) = data.Fs;
-        [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
+      %  [Artefacts_Detected_per_Sample,~] = MAGIC.batch.Artefact_detection(data) ;
                 
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts_EMD
@@ -156,6 +153,7 @@ for f = 1 : numel(files)
     if todo.detectArtifacts_SuBar
        disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run, ' Decomposition level ', num2str(source_index)]);
                 [Artefacts_Detected_per_Sample, Cleaned_Data, is_empty_channel] = MAGIC.batch.Artefact_Detection_mathys_SuBAR(data, source_index);
+                Artefacts_Detected_per_Sample(1,1) = data.Fs; % 512
 
     end
 

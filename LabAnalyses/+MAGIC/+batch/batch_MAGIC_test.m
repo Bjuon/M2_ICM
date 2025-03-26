@@ -41,7 +41,7 @@ global run
 global ChannelMontage
 global source_index 
 global emdCache
-global SubarCache
+global subarCache
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
@@ -101,7 +101,7 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-localMode = true;  
+localMode = false;  
 if localMode
     startpath = "F:\Programing\M2\Data_ICM";
 else
@@ -227,7 +227,7 @@ end
 for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
     % Define the patient directory under FigDir (or a separate base if desired)
     emdCache = [];  % Clear the cache to avoid using previous patient's EMD results
-    SubarCache = []; 
+    subarCache = []; 
     patientDir = fullfile(FigDir, subject{s});
     MAGIC.batch.EnsureDir(patientDir);
 
