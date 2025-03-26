@@ -39,6 +39,7 @@ global tasks
 global rawLFPDir cleanLFPDir rawTFDir cleanTFDir artefacts_results_Dir
 global run
 global ChannelMontage
+global med subject event s 
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 

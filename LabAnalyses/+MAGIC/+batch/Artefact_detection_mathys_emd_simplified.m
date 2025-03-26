@@ -1,35 +1,58 @@
 function [Cleaned_Data, Stats] = Artefact_detection_mathys_emd_simplified(data)
-% Artefact_detection_mathys_emd_modified - Process signal using EMD with
+% Artefact_detection_mathys_emd_simplified - Process signal using EMD with
 % pre-filtering and IMF selection based on dominant frequency.
 %
 % This function performs the following steps:
 % 1. Pre-filter the raw signal by removing outliers using a MAD-based threshold.
 % 2. Decompose the signal into Intrinsic Mode Functions (IMFs) via EMD.
-% 3. Check each IMF and keep only those whose dominant frequency (computed via 
-%    the Hilbert transform) lies within a specified frequency range (4-55 Hz).
-% 4. Remove specific IMFs as specified by the IMFsToRemove variable.
-% 5. Reconstruct the cleaned signal as the sum of the remaining IMFs.
+% 3. Select IMFs based on dominant frequency.
+% 4. Remove specific IMFs as specified by a removal configuration defined 
+%    per patient, med state, and channel.
+% 5. Reconstruct the cleaned signal from the remaining IMFs.
 %
 % Inputs:
 %   data - Structure with fields:
 %          .values: Cell array containing the LFP data matrix.
 %          .Fs: Sampling frequency.
+%          .labels: Structure array with a field 'name' for channel names.
 %
 % Outputs:
 %   Cleaned_Data - Reconstructed signal after IMF selection and artifact removal.
 %   Stats        - Structure containing selected IMF indices, dominant frequencies,
 %                  and outlier bounds for each channel.
 %
-% Tweakable parameters below can be adjusted as needed.
+% Global variables:
+%   med, subject, s: Used to set the current med state and patient.
+
+global med 
+global subject
+global s  % 's' is used as an index to choose the current patient
 
 %% Tweakable Parameters
 outlierRemovalFactor = 6;        % Multiplier for MAD-based outlier detection
-IMFsToRemove         = [3];      % Specify IMF indices to remove (if empty, none are removed)
 MaxNumIMF            = 20;       % Maximum number of IMFs to compute using EMD
-numIMFs              = 17;       % Defined number of IMFs to retain (if more are computed, use the first numIMFs)
+numIMFs              = 17;       % Number of IMFs to retain (if more are computed, use the first numIMFs)
 SiftRelativeTolerance = 0.01;    % Tolerance for sifting in EMD
 SiftMaxIterations     = 15;      % Maximum iterations for sifting
 freq_range           = [4 100];   % Frequency range (Hz) for keeping IMFs based on dominant frequency
+
+%% Gather Valid Channel Names
+% This section extracts channel names from data.labels and converts them
+% into valid MATLAB field names (e.g., '7G' becomes 'x7G'). This list will help
+% you to correctly set up the removalConfig struct.
+
+
+%% Removal Configuration
+% Define removal indices for each patient, med state, and channel.
+% For example, for patient 'FRJ_0610' in med state 'on', remove IMF 3 for channels
+% originally labeled '7G', '6G', and '5G'. Their valid field names are 'x7G', 'x6G', and 'x5G'.
+removalConfig = struct();
+removalConfig.FRJ_0610.on.x7G = [3];
+removalConfig.FRJ_0610.on.x6G = [3];
+removalConfig.FRJ_0610.on.x5G = [3];
+% Additional configurations can be added here.
+% Set a default removal list if no configuration exists.
+defaultIMFsToRemove = [];
 
 %% Extract Raw Data and Sampling Frequency
 raw_data = data.values{1,1};
@@ -41,12 +64,16 @@ Stats = struct('imf_stats', []);
 
 %% Process Each Channel
 for iChannel = 1:num_channels
-    % Extract current channel signal
+    % Extract current channel signal and channel name
     signal = raw_data(:, iChannel);
+    channel_name = data.labels(iChannel).name;
+    
+    % Print current patient, med state, and channel
+    fprintf('Current patient: %s, med state: %s, channel: %s\n', subject{s}, med, channel_name);
     
     % Skip channel if empty
     if all(signal == 0)
-        warning('Channel %d is empty. Skipping.', iChannel);
+        warning('Channel %d (%s) is empty. Skipping.', iChannel, channel_name);
         continue;
     end
     
@@ -83,9 +110,9 @@ for iChannel = 1:num_channels
     % ------------------------------
     % 3. IMF Selection based on Frequency Content
     % ------------------------------
-    selected_imfs   = [];  % To store IMFs that pass the frequency check
-    selected_indices = [];  % To record the indices of kept IMFs
-    dominant_freqs  = zeros(1, nIMFs);  % For storing dominant frequencies for stats
+    selected_imfs   = [];   % Store IMFs that pass the frequency check
+    selected_indices = [];   % Record indices of kept IMFs
+    dominant_freqs  = zeros(1, nIMFs);   % Store dominant frequencies for stats
     
     for i = 1:nIMFs
         current_imf = imfs(:, i);
@@ -103,8 +130,25 @@ for iChannel = 1:num_channels
     % ------------------------------
     % 4. Remove Specified IMFs (if any)
     % ------------------------------
-    if ~isempty(IMFsToRemove)
-        valid_idx = ~ismember(selected_indices, IMFsToRemove);
+    currentSubject = subject{s};  % e.g., 'FRJ_0610'
+    
+    % Convert channel name to a valid field name for struct indexing.
+    validChannelName = matlab.lang.makeValidName(channel_name);
+    
+    % Determine the removal list based on current patient, med state, and channel.
+    if isfield(removalConfig, currentSubject) && isfield(removalConfig.(currentSubject), lower(med))
+        config = removalConfig.(currentSubject).(lower(med));
+        if isfield(config, validChannelName)
+            removalIndices = config.(validChannelName);
+        else
+            removalIndices = defaultIMFsToRemove;
+        end
+    else
+        removalIndices = defaultIMFsToRemove;
+    end
+    
+    if ~isempty(removalIndices)
+        valid_idx = ~ismember(selected_indices, removalIndices);
         selected_imfs = selected_imfs(:, valid_idx);
         selected_indices = selected_indices(valid_idx);
     end
@@ -118,7 +162,7 @@ for iChannel = 1:num_channels
         cleaned_signal = zeros(num_samples, 1);
     end
     
-    % Optionally, clip the reconstructed signal to the original outlier bounds
+    % Optionally, clip the reconstructed signal to the original outlier bounds.
     if exist('lowerBnd','var') && exist('upperBnd','var')
         cleaned_signal = min(max(cleaned_signal, lowerBnd), upperBnd);
     end
