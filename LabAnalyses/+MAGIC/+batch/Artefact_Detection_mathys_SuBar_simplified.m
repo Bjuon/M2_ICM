@@ -1,18 +1,18 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_Detection_mathys_SuBar_simplified(data, freezeArtifacts)
+function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_Detection_mathys_SuBar_simplified(data)
 
 % Optional inputs:
 %   Decomp_to_remove - (optional) array specifying decomposition levels (1...J) to exclude from reconstruction.
 %   freezeArtifacts  - (optional) boolean flag: 
 %                      true  => replace artifact coefficients with surrogate mean (“freeze” them),
 %                      false => interpolate over artifact coefficients.
-if nargin < 2, freezeArtifacts = true; end
+freezeArtifacts = true;
 
 %% Parameters
 K = 300;
 alpha = 95;
 J = 10;
 waveletName = 'sym4';
-Decomp_to_remove = []; % choose the decomposition level to exclude from the cleanned signal
+Decomp_to_remove = [3]; % choose the decomposition level to exclude from the cleanned signal
 
 sMatrix = data.values{1,1};
 Fs = data.Fs;
