@@ -44,12 +44,16 @@ freq_range           = [4 100];   % Frequency range (Hz) for keeping IMFs based 
 
 %% Removal Configuration
 % Define removal indices for each patient, med state, and channel.
-% For example, for patient 'FRJ_0610' in med state 'on', remove IMF 3 for channels
+% For example, for patient 'FRj_0610' in med state 'on', remove IMF 3 for channels
 % originally labeled '7G', '6G', and '5G'. Their valid field names are 'x7G', 'x6G', and 'x5G'.
 removalConfig = struct();
-removalConfig.FRJ_0610.on.x7G = [3];
-removalConfig.FRJ_0610.on.x6G = [3];
-removalConfig.FRJ_0610.on.x5G = [3];
+removalConfig.FRj_0610.on.x7G = [3];
+removalConfig.FRj_0610.on.x6G = [3];
+removalConfig.FRj_0610.on.x5G = [3];
+removalConfig.FRj_0610.on.x3G = [3];
+removalConfig.FRj_0610.on.x2G = [3];
+removalConfig.FRj_0610.on.x18G = [3];
+removalConfig.FRj_0610.on.x3D = [3];
 % Additional configurations can be added here.
 % Set a default removal list if no configuration exists.
 defaultIMFsToRemove = [];
@@ -130,7 +134,7 @@ for iChannel = 1:num_channels
     % ------------------------------
     % 4. Remove Specified IMFs (if any)
     % ------------------------------
-    currentSubject = subject{s};  % e.g., 'FRJ_0610'
+    currentSubject = subject{s};  % e.g., 'FRj_0610'
     
     % Convert channel name to a valid field name for struct indexing.
     validChannelName = matlab.lang.makeValidName(channel_name);
@@ -146,6 +150,9 @@ for iChannel = 1:num_channels
     else
         removalIndices = defaultIMFsToRemove;
     end
+
+    fprintf('Removal IMFs for channel %s: %s\n', channel_name, mat2str(removalIndices));
+
     
     if ~isempty(removalIndices)
         valid_idx = ~ismember(selected_indices, removalIndices);

@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channels] = Artefact_detection_mathys_ica_oneIC(data, ic_index)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, is_empty_channels] = Artefact_detection_mathys_ica_oneIC(data, ic_index)
 % Artefact_detection_mathys_ica_oneIC - Detect and remove artefacts using ICA
 % and reconstruct the cleaned signal from selected independent components (ICs).
 %
@@ -11,7 +11,6 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channels]
 % Outputs:
 %   Artefacts_Detected_per_Sample - Binary matrix indicating artifact locations.
 %   Cleaned_Data                - Data after artifact removal.
-%   Stats                       - Structure with quantification metrics.
 %   is_empty_channels           - Flag indicating if any empty channels were detected
 
 global artefacts_results_Dir med run;
@@ -39,14 +38,18 @@ Fs = data.Fs;
 empty_channels = false(1, num_channels);
 for ch = 1:num_channels
     if all(raw_data(:, ch) == 0)
-        warning('Channel %d (%s) is empty. Skipping analysis for this channel.', ch, data.labels(ch).name);
+        warning('Channel %d (%s) is empty. Marking as empty.', ch, data.labels(ch).name);
         empty_channels(ch) = true;
     end
 end
-if any(empty_channels)
-    is_empty_channels = true;
-end
 non_empty_idx = find(~empty_channels);
+
+% Only consider it an error if there are too few channels for ICA
+if length(non_empty_idx) < 2
+    warning('Not enough valid channels for ICA decomposition. Skipping analysis.');
+    is_empty_channels = true;
+    return;  % Exit the function early
+end
 
 %% Initialize outputs
 Cleaned_Data = raw_data;
@@ -58,17 +61,28 @@ Stats.all_ics = [];  % to store all ICs for visualization
 
 fprintf('Performing ICA on %d non-empty channels...\n', length(non_empty_idx));
 
+% Add FastICA toolbox to MATLAB's path
+fasticaPath = 'C:\Users\mathys.marcellin\Desktop\M2_ICM\LabAnalyses\+MAGIC\+batch\FastICA_25';
+addpath(genpath(fasticaPath));
+
+
 %% ICA Decomposition (run on non-empty channels)
 % We use fastica; note that fastica expects a data matrix with rows as signals.
 currentSettings = 'fastica_default';
 if ~isfield(icaCache, currentFileIdentifier) || ...
         ~isequal(icaCache.(currentFileIdentifier).settings, currentSettings)
     % Transpose raw_data(non_empty_idx) to [channels x samples]
-    [icasig, A, W] = fastica(raw_data(:, non_empty_idx)' );
-    icaCache.(currentFileIdentifier).components = icasig;  % [nICs x num_samples]
-    icaCache.(currentFileIdentifier).mixingMatrix = A;       % [nNonEmpty x nICs]
-    icaCache.(currentFileIdentifier).separatingMatrix = W;
-    icaCache.(currentFileIdentifier).settings = currentSettings;
+    try
+        [icasig, A, W] = fastica(raw_data(:, non_empty_idx)');
+        icaCache.(currentFileIdentifier).components = icasig;  % [nICs x num_samples]
+        icaCache.(currentFileIdentifier).mixingMatrix = A;       % [nNonEmpty x nICs]
+        icaCache.(currentFileIdentifier).separatingMatrix = W;
+        icaCache.(currentFileIdentifier).settings = currentSettings;
+    catch e
+        warning('FastICA failed: %s', e.message);
+        is_empty_channels = true;
+        return;
+    end
 else
     icasig = icaCache.(currentFileIdentifier).components;
     A = icaCache.(currentFileIdentifier).mixingMatrix;
@@ -130,10 +144,30 @@ else
 end
 
 %% Reconstruction: Use either specified IC or all selected ICs
-if exist('ic_index', 'var') && ~isempty(ic_index) && ismember(ic_index, 1:nICs)
+if exist('ic_index', 'var') && ~isempty(ic_index)
+    % Check if the specified IC is a valid index
+    if ic_index > nICs || ic_index < 1
+        warning('IC index %d out of range (1-%d). Skipping reconstruction.', ic_index, nICs);
+        is_empty_channels = true;
+        return;
+    end
+    
+    % Check if the specified IC contains valid data
+    if isempty(icasig(ic_index,:)) || all(icasig(ic_index,:) == 0)
+        warning('IC index %d is empty or invalid. Skipping reconstruction.', ic_index);
+        is_empty_channels = true;
+        return;
+    end
+    
     used_ic_idx = ic_index;
     fprintf('Using specified IC index: %d for reconstruction.\n', ic_index);
 else
+    % When no specific IC is requested, use all selected ICs based on frequency criteria
+    if isempty(selected_ic_idx)
+        warning('No ICs meet the frequency criteria. Skipping reconstruction.');
+        is_empty_channels = true;
+        return;
+    end
     used_ic_idx = selected_ic_idx;
     fprintf('Using selected ICs (based on frequency criteria) for reconstruction.\n');
 end
@@ -165,10 +199,6 @@ Stats.total_artifacts = total_artifacts;
 Stats.percent_removed = 100 * total_artifacts / num_samples;
 fprintf('ICA artifact detection complete: %d artifact samples detected (%.2f%% of signal)\n', ...
     total_artifacts, Stats.percent_removed);
-
-%% (Optional: Insert plotting routines here similar to the original EMD version)
-% ...
-
 end
 
 %% Helper Function: Dominant Frequency via Hilbert Transform

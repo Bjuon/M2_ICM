@@ -42,6 +42,7 @@ global ChannelMontage
 global source_index 
 global emdCache
 global subarCache
+global icaCache
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
@@ -115,7 +116,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_Subar');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_New_ICA');
 
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
@@ -141,11 +142,11 @@ if ~argin
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
 %    subject   = complet(1:end-1)
-    subject = {'FRj_0610'}
+    subject = {'FRj_0610', 'FEp_0536'}
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FC','FO1', 'FC1', 'FO'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FC','FC1'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -228,6 +229,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
     % Define the patient directory under FigDir (or a separate base if desired)
     emdCache = [];  % Clear the cache to avoid using previous patient's EMD results
     subarCache = []; 
+    icaCache = [];
     patientDir = fullfile(FigDir, subject{s});
     MAGIC.batch.EnsureDir(patientDir);
 
