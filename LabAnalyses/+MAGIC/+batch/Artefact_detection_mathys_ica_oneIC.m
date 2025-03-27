@@ -23,7 +23,7 @@ end
 is_empty_channels = false;
 
 %% Parameters for ICA-based artifact detection
-outlierRemovalFactor = 2;       % k*MAD threshold for outlier removal
+outlierRemovalFactor = 6;       % k*MAD threshold for outlier removal
 artefact_threshold    = 4;       % Threshold multiplier (higher = less sensitive)
 smoothing_span        = 5;       % Smoothing span for energy calculation (samples)
 time_block_threshold  = 0.25;    % Minimum duration (in seconds) for artifact block
@@ -64,7 +64,6 @@ fprintf('Performing ICA on %d non-empty channels...\n', length(non_empty_idx));
 % Add FastICA toolbox to MATLAB's path
 fasticaPath = 'C:\Users\mathys.marcellin\Desktop\M2_ICM\LabAnalyses\+MAGIC\+batch\FastICA_25';
 addpath(genpath(fasticaPath));
-
 
 %% ICA Decomposition (run on non-empty channels)
 % We use fastica; note that fastica expects a data matrix with rows as signals.
@@ -113,15 +112,38 @@ for iIC = 1:nICs
         Stats.ic_stats(iIC).selected = false;
     end
     
-    % Artifact detection on current IC: energy thresholding
+    %% Original artifact detection using Hilbert-based energy envelope
     ic_energy = current_ic.^2;
     energy_envelope = movmean(ic_energy, smoothing_span);
     energy_thresh = median(energy_envelope) + artefact_threshold * mad(energy_envelope);
     energy_artifacts = energy_envelope > energy_thresh;
+    
+    %% New Processing Step: STFT-based energy envelope computation for enhanced precision
+    % This additional step computes a time-frequency representation of the IC signal
+    % and sums the spectral power in the desired frequency band to detect artifacts.
+    window_length = min(256, num_samples);  % Window length for STFT
+    noverlap = round(0.9 * window_length);    % 90% overlap for high resolution
+    nfft = 2^nextpow2(window_length);
+    [~, F, T, P] = spectrogram(current_ic, window_length, noverlap, nfft, Fs);
+    % Sum power within the specified frequency range
+    freq_band_idx = find(F >= freq_range(1) & F <= freq_range(2));
+    stft_energy_envelope = sum(P(freq_band_idx, :), 1);  % Energy over time bins
+    % Interpolate STFT energy envelope to sample-level resolution
+    stft_energy_interp = interp1(T*Fs, stft_energy_envelope, 1:num_samples, 'linear', 'extrap')';
+    % Smooth the interpolated envelope
+    stft_energy_smooth = movmean(stft_energy_interp, smoothing_span);
+    % Compute threshold for STFT-based energy
+    stft_energy_thresh = median(stft_energy_smooth) + artefact_threshold * mad(stft_energy_smooth);
+    stft_artifacts = stft_energy_smooth > stft_energy_thresh;
+    
+    %% Combine both artifact detection masks (Hilbert-based and STFT-based)
+    combined_artifacts_current = energy_artifacts | stft_artifacts;
+    
+    %% Apply median filtering to remove short spurious detections
     try
-        filtered_artifacts = medfilt1(double(energy_artifacts), round(time_block_threshold * Fs)) > 0;
+        filtered_artifacts = medfilt1(double(combined_artifacts_current), round(time_block_threshold * Fs)) > 0;
     catch
-        filtered_artifacts = energy_artifacts;
+        filtered_artifacts = combined_artifacts_current;
     end
     artifact_mask_IC(iIC, :) = filtered_artifacts';
     

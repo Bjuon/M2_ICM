@@ -116,7 +116,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_New_ICA');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_New_ICA_complex');
 
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
@@ -316,7 +316,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             disp([subject{s} ' : ' eventName ' at ' char(datetime('now'), 'dd-MM-uuuu_HH-mm-ss')])
             
             % For each event, loop over 17 source indices (IMFs)
-            for source_index = 1:10 % 10 for suurogate 17 for IMFs
+            for source_index = 1:13 % 10 for suurogate 17 for IMFs
                 % --- Segmentation ---
                 if todo.seg
                     % If you want to check for a wrong event flag based on event names:
