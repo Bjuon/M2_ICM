@@ -24,7 +24,7 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = Artefact_detecti
 %   - time_block_threshold: Minimum duration (in ms) to identify as block artefact
 %   - smoothing_span: Smoothing parameter for energy calculation
 
-todo.plot_results = 1; 
+todo.plot_results = 0; 
 global artefacts_results_Dir med run;
 
 
@@ -32,9 +32,9 @@ global artefacts_results_Dir med run;
 %% Parameters 
 artefact_threshold = 8;       % Threshold multiplier (higher = less sensitive)
 tf_window_size = 0.5;         % Window size in seconds (matches 500ms artefact blocks)
-freq_range = [0 70];          % Frequency range to analyze for artefacts (Hz)
+freq_range = [4 55];          % Frequency range to analyze for artefacts (Hz)
 time_block_threshold = 0.45;  % Minimum duration to consider as block artefact (seconds)
-smoothing_span = 15;          % Smoothing parameter for energy calculation
+smoothing_span = 10;          % Smoothing parameter for energy calculation
 
 
 

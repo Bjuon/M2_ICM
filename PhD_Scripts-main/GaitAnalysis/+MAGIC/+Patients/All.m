@@ -33,6 +33,12 @@ elseif strcmp(Protocole, 'PPN_spon')
     Folder = [ char(fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','GAITPARK','EMGt0_POSTOP_')) ] ;
     CondMed = {'OFF','ON'};
 
+elseif strcmp(Protocole, 'Sain_10patMarco')
+    List_of_Patients = {'BAn','BAg','BEc', 'BIBTH15','CLp','DAp','FAe','FLODO07','GRp','LAp'} ;  
+    Folder = [ char(fullfile('\\iss\home\mathys.marcellin\controls\')) ] ;
+    CondMed = {'OFF'};
+ 
+
 end
 
 

@@ -13,6 +13,7 @@ alpha = 95;
 J = 10;
 waveletName = 'sym4';
 Decomp_to_remove = [3]; % choose the decomposition level to exclude from the cleanned signal
+displaySurrogatePlot = 1;
 
 sMatrix = data.values{1,1};
 Fs = data.Fs;
@@ -46,6 +47,46 @@ for ch = 1:numChannels
 
         W_mean = mean(surro_coeff, 1);
         thresh = prctile(abs(surro_coeff), alpha, 1);
+
+           if displaySurrogatePlot && ch == 1 && j == 1
+                % Create time axis based on the length of the current signal s
+                time_axis = (0:length(s)-1) / Fs;
+                
+                % Compute constant mean surrogate as the overall average of the surrogate coefficients
+                meanSurrogateValue = mean(W_mean);
+                % Compute constant threshold as the 95th percentile from all surrogate coefficients in the current level
+                thresholdValue = prctile(abs(surro_coeff(:)), alpha);
+                
+                figure;
+                hold on;
+                
+                % Plot raw signal (blue)
+                plot(time_axis, W(j,:), 'b', 'DisplayName', 'Raw Signal');
+                
+                % Plot constant mean surrogate as a red dashed line
+                plot(time_axis, meanSurrogateValue * ones(size(time_axis)), 'r--', 'DisplayName', 'Mean Surrogate');
+                
+                % Plot constant threshold lines as black dashed lines
+                plot(time_axis, thresholdValue * ones(size(time_axis)), 'k--', 'DisplayName', '95th Percentile');
+                plot(time_axis, -thresholdValue * ones(size(time_axis)), 'k--', 'HandleVisibility','off');
+                
+                xlabel('Time (s)');
+                ylabel('\muV');
+                title(sprintf('Raw Signal, Mean Surrogate, and Threshold (Channel %d, Level %d)', ch, j));
+                legend;
+                
+                % Optionally adjust y-axis limits based on the plotted values to avoid extreme outliers
+                allVals = [W(j,:), meanSurrogateValue, thresholdValue, -thresholdValue];
+                yLimLow = prctile(allVals, 5);
+                yLimHigh = prctile(allVals, 95);
+                ylim([yLimLow, yLimHigh]);
+                
+                hold off;
+                
+                % Save the figure as a PNG file with a unique filename
+                filename = sprintf('Surrogate_Channel%d_Level%d.png', ch, j);
+                saveas(gcf, filename, 'png');
+           end
 
         idx_artifact = abs(W(j,:)) > thresh;
         artifactFlag(j, idx_artifact) = true;

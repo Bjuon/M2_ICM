@@ -17,6 +17,12 @@ function [filename,outputArg2] = TrialName(Type, Date, Session , Patient , Cond 
             filename = [ 'GAITPARK_'  Session '_'  Patient  '_'  Cond '_S_' num_trial            '.c3d'];
         end
         
+    elseif strcmp(Type,'Sain')
+        if strcmp(Patient,'FLODO07') || strcmp(Patient,'BIBTH15')
+            filename = [ 'GOGAIT_' Session '_' Patient '_OFF_GNG_' num_trial '.c3d'];
+        else
+            filename = [ 'Sain_'  Date '_'  Patient  '_GBMOV_' Session '_OFF_GNG_GAIT_' num_trial '.c3d'];
+        end
     else
         if strcmp(Patient,'GUG') || strcmp(Patient,'FRJ') || strcmp(Patient,'FRa')
             filename = ['ParkRouen_' Date '_'  Patient  '_' Type '_'  Session '_' Cond '_GNG_GAIT_' num_trial '.c3d'];
@@ -24,6 +30,7 @@ function [filename,outputArg2] = TrialName(Type, Date, Session , Patient , Cond 
             filename = ['ParkPitie_' Date '_'  Patient  '_' Type '_'  Session '_' Cond '_GNG_GAIT_' num_trial '.c3d'];
         end
     end
+    
     
     if isstring(filename)
         filename = char(strjoin(filename,'')) ;

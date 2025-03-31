@@ -142,10 +142,11 @@ for f = 1 : numel(files)
        % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
       %  [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_emd(data);
-         [Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd_simplified(data);
+       %  [Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd_simplified(data);
        %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);        
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
-     %   [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBar_simplified(data);
+        [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBar_simplified(data);
+         %   [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ml(data);
 
     end   
 %     --- Replot Cleaned LFP ---

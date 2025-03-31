@@ -9,7 +9,7 @@ ExitFolder = 'C:\Users\mathieu.yeche\OneDrive - ICM\Downloads' ;
 ExitFolder = '\\iss\home\mathys.marcellin\results_continious_gait'
 PlotAndSave = false ;   % time consuming
 
-[Patients, Folder, CondMed, ~]  = MAGIC.Patients.All('MAGIC_LFP',0);
+[Patients, Folder, CondMed, ~]  = MAGIC.Patients.All('Sain_10patMarco',0);
 
 % Patients = {'VIj','SOh','REa','GUG','BARGU14','COm','BEm','DROCA16','GIs','LOp','DESJO20','GAl','FEp','DEp','FRa','ALb','FRJ'};
 % Patients = {'BARGU14','COm','BEm','DROCA16','REa','DESJO20','FRa'};
@@ -25,7 +25,7 @@ Patients(strcmp(Patients, 'FRa')) = [];
                                             disp(['Nombre de patients : '  num2str(length(Patients))])
 %    
 for p = 1:length(Patients)
-for condonofff = 1:2 
+for condonofff = 1:length(CondMed)
     Patient = Patients{p};   
     Cond = CondMed{condonofff};          
     Session = 'POSTOP';
@@ -57,15 +57,7 @@ for nt = 1:length(num_trial) % Boucle num_trial
 % Nom de l'essai à charger
 %filename = ['ParkRouen_' date '_' Patient{p}  '_MAGIC_'  Session{session_i} '_' Cond{cond_i} '_GNG_GAIT_' num_trial{nt} '.c3d'];
 %HereChange
-if strcmp(Type,'GOGAIT') || strcmp(Type,'GAITPARK')
-    filename = [ Type '_'  Session '_'  Patient  '_'  Cond '_GNG_' num_trial{nt}(end-1:end) '.c3d'];
-else
-    if strcmp(Patient,'GUG') || strcmp(Patient,'FRJ') || strcmp(Patient,'FRa')
-        filename = ['ParkRouen_' Date '_'  Patient  '_' Type '_'  Session '_' Cond '_GNG_GAIT_' num_trial{nt} '.c3d'];
-    else
-        filename = ['ParkPitie_' Date '_'  Patient  '_' Type '_'  Session '_' Cond '_GNG_GAIT_' num_trial{nt} '.c3d'];
-    end
-end
+[filename,~] = MAGIC.Patients.TrialName(Type, Date, Session , Patient , Cond , num_trial{nt} , 0);
 
 % Dossier ou se trouve l'essai
 

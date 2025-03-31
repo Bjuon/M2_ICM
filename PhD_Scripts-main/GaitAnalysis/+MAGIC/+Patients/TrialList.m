@@ -18,6 +18,7 @@ else
     Trigramme = 'NAn'
 end
 
+
 %% POSTOP
 
 %% GOGAIT 
@@ -466,6 +467,105 @@ elseif strcmp(Patient, 'LESNE03')
             end
         end
     end
+
+elseif strcmp(Patient, 'BAn')
+    Date = '2020_10_30';
+        Type = 'Sain';
+        if strcmp(Session, 'T1')
+            if strcmp(Cond, 'OFF')
+                num_trial = {'001','002','003','004','005','006','007','008','009','010'};
+    
+            end
+        end
+        
+
+  elseif strcmp(Patient, 'BAg')
+    Date = '2019_11_28';
+        Type = 'Sain';
+        if strcmp(Session, 'T1')
+            if strcmp(Cond, 'OFF')
+                num_trial = {'001','004','005','006','007','009','010','014'};
+    
+            end
+        end
+    elseif strcmp(Patient, 'BEc')
+      Date = '2019_11_22';
+        Type = 'Sain';
+        if strcmp(Session, 'T1')
+            if strcmp(Cond, 'OFF')
+                num_trial = {'002','003','004','005','006','007','008','009','010'};
+    
+            end
+        end
+
+     elseif strcmp(Patient, 'BIBTH15')
+            Date = '0000';
+                Type = 'Sain';
+                if strcmp(Session, 'T1')
+                    if strcmp(Cond, 'OFF')
+                        num_trial = {'02','03','04','05','06','07','08','09','10'};
+            
+                    end
+                end
+
+     elseif strcmp(Patient, 'CLp')
+            Date = '2020_10_16';
+                Type = 'Sain';
+                if strcmp(Session, 'T1')
+                    if strcmp(Cond, 'OFF')
+                        num_trial = {'001','002','003','004','005','006','007','008','009','010'};
+            
+                    end
+                end
+
+     elseif strcmp(Patient, 'DAp')
+            Date = '2019_11_15';
+                Type = 'Sain';
+                if strcmp(Session, 'T1')
+                    if strcmp(Cond, 'OFF')
+                        num_trial = {'001','002','003','004','005','006','007','008','009','010'};
+            
+                    end
+                 end
+     elseif strcmp(Patient, 'FAe')
+            Date = '2019_11_08';
+                Type = 'Sain';
+                if strcmp(Session, 'T1')
+                    if strcmp(Cond, 'OFF')
+                        num_trial = {'001','002','003','004','005','006','008','009','010'};
+            
+                    end
+                end
+     elseif strcmp(Patient, 'FLODO07')
+            Date = '0000';
+                Type = 'Sain';
+                if strcmp(Session, 'T1')
+                    if strcmp(Cond, 'OFF')
+                        num_trial = {'01','02','03','05','06','07','08','09','10'};
+            
+                    end
+                end 
+     elseif strcmp(Patient, 'GRp')
+            Date = '2019_11_28';
+                Type = 'Sain';
+                if strcmp(Session, 'T1')
+                    if strcmp(Cond, 'OFF')
+                        num_trial = {'002','003','004','005','006','007','008','009','010'};
+            
+                    end
+                 end
+     elseif strcmp(Patient, 'LAp')
+            Date = '2020_10_28';
+                Type = 'Sain';
+                if strcmp(Session, 'T1')
+                    if strcmp(Cond, 'OFF')
+                        num_trial = {'001','002','003','004','005','006','007','008','009','010'};
+            
+                    end
+                 end
+
+
+
 
 
 

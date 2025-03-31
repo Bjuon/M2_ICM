@@ -16,7 +16,7 @@ cpt = 0 ;
 % Patients = {'GAl','FEp','DEp','ALb','FRJ','SOh','VIj','GUG','GIs','LOp','DESJO20',};
 % Patients = {'SOh',};
 % CondMed = {'OFF','ON'};
-[Patients, Folder, CondMed, ~]  = MAGIC.Patients.All('MAGIC_LFP',0);
+[Patients, Folder, CondMed, ~]  = MAGIC.Patients.All('Sain_10patMarco',0);
 Patients(strcmp(Patients, 'FRa')) = [];
 
                                             cnt = 0;
@@ -24,16 +24,19 @@ Patients(strcmp(Patients, 'FRa')) = [];
                                             Liste_Essais_Trop_Court = {};
 %    
 for p = 1:length(Patients)
-for condonofff = 1:2 
+for condonofff = 1:length(CondMed)
     Patient = Patients{p};   
     Cond = CondMed{condonofff};          
-    Session = 'POSTOP';
+    Session = 'T1';
     
 [Date, Type, num_trial, num_trial_NoGo_OK, num_trial_NoGo_Bad, num_trial_omission] = MAGIC.Patients.TrialList(Patient,Session,Cond,1);
 
 disp([Patients{p} '  n�' num2str(p) ' ' Cond ])
 num_trial_NoGo_OK = sort(num_trial_NoGo_OK);
 for nt = 1:length(num_trial) % Boucle num_trial
+    if nt == 5 & strcmp(Patient, 'BAn'); continue; end
+    if nt == 7 & strcmp(Patient, 'FLODO07'); continue; end
+
 
 
 %%
@@ -42,15 +45,8 @@ for nt = 1:length(num_trial) % Boucle num_trial
 % Nom de l'essai � charger
 %filename = ['ParkRouen_' date '_' Patient{p}  '_MAGIC_'  Session{session_i} '_' Cond{cond_i} '_GNG_GAIT_' num_trial{nt} '.c3d'];
 %HereChange
-if strcmp(Type,'GOGAIT') | strcmp(Type,'GAITPARK')
-    filename = [ Type '_'  Session '_'  Patient  '_'  Cond '_GNG_' num_trial{nt}(end-1:end) '.c3d'];
-else
-    if strcmp(Patient,'GUG') | strcmp(Patient,'FRJ') | strcmp(Patient,'FRa')
-        filename = ['ParkRouen_' Date '_'  Patient  '_' Type '_'  Session '_' Cond '_GNG_GAIT_' num_trial{nt} '.c3d'];
-    else
-        filename = ['ParkPitie_' Date '_'  Patient  '_' Type '_'  Session '_' Cond '_GNG_GAIT_' num_trial{nt} '.c3d'];
-    end
-end
+[filename,~] = MAGIC.Patients.TrialName(Type, Date, Session , Patient , Cond , num_trial{nt} , 0);
+
 
 % Lecture de l'essai (fichier c3d)
 h= btkReadAcquisition([Folder Patient filesep filename]);
@@ -835,7 +831,7 @@ cpt = cpt+1;
 MARCHE.DATA(cpt) = DATA;
 
 %% CLEAR
-clearvars -except cpt Folder Session session_i num_trial cnt nt MARCHE Date Type Patients Patient p condonoff Cond CondMed Liste_Essais_Trop_Court
+clearvars -except cpt Folder Session session_i MARCHE num_trial cnt nt Date Type Patients Patient p condonoff Cond CondMed Liste_Essais_Trop_Court
 end
  
 

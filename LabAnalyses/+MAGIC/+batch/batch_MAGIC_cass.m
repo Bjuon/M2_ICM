@@ -38,8 +38,7 @@ global tasks
 
 global rawLFPDir cleanLFPDir rawTFDir cleanTFDir artefacts_results_Dir
 global run
-global ChannelMontage
-global med subject event s 
+
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
@@ -55,7 +54,7 @@ todo.PE              = 0;
 todo.statsTF         = 0;
 todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
-todo.recomputeCleanedTF = 1; % Set to 1 to recompute spectral TF maps using the cleaned LFP data.
+todo.recomputeCleanedTF = 0; % Set to 1 to recompute spectral TF maps using the cleaned LFP data.
 
 
 %normalization
@@ -67,7 +66,7 @@ tBlock                    = 0.5;                %0.5; % 0.1 ; 0.5
 fqStart                   = 1;
 hpFilt                    = 1;                  % 0 if no highpass filter on data before segmentation, else 1
 segType                   = 'step'  ;           %'trial'; % 'step', if seg per step
-ChannelMontage            = 'none';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
+ChannelMontage            = 'classic';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
 TimePlot                  = {'event'}; % Args in for plot_TF   %TimePlot = {'all', '10s', '05s', 'marche','artefact_watch'};
 Artefact_Rejection_Method = 'TF';               % 'TraceBrut' , 'TF',  'none'
 
@@ -97,9 +96,9 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-localMode = false;  
+localMode = true;  
 if localMode
-    startpath = "F:\Programing\M2\Data_ICM";
+    startpath = "C:\Users\cassandra.dumas\OneDrive - ICM\Documents\Artefact_LFP\Data";
 else
     startpath = "\\iss\pf-marche";
 end
@@ -111,21 +110,21 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_ML');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Cassandra_Test', 'RAW');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
 LocTablePath   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA', 'MAGIC_loc_electrodes.xlsx');
 
 if strcmp(segType, 'step')
-        event    = {'FC', 'FO1', 'FC1', 'FO' }; %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+        event    = {'FO1'};%, 'FC1', 'FO', 'FC' }; %{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 elseif strcmp(segType, 'trial')
         event    = {'BSL'};
 end
 
-complet   = {'FRj_0610','BAg_0496','GAl_000a','DEp_0535','ALb_000a','VIj_000a',...
-             'FEp_0536','DRc_000a','DEj_000a','COm_000a','LOp_000a','SOh_0555',...
-             'GUg_0634','GIs_0550','SAs_000a','BEm_000a','REa_0526','AUa_0342','FRa_000a'};  
+% complet   = {'FRj_0610','BAg_0496','GAl_000a','DEp_0535','ALb_000a','VIj_000a',...
+%              'FEp_0536','DRc_000a','DEj_000a','COm_000a','LOp_000a','SOh_0555',...
+%              'GUg_0634','GIs_0550','SAs_000a','BEm_000a','REa_0526','AUa_0342','FRa_000a'};  
 
 
 % set patients
@@ -136,11 +135,11 @@ if ~argin
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
 %    subject   = complet(1:end-1)
-    subject = {'FRj_0610'}
+        subject = {'FEp_0536'};
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FC1'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FO1', 'FC1', 'FO', 'FC'};%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -154,7 +153,7 @@ end
 tasks = {'GOi', 'GOc', 'NoGO'};
 
 %MAGIC file name 
-FileName = '*_POSTOP_*_GNG_GAIT_*_LFP'; 
+FileName = '*_POSTOP_*_GNG_GAIT_*_LFP';
 
 % frequency bandes
 FqBdes = [1 4 12 13 20 21 35 36 60 61 80];     %#ok<NASGU> 
@@ -225,10 +224,10 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
     MAGIC.batch.EnsureDir(patientDir);
 
     % Create patient-level directories for LFP data
-    rawLFPDir   = fullfile(patientDir, 'Raw_LFP');
-    cleanLFPDir = fullfile(patientDir, 'Cleaned_LFP');
-    artefacts_results_Dir = fullfile(patientDir, 'Artefacts_results');
-    MAGIC.batch.EnsureDir(artefacts_results_Dir);
+    rawLFPDir   = fullfile(patientDir);
+    cleanLFPDir = fullfile(patientDir);
+%     artefacts_results_Dir = fullfile(patientDir, 'Artefacts_results');
+%     MAGIC.batch.EnsureDir(artefacts_results_Dir);
     MAGIC.batch.EnsureDir(rawLFPDir);
     MAGIC.batch.EnsureDir(cleanLFPDir);
     
@@ -250,7 +249,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             continue
         end
         
-        %output file name
+        %output file ame
         FileNameSplit  = strsplit(files(1).name, '_');
         OutputPath     = char(fullfile(OutputDir, subject{s}, RecDir(r).name, 'POSTOP'));
         OutputFileName = char(fullfile(OutputPath, strjoin(FileNameSplit([1:7 9:10]), '_')));
@@ -269,7 +268,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 save(fullfile(OutputPath, [strtok(files(f).name, '.') '_' ChannelMontage '_raw.mat']), 'data', 'trig');
             else
                 clear data trig
-                load(fullfile(OutputPath, [strtok(files(f).name, '.') '_' ChannelMontage '_raw.mat']))       %#ok<LOAD> 
+                load(fullfile(OutputPath, [strtok(files(f).name, '.') '_raw.mat']))       %#ok<LOAD> 
             end
             
             if todo.LabelRegion
@@ -290,7 +289,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
         % save s_temp and t_temp
         % go to directory of interest, i.e. where the raw data is
         % Annotate;
-     
+        
         %filter and segment data
         if todo.seg
             if contains(cell2mat(event),'Wr')
@@ -306,7 +305,9 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             disp('seg done')
 
            
-        end
+        end     
+        
+                
             
         
         % extractinfos to get nb run, trials, etc per patient
@@ -318,9 +319,9 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
             infos = MAGIC.batch.extractInfos(seg, infos);
         end
         
-
-        
+        end
         if todo.TF || todo.PE || todo.meanTF || todo.statsTF || todo.extractLFP
+            %if todo.TF == 1
             if todo.seg == 0 && todo.extractInfos == 0
                 clear seg infos
                 load([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'])       %#ok<LOAD> 
@@ -373,15 +374,18 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 Bsl = [];
             end
                 
-                      
-            for e = event % e = e{1}; e = e(1)
+            % Sélectionner uniquement les 2 premiers événements
+%             selected_events = event(1:min(2, numel(event)));
+            selected_events = event;   
+            
+            for e = selected_events % e = e{1}; e = e(1)
                 eventName = e{1};  % extract the string from the cell
                 eventDir  = fullfile(patientDir, eventName);
                 MAGIC.batch.EnsureDir(eventDir);
 
                 % Create directories for TF maps inside the event folder
-                rawTFDir   = fullfile(eventDir, 'Raw_TF');
-                cleanTFDir = fullfile(eventDir, 'Cleaned_TF');
+                rawTFDir   = fullfile(eventDir);
+                cleanTFDir = fullfile(eventDir);
                 MAGIC.batch.EnsureDir(rawTFDir);
                 MAGIC.batch.EnsureDir(cleanTFDir);
                
@@ -396,9 +400,9 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 disp([subject{s} ' : ' e{1} ' a ' char(datetime('now'), 'dd-MM-uuuu_HH-mm-ss')])
                 
                 % spectral calculation on raw data 
-                if todo.TF == 1 || todo.TF == 3 || todo.TF == 4 
+                if todo.TF == 1 || todo.TF == 3 || todo.TF == 4
                     disp(['Computing spectral TF maps with raw LFP data ',run])
-                    [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'raw');
+                    [dataTF, existTF] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'raw');
                     if existTF
                         save([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
                     end
@@ -442,41 +446,78 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 end
 %                 toc
                 if todo.plotTF && existTF == true
-
+                
+                    % === RAW TF ===
                     load([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
-                    if todo.plotTF == 1
-                        disp('Plotting Raw TF')
-                       MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
-
-                    
-                    elseif todo.plotTF == 2
-                         MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
+                
+                    %➕ Plot simple trial (comme avant)
+%                     t = 5;
+%                     if t <= numel(dataTF)
+                    for t = 1:numel(dataTF)
+                        disp(['Plotting TF for trial ', num2str(t)]);
+                        MAGIC.batch.plot_TF(dataTF(t), [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
+                        timeWindow = [-1.5, 2];
+                         MAGIC.batch.plotCombinedLFP_TFSegment( ...
+                            dataTF(t), ...
+                            dataTF(t).process{1}.values{1}, ...
+                            dataTF(t), ...
+                            rawTFDir, ...
+                            timeWindow, ...
+                            'Raw', ...
+                            ['Trial_' num2str(t)], ...
+                            e{1}); % <== ici on passe 'FO1', 'FC1', etc.
                     end
-                        
-                      % --- Recompute Spectral TF Maps from Cleaned Data ---
+                
+                    % ➕ Plot tous les RAW
+%                     if todo.plotTF == 1
+%                         disp('Plotting Raw TF (multi-trial)');
+%                         MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
+%                     elseif todo.plotTF == 2
+%                         MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], FigDir)
+%                     end
+                
+                    % ➕ Plot TF segments individuels (RAW)
+%                     t = 5;
+%                     if t <= numel(dataTF)
+
+                
+                    % === CLEANED TF ===
                     if todo.recomputeCleanedTF
                         disp('Recomputing spectral TF maps with cleaned LFP data...');
-                        [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'cleaned');
+                        [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'cleaned');
+                
                         if existTF_clean
-                            % Save the cleaned TF data to the designated cleaned TF directory
                             save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
-
-                            % Plot the cleaned TF maps using plot_TF.m
-                            MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
+                
+%                             % ➕ Plot simple trial (cleaned)
+%                             t = 1;
+%                             if t <= numel(cleanTF)
+%                                 disp(['Plotting Cleaned TF for trial ', num2str(t)]);
+%                                 MAGIC.batch.plot_TF(cleanTF(t), [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
+%                             end
+                
+                            % ➕ Plot TF segments individuels (CLEANED)
+                            for t = 1:numel(cleanTF)
+                                if cleanTF(t).info('trial').nTrial ~= 1
+                                    continue
+                                end
+                                trialName = 'Trial_1';
+                                MAGIC.batch.plotTFSegment(cleanTF(t), cleanTFDir, trialName, 'Cleaned');
+                            end
                         end
                     end
-                    else
-                                disp(['No TF file for event ' e{1} ', skipping plot. PLOT TF is disable']);
-
-                    
+                
+                else
+                    disp(['No TF file for event ' e{1} ', skipping plot.']);
                 end
+
             end
-        end
-               
-            
-            
-          
-            
+        
+           
+        
+        
+      
+        
     end
     if todo.plotTF || todo.TF
         disp([ 'End of patient : ' subject{s} ' (' e{1} ')'])
@@ -490,5 +531,4 @@ end
 
 if nargin == 0
     toc(tStart)
-end
 end
