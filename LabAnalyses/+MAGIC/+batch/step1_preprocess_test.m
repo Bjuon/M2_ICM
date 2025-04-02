@@ -149,7 +149,7 @@ for f = 1 : numel(files)
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts_EMD
         disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run, ' IMFs ', num2str(source_index)]);
-        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channel] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs_reconstruct(data, source_index);
+        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channel] = MAGIC.batch.Artefact_detection_mathys_emd_IMfs_identification(data, source_index);
     end
 
     if todo.detectArtifacts_SuBar

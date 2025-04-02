@@ -139,12 +139,12 @@ for f = 1 : numel(files)
     if todo.detectArtifacts
        disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run]);
 
-       % [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
+        [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys(data);  % data from the raw file
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
 
       % first emd with interpolation and all the plotting 
       %  [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_old_emd(data); 
-        [Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd_removal_per_channel(data);
+     %   [Cleaned_Data, Stats] =  MAGIC.batch.Artefact_detection_mathys_emd_removal_per_channel(data);
        %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ajdc(data);        
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
       %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBar_simplified(data);

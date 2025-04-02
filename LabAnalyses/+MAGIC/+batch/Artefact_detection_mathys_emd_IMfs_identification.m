@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channels] = Artefact_detection_mathys_emd_oneIMFs_reconstruct(data, imf_index)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channels] = Artefact_detection_mathys_emd_IMfs_identification(data, imf_index)
 % Artefact_detection_mathys_emd - Detect and remove artefacts using Empirical Mode Decomposition (EMD)
 % and extract components in 4-55 Hz range.
 %
@@ -32,7 +32,7 @@ is_empty_channels = false;
 
 removeFirstIMF       = false;   % If true, discard IMF #1 from reconstruction
 removeLastIMF        = false;   % If true, discard the last IMF from reconstruction
-outlierRemovalFactor = 2;       % k*MAD threshold to detect outliers (increase/decrease as needed)
+outlierRemovalFactor = 6;       % k*MAD threshold to detect outliers (increase/decrease as needed)
 
 
 % EMD parameters
@@ -47,7 +47,7 @@ smoothing_span        = 5;      % Smoothing parameter for energy calculation (in
 time_block_threshold  = 0.25;    % Minimum duration (in seconds) to consider as block artefact
 
 % Frequency and filtering parameters
-freq_range            = [4 55];  % Frequency range to analyze for artefacts (Hz)
+freq_range            = [4 100];  % Frequency range to analyze for artefacts (Hz)
 
 % Spectrogram parameters for PSD visualization 
 tf_window_size        = 0.5;     % Window size in seconds (matches 500ms artefact blocks)

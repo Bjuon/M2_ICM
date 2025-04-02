@@ -47,16 +47,16 @@ freq_range           = [4 100];   % Frequency range (Hz) for keeping IMFs based 
 % For example, for patient 'FRj_0610' in med state 'on', remove IMF 3 for channels
 % originally labeled '7G', '6G', and '5G'. Their valid field names are 'x7G', 'x6G', and 'x5G'.
 removalConfig = struct();
-removalConfig.FRj_0610.on.x7G = [3];
-removalConfig.FRj_0610.on.x6G = [3];
-removalConfig.FRj_0610.on.x5G = [3];
-removalConfig.FRj_0610.on.x3G = [3];
-removalConfig.FRj_0610.on.x2G = [3];
-removalConfig.FRj_0610.on.x18G = [3];
-removalConfig.FRj_0610.on.x3D = [3];
+% removalConfig.FRj_0610.on.x7G = [3];
+% removalConfig.FRj_0610.on.x6G = [3];
+% removalConfig.FRj_0610.on.x5G = [3];
+% removalConfig.FRj_0610.on.x3G = [3];
+% removalConfig.FRj_0610.on.x2G = [3];
+% removalConfig.FRj_0610.on.x18G = [3];
+% removalConfig.FRj_0610.on.x3D = [3];
 % Additional configurations can be added here.
 % Set a default removal list if no configuration exists.
-defaultIMFsToRemove = [];
+defaultIMFsToRemove = [3];
 
 %% Extract Raw Data and Sampling Frequency
 raw_data = data.values{1,1};
