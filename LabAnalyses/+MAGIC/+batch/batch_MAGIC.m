@@ -55,8 +55,9 @@ todo.PE              = 0;
 todo.statsTF         = 0;
 todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
-todo.recomputeCleanedTF = 1; % Set to 1 to recompute spectral TF maps using the cleaned LFP data.
+todo.plot_clean_TF = 0; plot the clean TF as todo.plotTF
 
+todo.Plan_B = 0; % Thenaisie 2022 steps removal - aperiodic components
 
 %normalization
 % change script to add type of normalization in output name
@@ -140,7 +141,7 @@ if ~argin
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FC1'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -411,7 +412,12 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 elseif todo.extractLFP 
                     MAGIC.batch.Export_timecourses(seg, e{1}, norm, Bsl);
                 end
-                      
+                 if existTF && todo.Plan_B
+                    [artefactFlags, artifactStats, seg] = MAGIC.batch.computePSDandArtifactRejection(seg, rest);
+                    % Log the artifact rejection statistics for review or export.
+                    disp('Artifact rejection statistics:');
+                    disp(artifactStats);
+                end
                 
                 
                 if (todo.TF==1 || todo.TF==2 || todo.TF==4) && strcmp(segType, 'step')
@@ -441,9 +447,24 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     end
                 end
 %                 toc
+
                 if todo.plotTF && existTF == true
 
                     load([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
+                    if todo.plot_indiv_seg_raw 
+                        for t = 1:numel(dataTF)
+                        disp(['Plotting TF for trial ', num2str(t)]);
+                         MAGIC.batch.plotCombinedLFP_TFSegment( ...
+                            dataTF(t), ...
+                            dataTF(t).process{1}.values{1}, ...
+                            dataTF(t), ...
+                            rawTFDir, ...
+                            timeWindow, ...
+                            'Raw', ...
+                            ['Trial_' num2str(t)], ...
+                            e{1}); % <== ici on passe 'FO1', 'FC1', etc.
+                        end
+                    end
                     if todo.plotTF == 1
                         disp('Plotting Raw TF')
                        MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
@@ -453,11 +474,27 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                          MAGIC.batch.plot_Alpha(dataTF, [OutputFileName suff1 '_TF_' suff '_' event{1}], FigDir)
                     end
                         
-                      % --- Recompute Spectral TF Maps from Cleaned Data ---
-                    if todo.recomputeCleanedTF
+                   % --- Recompute Spectral TF Maps from Cleaned Data if any plotting is requested ---
+                    if todo.plot_indiv_seg_clean || todo.plot_clean_TF
                         disp('Recomputing spectral TF maps with cleaned LFP data...');
-                        [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl,'cleaned');
-                        if existTF_clean
+                        [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'cleaned');
+
+                         if todo.plot_indiv_seg_clean 
+                            for t = 1:numel(dataTF)
+                            disp(['Plotting TF for trial ', num2str(t)]);
+                             MAGIC.batch.plotCombinedLFP_TFSegment( ...
+                                dataTF(t), ...
+                                dataTF(t).process{1}.values{1}, ...
+                                dataTF(t), ...
+                                cleanTFDir, ...
+                                timeWindow, ...
+                                'clean', ...
+                                ['Trial_' num2str(t)], ...
+                                e{1}); % <== ici on passe 'FO1', 'FC1', etc.
+                            end
+                        end
+                        
+                        if existTF_clean && todo.plot_clean_TF
                             % Save the cleaned TF data to the designated cleaned TF directory
                             save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
 
