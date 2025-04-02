@@ -50,12 +50,18 @@ todo.trig            = 0; % check triggers
 todo.seg             = 1; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
-todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha
+todo.plotTF          = 1; % 1 = plot TF, 2 = plotAlpha % New create baseline and compute raw spectral maps
 todo.PE              = 0;
 todo.statsTF         = 0;
 todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
-todo.plot_clean_TF = 0; plot the clean TF as todo.plotTF
+todo.plot_raw_TF = 0; %plot the TF from the raw data
+
+todo.plot_clean_TF = 1; %plot the TF from the clean data
+
+todo.plot_indiv_seg_raw = 1; % plot indiv_segment (cass) from raw data 
+
+todo.plot_indiv_seg_clean = 1; % plot indiv_segment (cass) from cleaned data 
 
 todo.Plan_B = 0; % Thenaisie 2022 steps removal - aperiodic components
 
@@ -112,7 +118,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_ML');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_testv2');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -417,6 +423,32 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     % Log the artifact rejection statistics for review or export.
                     disp('Artifact rejection statistics:');
                     disp(artifactStats);
+                    disp('Recomputing spectral TF maps with non artefacted LFP data...');
+                    [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'removal');
+                    if todo.plot_indiv_seg_clean 
+                        for t = 1:numel(dataTF)
+                        disp(['Plotting TF for trial ', num2str(t)]);
+                         MAGIC.batch.plotCombinedLFP_TFSegment( ...
+                            dataTF(t), ...
+                            dataTF(t).process{1}.values{1}, ...
+                            dataTF(t), ...
+                            cleanTFDir, ...
+                            timeWindow, ...
+                            'clean', ...
+                            ['Trial_' num2str(t)], ...
+                            e{1}); % <== ici on passe 'FO1', 'FC1', etc.
+                        end
+                    end
+                    
+                    if existTF_clean && todo.plot_clean_TF
+                        % Save the cleaned TF data to the designated cleaned TF directory
+                        save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
+
+                        % Plot the cleaned TF maps using plot_TF.m
+                        MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
+                    end
+                    continue;
+
                 end
                 
                 
@@ -465,7 +497,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                             e{1}); % <== ici on passe 'FO1', 'FC1', etc.
                         end
                     end
-                    if todo.plotTF == 1
+                    if todo.plot_raw_TF == 1
                         disp('Plotting Raw TF')
                        MAGIC.batch.plot_TF(dataTF, [OutputFileName suff1 '_TF_' suff '_' e{1}], rawTFDir, TimePlot);
 

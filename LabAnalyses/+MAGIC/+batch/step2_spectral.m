@@ -17,6 +17,8 @@ if iscell(seg)
             seg = seg{1};
         elseif strcmpi(version, 'cleaned')
             seg = seg{2};
+        elseif strcmpi(version, 'removal')
+            seg = seg {3};
         else
             error('Invalid version specified. Use "raw" or "cleaned".');
     end

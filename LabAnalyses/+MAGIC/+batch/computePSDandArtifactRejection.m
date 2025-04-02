@@ -149,25 +149,34 @@ stats.averageStepPower = averageStepPower;
 stats.powerRatios = powerRatios;
 
 %% --- Create modified raw segments (seg3) with flagged channels replaced by zeros ---
-seg3 = rawSeg;  % copy the raw segments
-for i = 1:nStep
-    signal = seg3(i).sampledProcess;
-    if ~isnumeric(signal)
-        signal = signal.values;
-    end
+% Preallocate new segment array (here, modifiedSeg is used instead of seg3)
+modifiedSeg = repmat(Segment(), 1, numel(rawSeg));  % rawSeg is your original segment array
+
+for i = 1:numel(rawSeg)
+    % Extract the original raw process from the segment
+    sp = rawSeg(i).sampledProcess;  
+    signal = sp.values;  % Get the numeric data from the SampledProcess
+    
+    % Replace flagged channels with zeros
     for ch = 1:nChannels
         if artifactFlags(i, ch)
-            signal(:, ch) = 0;  % replace flagged channel data with zeros
+            signal(:, ch) = 0;  % Zero out flagged channel data
         end
     end
-    % Reassign the modified signal preserving metadata
-    if isobject(seg3(i).sampledProcess) && isprop(seg3(i).sampledProcess, 'values')
-        seg3(i).sampledProcess = SampledProcess('values', signal, ...
-            'Fs', seg3(i).sampledProcess.Fs, 'labels', seg3(i).sampledProcess.labels);
-    else
-        seg3(i).sampledProcess = signal;
-    end
+    
+    % Create a new SampledProcess instance with the modified signal
+    newProcess = SampledProcess('values', signal, 'Fs', sp.Fs, 'labels', sp.labels);
+    
+    % Create a new Segment instance with the modified process.
+    % If your original segment includes additional processes (e.g., an event process),
+    % include them as needed. For example, here we assume the second process remains unchanged.
+    modifiedSeg(i) = Segment('process', {newProcess, rawSeg(i).process{2}}, ...
+                             'labels', rawSeg(i).labels);
 end
+
+% Replace seg3 with the newly constructed segments
+seg3 = modifiedSeg;
+
 
 %% --- Assemble new seg cell array containing raw, cleaned, and modified segments ---
 newSeg = {rawSeg, cleanedSeg, seg3};

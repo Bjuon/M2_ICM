@@ -30,8 +30,8 @@ global currentFileIdentifier
 
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts_SuBar    = 0; % Set to 1 to enable surrogate plotting 
-todo.detectArtifacts_EMD = 0; 
-todo.detectArtifacts_ICA = 1;
+todo.detectArtifacts_EMD = 1; 
+todo.detectArtifacts_ICA = 0;
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
 
 
@@ -149,7 +149,7 @@ for f = 1 : numel(files)
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts_EMD
         disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run, ' IMFs ', num2str(source_index)]);
-        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channel] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs(data, source_index);
+        [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channel] = MAGIC.batch.Artefact_detection_mathys_emd_oneIMFs_reconstruct(data, source_index);
     end
 
     if todo.detectArtifacts_SuBar

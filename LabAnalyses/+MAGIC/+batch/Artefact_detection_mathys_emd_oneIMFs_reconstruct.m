@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channels] = Artefact_detection_mathys_emd_oneIMFs(data, imf_index)
+function [Artefacts_Detected_per_Sample, Cleaned_Data, Stats, is_empty_channels] = Artefact_detection_mathys_emd_oneIMFs_reconstruct(data, imf_index)
 % Artefact_detection_mathys_emd - Detect and remove artefacts using Empirical Mode Decomposition (EMD)
 % and extract components in 4-55 Hz range.
 %
@@ -209,15 +209,15 @@ for iChannel = 1:num_channels
         beta_imfs = imfs(:, imf_index);
         selected_imfs_idx = imf_index;
         
-        % Interpolate any artifact sections in the selected IMF
-        if any(artifact_mask)
-            good_idx = find(~artifact_mask);
-            bad_idx  = find(artifact_mask);
-            sig_imf = beta_imfs;
-            sig_imf(bad_idx) = interp1(good_idx, sig_imf(good_idx), bad_idx, 'pchip', 'extrap');
-            beta_imfs = sig_imf;
-        end
-        
+%         % Interpolate any artifact sections in the selected IMF
+%         if any(artifact_mask)
+%             good_idx = find(~artifact_mask);
+%             bad_idx  = find(artifact_mask);
+%             sig_imf = beta_imfs;
+%             sig_imf(bad_idx) = interp1(good_idx, sig_imf(good_idx), bad_idx, 'pchip', 'extrap');
+%             beta_imfs = sig_imf;
+%         end
+%         
         Cleaned_Data(:, iChannel) = beta_imfs;
     else
         % Original reconstruction logic
