@@ -423,33 +423,18 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                     % Log the artifact rejection statistics for review or export.
                     disp('Artifact rejection statistics:');
                     disp(artifactStats);
-                    disp('Recomputing spectral TF maps with non artefacted LFP data...');
+                    disp('Recomputing & Computing spectral TF maps with non artefacted LFP data...');
                     [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'removal');
-                    if todo.plot_indiv_seg_clean 
-                        for t = 1:numel(dataTF)
-                        disp(['Plotting TF for trial ', num2str(t)]);
-                         MAGIC.batch.plotCombinedLFP_TFSegment( ...
-                            dataTF(t), ...
-                            dataTF(t).process{1}.values{1}, ...
-                            dataTF(t), ...
-                            cleanTFDir, ...
-                            timeWindow, ...
-                            'clean', ...
-                            ['Trial_' num2str(t)], ...
-                            e{1}); % <== ici on passe 'FO1', 'FC1', etc.
-                        end
-                    end
-                    
-                    if existTF_clean && todo.plot_clean_TF
-                        % Save the cleaned TF data to the designated cleaned TF directory
-                        save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
+                     if existTF_clean && todo.plot_clean_TF
+                            % Save the cleaned TF data to the designated cleaned TF directory
+                            save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
 
-                        % Plot the cleaned TF maps using plot_TF.m
-                        MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
-                    end
-                    continue;
-
-                end
+                            % Plot the cleaned TF maps using plot_TF.m
+                            MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
+                     end
+                     continue 
+                 end   
+                
                 
                 
                 if (todo.TF==1 || todo.TF==2 || todo.TF==4) && strcmp(segType, 'step')
@@ -487,7 +472,6 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                         for t = 1:numel(dataTF)
                             disp(['Plotting TF & LFP segments for trial ', num2str(t)]);
                             timeWindow = [-1.5, 2];
-    
                              MAGIC.batch.plotCombinedLFP_TFSegment( ...
                                 dataTF(t), ...
                                 dataTF(t).process{1}.values{1}, ...
