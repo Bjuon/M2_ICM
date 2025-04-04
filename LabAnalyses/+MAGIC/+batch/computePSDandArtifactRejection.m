@@ -71,6 +71,7 @@ fs = 512;        % Sampling frequency (Hz)
 
 % Frequency band for 1/f aperiodic component estimation (e.g., 4-55 Hz)
 freqRange = [4, 55];
+k= 1.5; % treshold of power vs baseline to flagged this as an artefact
 
 %% --- Compute average PSD for baseline segments per channel ---
 nBsl = numel(bslSeg);
@@ -127,7 +128,7 @@ for i = 1:nStep
         [pxx, f] = pwelch(signal(:, ch), window, noverlap, nfft, fs);
         idx = f >= freqRange(1) & f <= freqRange(2);
         stepPowers(i, ch) = mean(pxx(idx));
-        if stepPowers(i, ch) > 1.5 * avgBslPower(ch)
+        if stepPowers(i, ch) > k * avgBslPower(ch)
             artifactFlags(i, ch) = true;
         end
     end
