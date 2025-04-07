@@ -1,4 +1,4 @@
-function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_mathys(data)
+function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_Mad_Filter(data)
 % Detect artefacts in LFP data and remove them via interpolation.
 %
 % Inputs:
@@ -11,7 +11,7 @@ function [Artefacts_Detected_per_Sample, Cleaned_Data] = Artefact_detection_math
 %   Cleaned_Data - Data after artefact removal.
 
 %% Step 1: Set the detection threshold
-k = 5;  % Threshold multiplier 
+k = 6;  % Threshold multiplier 
 
 %% Step 2: Initialize output matrices
 Cleaned_Data = data.values{1,1};

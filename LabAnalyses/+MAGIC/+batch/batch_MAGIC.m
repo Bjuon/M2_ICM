@@ -63,7 +63,7 @@ todo.plot_indiv_seg_raw = 1; % plot indiv_segment (cass) from raw data
 
 todo.plot_indiv_seg_clean = 1; % plot indiv_segment (cass) from cleaned data 
 
-todo.Plan_B = 0; % Thenaisie 2022 steps removal - aperiodic components
+todo.Plan_B = 1; % Thenaisie 2022 steps removal - aperiodic components
 
 %normalization
 % change script to add type of normalization in output name
