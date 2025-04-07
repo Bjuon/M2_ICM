@@ -28,7 +28,6 @@ global source_index
 % thresh = {'tstat', 'p05', 'p001'};
 
 
-local.todo.meanPower_GOiGOC  = 0;
 local.todo.Speccond  = 0;
 local.todo.Spectime  = 0;
 local.todo.ttest_Pat = 1;
@@ -145,103 +144,6 @@ for tsk = 1 : numel(tasks)
         idx_L_count = 0;
         idx_R_count = 0;
 
-
-        %% ----------------------- New Section: Mean Power for the Mean Step -----------------------
-if local.todo.meanPower_GOiGOC  % new flag: set to 1 to activate combined plotting for GOI and GOc
-    for taskCond = {'GOi','GOc'}
-        % Create a new figure for the current task condition (GOi or GOc)
-        FigName = [filename '_' taskCond{1}];
-        MeanPower_fig = figure('Name', ['MeanPower_' FigName], ...
-            'NumberTitle','off', 'units', 'centimeters', ...
-            'position', [5 5 lengthFig HeightFig]);
-        
-        % Define indices for trials for each medication within the task condition
-        idx_trials_OFF = idx_med.OFF & idx_task.(taskCond{1});
-        idx_trials_ON  = idx_med.ON  & idx_task.(taskCond{1});
-        
-        % Set up subplot indices (using the same layout as before)
-        idx_plot_L = 1 + [(ceil(numel(lfp_channels)/2) - 1)*4:-4:0];
-        idx_plot_R = 2 + [(ceil(numel(lfp_channels)/2) - 1)*4:-4:0];
-        idx_L_count = 0;
-        idx_R_count = 0;
-        
-        % Loop over each LFP channel
-        for lfp_ch = 1 : numel(lfp_channels)
-            % --- Optionally exclude rejected trials for OFF condition ---
-            idx_off = idx_trials_OFF;
-            for tria = 1:length(trials)
-                if idx_off(tria) == 1 && local.todo.RejArtefa
-                    idx_quality = find(contains(localrejecttabl.patient, PatID) & ...
-                        strcmp([localrejecttabl.Medication{:}]', 'OFF') & ...
-                        (contains([localrejecttabl.Channel{:}]', lfp_channels{lfp_ch}(1))  | ...
-                         contains([localrejecttabl.Channel{:}]', lfp_channels{lfp_ch}(2)))  & ...
-                        contains([localrejecttabl.Channel{:}]', lfp_channels{lfp_ch}(end))  & ...
-                        strcmp([localrejecttabl.nTrial{:}]', num2str(trials(tria))) & ...
-                        strcmp([localrejecttabl.Condition{:}]', win_name) == 1, 1);
-                    if ~isempty(idx_quality)
-                        idx_off(tria) = 0;
-                    end
-                end
-            end
-            
-            % --- Exclude rejected trials for ON condition ---
-            idx_on = idx_trials_ON;
-            for tria = 1:length(trials)
-                if idx_on(tria) == 1 && local.todo.RejArtefa
-                    idx_quality = find(contains(localrejecttabl.patient, PatID) & ...
-                        strcmp([localrejecttabl.Medication{:}]', 'ON') & ...
-                        (contains([localrejecttabl.Channel{:}]', lfp_channels{lfp_ch}(1))  | ...
-                         contains([localrejecttabl.Channel{:}]', lfp_channels{lfp_ch}(2)))  & ...
-                        contains([localrejecttabl.Channel{:}]', lfp_channels{lfp_ch}(end))  & ...
-                        strcmp([localrejecttabl.nTrial{:}]', num2str(trials(tria))) & ...
-                        strcmp([localrejecttabl.Condition{:}]', win_name) == 1, 1);
-                    if ~isempty(idx_quality)
-                        idx_on(tria) = 0;
-                    end
-                end
-            end
-            
-            % --- Compute mean power (in dB) for OFF and ON separately ---
-            mean_power_OFF = mean(10*log10(squeeze(s1_TF(:,:,lfp_ch, idx_off))), 3);
-            mean_power_ON  = mean(10*log10(squeeze(s1_TF(:,:,lfp_ch, idx_on))), 3);
-            
-            % --- Determine subplot position based on channel label ---
-            if contains(lfp_channels{lfp_ch}, 'G')
-                idx_L_count = idx_L_count + 1;
-                idx_subplot = idx_plot_L(idx_L_count);
-            elseif contains(lfp_channels{lfp_ch}, 'D')
-                idx_R_count = idx_R_count + 1;
-                idx_subplot = idx_plot_R(idx_R_count);
-            end
-            
-            % --- Plot both OFF and ON mean power on the same subplot ---
-            figure(MeanPower_fig)
-            g = subplot(ceil(numel(lfp_channels)/2), 4, idx_subplot);
-            % Plot OFF condition using a blue surface with some transparency
-            surf(t1_TF, sqrt(freq1_TF), mean_power_OFF', 'edgecolor', 'none', ...
-                'FaceAlpha', 0.5, 'FaceColor', 'blue', 'parent', g);
-            hold(g, 'on');
-            % Overlay ON condition using a red surface with some transparency
-            surf(t1_TF, sqrt(freq1_TF), mean_power_ON', 'edgecolor', 'none', ...
-                'FaceAlpha', 0.5, 'FaceColor', 'red', 'parent', g);
-            view(g, 0, 90);
-            xlim(g, [-0.7 1]);
-            ylim(g, [1 10]);
-            title(g, [taskCond{1} ' ' lfp_channels{lfp_ch}]);
-            xlabel(g, 'Time');
-            ylabel(g, 'sqrt(Frequency)');
-            % Add a legend to indicate which color corresponds to each medication
-            legend(g, {'OFF','ON'}, 'Location', 'best');
-        end
-        
-        % --- Save and close the figure for the current task condition ---
-        if local.todo.svgExport
-            saveas(MeanPower_fig, fullfile(FigDir, ['MeanPower_' FigName '.svg']), 'svg');
-        end
-        saveas(MeanPower_fig, fullfile(FigDir, ['MeanPower_' FigName '.png']), 'png');
-        close(MeanPower_fig);
-    end
-end
 
 
         

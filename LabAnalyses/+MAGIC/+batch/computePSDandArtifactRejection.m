@@ -8,14 +8,6 @@ function [artifactFlags, stats, newSeg] = computePSDandArtifactRejection(stepSeg
 % if the average power in a step segment exceeds 150% of its baseline power, that
 % channel is flagged as an artefact.
 %
-% Then, a third version of the raw segments (seg3) is created by replacing in each 
-% segment the data of any flagged channel with zeros.
-%
-% Finally, a new seg cell array is returned containing:
-%    newSeg{1} = raw segments (seg{1})
-%    newSeg{2} = cleaned segments (seg{2})
-%    newSeg{3} = modified raw segments with artefact channels replaced by zeros
-%
 % Inputs:
 %   stepSeg - Array or cell array of segment objects for the step trial. Each segment
 %             is assumed to have a field 'sampledProcess' containing the raw LFP signal.
@@ -33,11 +25,7 @@ function [artifactFlags, stats, newSeg] = computePSDandArtifactRejection(stepSeg
 %                     .averageBaselinePower  - Vector with the mean baseline power computed per channel.
 %                     .averageStepPower      - Vector with the mean step power computed per channel.
 %                     .powerRatios           - Matrix of power ratios (step/baseline) for each segment per channel.
-%   newSeg        - A cell array containing three cells:
-%                     newSeg{1} - the raw segments,
-%                     newSeg{2} - the cleaned segments,
-%                     newSeg{3} - the raw segments modified by replacing channels flagged as artefacts with zeros.
-%
+
 % Key MATLAB functions used:
 %   - pwelch: Computes the Power Spectral Density (PSD) using Welch's method.
 %   - mean: Computes the arithmetic mean.
@@ -64,14 +52,14 @@ if iscell(bslSeg)
 end
 
 %% --- Setup parameters for PSD calculation ---
-window = 256;    % Window length in samples
-noverlap = 128;  % Number of overlapping samples
-nfft = 512;      % Number of FFT points for PSD computation
+window = 128;    % Window length in samples
+noverlap = 64;  % Number of overlapping samples
+nfft = 1024;      % Number of FFT points for PSD computation
 fs = 512;        % Sampling frequency (Hz)
 
 % Frequency band for 1/f aperiodic component estimation (e.g., 4-55 Hz)
-freqRange = [4, 55];
-k= 1.5; % treshold of power vs baseline to flagged this as an artefact
+freqRange = [0, 100];
+k= 1.3; % treshold of power vs baseline to flagged this as an artefact
 
 %% --- Compute average PSD for baseline segments per channel ---
 nBsl = numel(bslSeg);
@@ -149,37 +137,19 @@ stats.averageBaselinePower = avgBslPower;
 stats.averageStepPower = averageStepPower;
 stats.powerRatios = powerRatios;
 
-%% --- Create modified raw segments (seg3) with flagged channels replaced by zeros ---
-% Preallocate new segment array (here, modifiedSeg is used instead of seg3)
-modifiedSeg = repmat(Segment(), 1, numel(rawSeg));  % rawSeg is your original segment array
-
-for i = 1:numel(rawSeg)
-    % Extract the original raw process from the segment
-    sp = rawSeg(i).sampledProcess;  
-    signal = sp.values;  % Get the numeric data from the SampledProcess
-    
-    % Replace flagged channels with zeros
-    for ch = 1:nChannels
-        if artifactFlags(i, ch)
-            signal(:, ch) = 0;  % Zero out flagged channel data
-        end
+%% --- Update trial condition in cleaned segments (seg{2}) if channels are flagged as artifacts ---
+for i = 1:numel(cleanedSeg)
+    if any(artifactFlags(i, :))
+         % Retrieve the current trial info structure from the containers.Map
+         trialInfo = cleanedSeg(i).info('trial');  % trialInfo is a struct
+         % Append '_wrong' to flag the trial as containing an artefact
+         trialInfo.condition = [trialInfo.condition, '_wrong'];
+         % Reassign the updated trial info back into the containers.Map
+         cleanedSeg(i).info('trial') = trialInfo;
     end
-    
-    % Create a new SampledProcess instance with the modified signal
-    newProcess = SampledProcess('values', signal, 'Fs', sp.Fs, 'labels', sp.labels);
-    
-    % Create a new Segment instance with the modified process.
-    % If your original segment includes additional processes (e.g., an event process),
-    % include them as needed. For example, here we assume the second process remains unchanged.
-    modifiedSeg(i) = Segment('process', {newProcess, rawSeg(i).process{2}}, ...
-                             'labels', rawSeg(i).labels);
 end
 
-% Replace seg3 with the newly constructed segments
-seg3 = modifiedSeg;
-
-
-%% --- Assemble new seg cell array containing raw, cleaned, and modified segments ---
-newSeg = {rawSeg, cleanedSeg, seg3};
+%% --- Assemble new seg cell array containing only raw and cleaned segments ---
+newSeg = {rawSeg, cleanedSeg};
 
 end

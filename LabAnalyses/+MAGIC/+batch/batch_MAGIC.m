@@ -57,13 +57,13 @@ todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
 todo.plot_raw_TF = 0; %plot the TF from the raw data
 
-todo.plot_clean_TF = 0; %plot the TF from the clean data
+todo.plot_clean_TF = 1; %plot the TF from the clean data
 
-todo.plot_indiv_seg_raw = 1; % plot indiv_segment (cass) from raw data 
+todo.plot_indiv_seg_raw = 0; % plot indiv_segment (cass) from raw data 
 
-todo.plot_indiv_seg_clean = 1; % plot indiv_segment (cass) from cleaned data 
+todo.plot_indiv_seg_clean = 0; % plot indiv_segment (cass) from cleaned data 
 
-todo.Plan_B = 1; % Thenaisie 2022 steps removal - aperiodic components
+todo.Plan_B = 0; % Thenaisie 2022 steps removal - aperiodic components
 
 %normalization
 % change script to add type of normalization in output name
@@ -118,7 +118,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_testCass');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -418,23 +418,28 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 elseif todo.extractLFP 
                     MAGIC.batch.Export_timecourses(seg, e{1}, norm, Bsl);
                 end
-                 if existTF && todo.Plan_B
-                    [artefactFlags, artifactStats, seg] = MAGIC.batch.computePSDandArtifactRejection(seg, rest);
-                    % Log the artifact rejection statistics for review or export.
-                    disp('Artifact rejection statistics:');
-                    disp(artifactStats);
-                    disp('Recomputing & Computing spectral TF maps with non artefacted LFP data...');
-                    [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'removal');
-                     if existTF_clean && todo.plot_clean_TF
-                            % Save the cleaned TF data to the designated cleaned TF directory
-                            save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
-
-                            % Plot the cleaned TF maps using plot_TF.m
-                            MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
-                     end
-                     continue 
-                 end   
+            if existTF && todo.Plan_B
+                % Call the artifact rejection function, which returns new seg
+                [artefactFlags, artifactStats, seg] = MAGIC.batch.computePSDandArtifactRejection(seg, rest);
                 
+                % Log the artifact rejection statistics for review or export.
+                disp('Artifact rejection statistics:');
+                disp(artifactStats);
+                
+                disp('Recomputing & Computing spectral TF maps with non artefacted LFP data...');
+         
+                [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'clean');
+                
+                if existTF_clean && todo.plot_clean_TF
+                    % Save the cleaned TF data to the designated cleaned TF directory
+                    save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
+                
+                    % Plot the cleaned TF maps using plot_TF.m
+                    MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
+                end
+                continue 
+            end
+
                 
                 
                 if (todo.TF==1 || todo.TF==2 || todo.TF==4) && strcmp(segType, 'step')
@@ -495,7 +500,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                    % --- Recompute Spectral TF Maps from Cleaned Data if any plotting is requested ---
                     if todo.plot_indiv_seg_clean || todo.plot_clean_TF
                         disp('Recomputing spectral TF maps with cleaned LFP data...');
-                        [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'cleaned');
+                        [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'clean');
 
                          if todo.plot_indiv_seg_clean 
                             for t = 1:numel(dataTF)

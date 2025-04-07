@@ -24,8 +24,8 @@ function [ArtefactFlags, CleanedData] = ArtefactDetection_MADDerivative(data)
 %   [flags, cleanData] = ArtefactDetection_MADDerivative(rawData, 6, 3);
 
 % Set default parameters if not provided
-ampFactor = 6; % Filter for outlier removal --> first step
-derivFactor = 3; % Filter for derivative MAD 
+ampFactor = 5; % Filter for outlier removal --> first step
+derivFactor = 1.5; % Filter for derivative MAD 
 
 % Extract raw data and initialize variables
 raw       = data.values{1}; 

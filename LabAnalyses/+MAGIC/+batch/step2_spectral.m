@@ -7,7 +7,7 @@ global n_pad
 
 % Set default version to 'cleaned' if not provided.
 if nargin < 5
-    version = 'cleaned';
+    version = 'clean';
 end
 
 seg_complete = seg;
@@ -15,12 +15,10 @@ seg_complete = seg;
 if iscell(seg)
     if strcmpi(version, 'raw')
             seg = seg{1};
-        elseif strcmpi(version, 'cleaned')
+        elseif strcmpi(version, 'clean')
             seg = seg{2};
-        elseif strcmpi(version, 'removal')
-            seg = seg {3};
         else
-            error('Invalid version specified. Use "raw" or "cleaned".');
+            error('Invalid version specified. Use "raw" or "clean".');
     end
 end
 
