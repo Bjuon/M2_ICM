@@ -63,8 +63,6 @@ todo.plot_indiv_seg_raw = 0; % plot indiv_segment (cass) from raw data
 
 todo.plot_indiv_seg_clean = 0; % plot indiv_segment (cass) from cleaned data 
 
-todo.Plan_B = 1; % Thenaisie 2022 steps removal - aperiodic components
-
 %normalization
 % change script to add type of normalization in output name
 PreStart                  = 3;                  % time to add to before and after trigger during segmentation
@@ -418,28 +416,6 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 elseif todo.extractLFP 
                     MAGIC.batch.Export_timecourses(seg, e{1}, norm, Bsl);
                 end
-            if existTF && todo.Plan_B
-                % Call the artifact rejection function, which returns new seg
-                [artefactFlags, artifactStats, seg] = MAGIC.batch.computePSDandArtifactRejection(seg, rest);
-                
-                % Log the artifact rejection statistics for review or export.
-                disp('Artifact rejection statistics:');
-                disp(artifactStats);
-                
-                disp('Computing spectral TF maps with non artefacted LFP data...');
-         
-                [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'clean');
-                
-                if existTF_clean && todo.plot_clean_TF
-                    % Save the cleaned TF data to the designated cleaned TF directory
-                    save([OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.mat'], 'cleanTF');
-                
-                    % Plot the cleaned TF maps using plot_TF.m
-                    MAGIC.batch.plot_TF(cleanTF, [OutputFileName suff1 '_TF_' suff '_clean_' e{1}], cleanTFDir, TimePlot);
-                end
-                continue 
-            end
-
                 
                 
                 if (todo.TF==1 || todo.TF==2 || todo.TF==4) && strcmp(segType, 'step')

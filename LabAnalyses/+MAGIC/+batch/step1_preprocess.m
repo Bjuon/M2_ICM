@@ -28,6 +28,9 @@ global ChannelMontage
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
+todo.thenaisie =1; 
+baselineStruct = struct('trialKey', {}, 'window', {}, 'signal', {});  % This will gather baseline info for each trial
+
 
 % for each files:
 for f = 1 : numel(files)
@@ -166,7 +169,7 @@ for f = 1 : numel(files)
     
   
   
-    for t = 1 : size(MAGIC_trials,1)
+    for t = 1 : size(MAGIC_trials,1) % boucle des essais
 
         %create win, valid, trig for each step
         LFPtrial_start = Button_LFP(t);
@@ -208,6 +211,20 @@ for f = 1 : numel(files)
                         validity = MAGIC_trials.VALID{t} ;
                         % BSL
                         e(1)  = metadata.event.Response('tStart', PreStart - 0.8, 'tEnd', PreStart - 0.1, 'name', BSL);
+
+                             % --- NEW: Gather baseline information into baselineStruct ---
+                        % Compute the absolute baseline times by adding offset to the trial start (LFPtrial_start):
+                        baselineStart = LFPtrial_start + (PreStart - 0.8);
+                        baselineEnd   = LFPtrial_start + (PreStart - 0.1);
+                        % Create the trial key from your known metadata
+                        trialKey = sprintf('%s_%s_%d', RecID, run, MAGIC_trials.Trialnum{t});
+                        % Store the baseline info: trialKey, the baseline window, and optionally the signal.
+                        baselineStruct(end+1).trialKey = trialKey;
+                        baselineStruct(end).window = [baselineStart, baselineEnd];
+                        % Optionally, extract the baseline signal from the raw LFP data:
+                        t_full = (0:size(rawLFP_data,1)-1) / data.Fs;
+                        idxBaseline = t_full >= baselineStart & t_full <= baselineEnd;
+                        baselineStruct(end).signal = rawLFP_data(idxBaseline, :);
                         % FIX
                         if validity || ~AlsoIncludeWrongEvent
                             e(2)  = metadata.event.Response('tStart', PreStart, 'tEnd', PreStart, 'name', FIX  , 'description', MAGIC.batch.Artefact_in_this_event_per_channel(t_ref, LFPtrial_start, 'encode', Artefacts_Detected_per_Sample, 0, 0, 0));
@@ -512,6 +529,75 @@ for f = 1 : numel(files)
 
     
 end
-seg = {seg_raw,seg_clean};
+
+%% --- NEW: Apply Spectrogram-Based Artifact Rejection ---
+if todo.thenaisie == 1 % Using the flag as provided
+    disp('--- Starting Spectrogram-Based Artifact Rejection ---');
+    if exist('seg_clean', 'var') && ~isempty(seg_clean) && ...
+       exist('trials', 'var') && ~isempty(trials) && ...
+       exist('seg_raw', 'var') && ~isempty(seg_raw)
+       
+        % Call the modified AR function. It modifies seg_clean.
+        [seg_clean, rejectionStats, artifactFlags] = MAGIC.batch.computePSDandArtifactRejection(seg_clean, baselineStruct);
+        
+        % --- Debug Print: Check for Zeroed Channels ---
+        for idx = 1:numel(seg_clean)
+            % Retrieve the LFP values from the current segment's SampledProcess.
+            % The "values" property may be stored as a cell array of numeric data.
+            values = seg_clean(idx).sampledProcess.values;
+            
+            % Check if "values" is a cell; if so, convert it to a numeric matrix.
+            if iscell(values)
+                % cell2mat concatenates the contents of the cell array into a regular numeric array.
+                values = cell2mat(values);
+            end
+            
+            % Use the "all" function to check each channel:
+            % all(values == 0, 1) returns a logical row vector (one entry per channel)
+            % where "true" means that every sample in that channel is equal to zero.
+            zeroedChannels = find(all(values == 0, 1));
+            
+            % If any channels are completely zeroed, output a debug message.
+            if ~isempty(zeroedChannels)
+                % fprintf prints the segment index and the indices of zeroed channels.
+                fprintf('DEBUG: In segment %d, zeroed channels: %s\n', idx, mat2str(zeroedChannels));
+            end
+        end
+
+        
+        %% --- Calculate and Display Summary Statistics ---
+        totalSegs = rejectionStats.totalSegments;
+        flaggedSegsCount = sum(any(artifactFlags, 2));  % Segments with at least one flagged channel
+        percentageFlaggedSegs = (flaggedSegsCount / totalSegs) * 100;
+        avgBaselinePowerOverall = rejectionStats.overallAverageBaselinePower;
+        avgEventPowerOverall = rejectionStats.overallAverageEventPower;
+        
+        fprintf('\n--- Artifact Rejection Statistics (Spectrogram Method) ---\n');
+        fprintf('Total Segments: %d\n', totalSegs);
+        fprintf('Flagged Segments: %d\n', flaggedSegsCount);
+        fprintf('Percentage Flagged: %.2f%%\n', percentageFlaggedSegs);
+        fprintf('Average Baseline Aperiodic Component: %.4f\n', avgBaselinePowerOverall);
+        fprintf('Average Step Aperiodic Component: %.4f\n', avgEventPowerOverall);
+        fprintf('--------------------------------------------------------\n\n');
+        
+        % Optional: Display per-channel statistics.
+        disp('Per-channel rejection counts:');
+        disp(rejectionStats.rejectedSegmentsCountPerChannel);
+        disp('Per-channel rejection percentages:');
+        disp(rejectionStats.percentageSegmentsRejectedPerChannel);
+        
+        disp('--- Spectrogram-Based Artifact Rejection Finished ---');
+    else
+        warning('Clean/Raw segments (seg_clean/seg_raw) or trial metadata not available. Skipping Spectrogram AR.');
+    end
+end
+
+% Ensure seg is assigned correctly whether AR ran or not.
+if exist('seg_clean', 'var') && exist('seg_raw', 'var')
+    seg = {seg_raw, seg_clean};  % seg_clean is the potentially modified one.
+else
+    warning('seg_raw or seg_clean not properly defined at end of file processing. Creating empty seg.');
+    seg = {}; % Create empty seg if not defined.
+end
 clear f files;
 end
