@@ -59,7 +59,7 @@ fs = 512;        % Sampling frequency (Hz)
 
 % Frequency band for 1/f aperiodic component estimation (e.g., 4-55 Hz)
 freqRange = [0, 100];
-k= 1.3; % treshold of power vs baseline to flagged this as an artefact
+k= 2; % treshold of power vs baseline to flagged this as an artefact
 
 %% --- Compute average PSD for baseline segments per channel ---
 nBsl = numel(bslSeg);
@@ -88,14 +88,14 @@ for i = 1:nBsl
 end
 avgBslPower = mean(bslPowers, 1);
 
-%% --- Compute PSD for step segments (raw) per channel and flag artefacts ---
-nStep = numel(rawSeg);
+%% --- Compute PSD for step segments (cleaned) per channel and flag artefacts ---
+nStep = numel(cleanedSeg);
 if nStep == 0
     error('No step segments provided.');
 end
 
 % Determine number of channels from the first raw segment
-sampleSignal = rawSeg(1).sampledProcess;
+sampleSignal = cleanedSeg(1).sampledProcess;
 if ~isnumeric(sampleSignal)
     sampleSignal = sampleSignal.values;
 end
@@ -108,7 +108,7 @@ stepPowers = zeros(nStep, nChannels);
 artifactFlags = false(nStep, nChannels);
 
 for i = 1:nStep
-    signal = rawSeg(i).sampledProcess;
+    signal = cleanedSeg(i).sampledProcess;
     if ~isnumeric(signal)
         signal = signal.values;
     end

@@ -25,7 +25,7 @@ function [ArtefactFlags, CleanedData] = ArtefactDetection_MADDerivative(data)
 
 % Set default parameters if not provided
 ampFactor = 5; % Filter for outlier removal --> first step
-derivFactor = 1; % Filter for derivative MAD 
+derivFactor = 1.5; % Filter for derivative MAD 
 
 % Extract raw data and initialize variables
 raw       = data.values{1}; 
@@ -44,22 +44,58 @@ for ch = 1:nChannels
 end
 
 % --- Step 2: Derivative-Based Filtering ---
-% Compute temporal derivative (prepend first value to maintain size)
-deriv = diff(raw); 
-deriv = [deriv(1, :); deriv];
+% % Compute temporal derivative (prepend first value to maintain size)
+% deriv = diff(raw); 
+% deriv = [deriv(1, :); deriv];
+% 
+% % Initialize outputs
+% ArtefactFlags = false(nSamples, nChannels);
+% CleanedData   = raw; 
+% 
+% for ch = 1:nChannels
+%     d_med = median(deriv(:, ch));
+%     d_mad = mad(deriv(:, ch), 1);
+%     derivOutliers = abs(deriv(:, ch) - d_med) > derivFactor * d_mad;
+%     ArtefactFlags(:, ch) = derivOutliers;
+%     goodIdx = ~derivOutliers;
+%     if sum(goodIdx) < 2, continue; end
+%     CleanedData(:, ch) = interp1(timeVec(goodIdx), CleanedData(goodIdx, ch), timeVec, 'pchip', 'extrap');
+% end
+% 
+% end
 
-% Initialize outputs
+% Compute temporal derivative using central differences for better symmetry.
+% For the first and last sample we use forward and backward differences, respectively.
+deriv = zeros(size(raw));
+deriv(1,:) = raw(2,:) - raw(1,:);
+deriv(2:end-1,:) = (raw(3:end,:) - raw(1:end-2,:)) / 2;
+deriv(end,:) = raw(end,:) - raw(end-1,:);
+
+% Apply smoothing to extract the slow component of the derivative.
+% Adjust the window length according to the data characteristics.
+window = round(0.1 * Fs);  % e.g., 0.1-second window; you might tweak this value.
+smooth_deriv = movmean(deriv, window);
+
+% Compute the residual (fast component) by subtracting the slow, smoothed derivative.
+residual = deriv - smooth_deriv;
+
+% Initialize outputs (unchanged)
 ArtefactFlags = false(nSamples, nChannels);
 CleanedData   = raw; 
 
 for ch = 1:nChannels
-    d_med = median(deriv(:, ch));
-    d_mad = mad(deriv(:, ch), 1);
-    derivOutliers = abs(deriv(:, ch) - d_med) > derivFactor * d_mad;
+    % Compute median and MAD on the residual to flag fast transitions
+    r_med = median(residual(:, ch));
+    r_mad = mad(residual(:, ch), 1);
+    
+    % Identify samples where the fast changes (residual) exceed the threshold.
+    % This helps remove only the fast ramp events, leaving slower ramps intact.
+    derivOutliers = abs(residual(:, ch) - r_med) > derivFactor * r_mad;
     ArtefactFlags(:, ch) = derivOutliers;
+    
     goodIdx = ~derivOutliers;
     if sum(goodIdx) < 2, continue; end
+    
+    % Interpolate the flagged sections using pchip for smooth interpolation.
     CleanedData(:, ch) = interp1(timeVec(goodIdx), CleanedData(goodIdx, ch), timeVec, 'pchip', 'extrap');
-end
-
 end

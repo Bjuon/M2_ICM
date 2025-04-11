@@ -74,7 +74,7 @@ tBlock                    = 0.5;                %0.5; % 0.1 ; 0.5
 fqStart                   = 1;
 hpFilt                    = 1;                  % 0 if no highpass filter on data before segmentation, else 1
 segType                   = 'step'  ;           %'trial'; % 'step', if seg per step
-ChannelMontage            = 'none';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
+ChannelMontage            = 'classic';         % 'none' , 'classic' = classical electrodes, 'extended' => beaucoup de montages , '123' => quelques exemples de mono, bi et tri-polaire , 'averaged' => use as reference the mean of all signal , 'GaitInitiation' => for MAGIC+GI paper
 TimePlot                  = {'event'}; % Args in for plot_TF   %TimePlot = {'all', '10s', '05s', 'marche','artefact_watch'};
 Artefact_Rejection_Method = 'TF';               % 'TraceBrut' , 'TF',  'none'
 
@@ -118,7 +118,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_thenaisie_diff');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_thenaisie_diff_V4');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -426,7 +426,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 disp('Artifact rejection statistics:');
                 disp(artifactStats);
                 
-                disp('Recomputing & Computing spectral TF maps with non artefacted LFP data...');
+                disp('Computing spectral TF maps with non artefacted LFP data...');
          
                 [cleanTF, existTF_clean] = MAGIC.batch.step2_spectral(seg, e{1}, norm, Bsl, 'clean');
                 
