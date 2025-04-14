@@ -217,9 +217,10 @@ for f = 1 : numel(files)
                         baselineStart = LFPtrial_start + (PreStart - 0.8);
                         baselineEnd   = LFPtrial_start + (PreStart - 0.1);
                         % Create the trial key from your known metadata
-                        trialKey = sprintf('%s_%s_%d', RecID, run, MAGIC_trials.Trialnum{t});
-                        % Store the baseline info: trialKey, the baseline window, and optionally the signal.
+                        trialKey = sprintf('%s_%s_%d_%s', RecID, run, MAGIC_trials.Trialnum{t}, med);
+                        % Store the baseline info: trialKey, med state, the baseline window, and optionally the signal.
                         baselineStruct(end+1).trialKey = trialKey;
+                        baselineStruct(end).med = med;  % <== Added medication state for later reference
                         baselineStruct(end).window = [baselineStart, baselineEnd];
                         % Optionally, extract the baseline signal from the raw LFP data:
                         t_full = (0:size(rawLFP_data,1)-1) / data.Fs;

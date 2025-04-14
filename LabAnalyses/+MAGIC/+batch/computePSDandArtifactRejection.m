@@ -1,6 +1,6 @@
 function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
 %% Aperiodic Parameters and Basic Setup
-multiplicativeThreshold = 1.5;
+multiplicativeThreshold = 1.5; % 1.5x baseline vs step 
 thresholdAdd = log10(multiplicativeThreshold);
 fs = cleanedSeg(1).sampledProcess.Fs;
 eventWindowSec = [-1, 1];
@@ -26,10 +26,7 @@ if nSegments == 0
     error('AR: cleanedSeg is empty.');
 end
 sampleProcess = cleanedSeg(1).sampledProcess;
-if ~isnumeric(sampleProcess)
-    sampleProcess = sampleProcess.values;
-end
-nChannels = size(sampleProcess, 2);
+nChannels = size(sampleProcess.values{1,1}, 2);
 artifactFlags = false(nSegments, nChannels);
 baselinePowerTrial = containers.Map('KeyType', 'char', 'ValueType', 'any');
 allBaselinePowers = [];
@@ -40,15 +37,18 @@ numEventsChecked = 0;
 disp('AR: Calculating baseline aperiodic component per trial from baselineStruct...');
 for i = 1:nSegments
     trialInfo = cleanedSeg(i).info('trial');
-    trialKey = sprintf('%s_%s_%d', trialInfo.patient, trialInfo.run, trialInfo.nTrial);
+    trialKey = sprintf('%s_%s_%d_%s', trialInfo.patient, trialInfo.run, trialInfo.nTrial, trialInfo.medication);
     idxBaseline = find(arrayfun(@(x) strcmp(x.trialKey, trialKey), baselineStruct));
+    
     if ~isempty(idxBaseline)
         bslSignal = baselineStruct(idxBaseline).signal;
         if size(bslSignal, 1) < winLenSamples
             warning('AR: Baseline window too short for spectrogram in trial %s. Assigning NaN baseline.', trialKey);
-            baselinePowerTrial(trialKey) = nan(1, nChannels);
+            % Store NaNs directly in the baselineStruct for this trial.
+            baselineStruct(idxBaseline).aperiodic = nan(1, nChannels);
             continue;
         end
+        
         trialBaselineAperiodic = nan(1, nChannels);
         for ch = 1:nChannels
             [s, f, ~] = spectrogram(bslSignal(:, ch), winLenSamples, overlapSamples, nfft, fs);
@@ -62,16 +62,13 @@ for i = 1:nSegments
                 trialBaselineAperiodic(ch) = NaN;
             end
         end
-        baselinePowerTrial(trialKey) = trialBaselineAperiodic;
-        if ~any(isnan(trialBaselineAperiodic))
-            allBaselinePowers = [allBaselinePowers; trialBaselineAperiodic];
-        end
+        
+        % Save the computed aperiodic component as a new field in baselineStruct.
+        baselineStruct(idxBaseline).aperiodic = trialBaselineAperiodic;
     else
-        warning('AR: No baseline found in baselineStruct for trial %s. Assigning NaN baseline.', trialKey);
-        baselinePowerTrial(trialKey) = nan(1, nChannels);
+        warning('AR: No baseline found in baselineStruct for trial %s. Cannot store aperiodic component.', trialKey);
     end
 end
-% disp('AR: Baseline aperiodic calculation finished.');
 
 %% Pass 2: Check Step Event Aperiodic Power Against Baseline and Flag Artifacts
 disp('AR: Checking event aperiodic power and flagging rejections...');
@@ -79,21 +76,10 @@ allEventAperiodicValues = []; % Initialize a temporary array to see all raw FOOO
 allEventPowers = [];         % Ensure this is initialized before the loop if it wasn't already
 
 for i = 1:nSegments
-    % Check if segment has trial info - skip if not
-    if ~isKey(cleanedSeg(i).info, 'trial')
-        fprintf('AR Debug: Segment %d skipped - No trial info key found.\n', i);
-        continue;
-    end
     trialInfo = cleanedSeg(i).info('trial');
 
-    % Check if trial info has necessary fields - skip if not
-    if ~isfield(trialInfo, 'patient') || ~isfield(trialInfo, 'run') || ~isfield(trialInfo, 'nTrial') || ~isfield(trialInfo, 'condition')
-        fprintf('AR Debug: Segment %d skipped - Missing required fields (patient/run/nTrial/condition) in trial info.\n', i);
-        continue;
-    end
-
     % Generate trial key and check if baseline power exists - skip if not
-    trialKey = sprintf('%s_%s_%d', trialInfo.patient, trialInfo.run, trialInfo.nTrial);
+    trialKey = sprintf('%s_%s_%d_%s', trialInfo.patient, trialInfo.run, trialInfo.nTrial, trialInfo.medication);
     if ~isKey(baselinePowerTrial, trialKey) || any(isnan(baselinePowerTrial(trialKey)))
         fprintf('AR Debug: Segment %d (TrialKey: %s) skipped - No valid baseline power found/calculated in Pass 1.\n', i, trialKey);
         continue;
@@ -101,19 +87,13 @@ for i = 1:nSegments
     currentTrialBaseline = baselinePowerTrial(trialKey); % Get baseline power offset(s) for this trial
 
     % Define which segment conditions should be checked for step events
-    isCheckableSegment = ismember(trialInfo.condition, {'step', 'turn', 'FOG'});
+    isCheckableSegment = ismember(trialInfo.condition, {'step'});
     segmentCheckedFlag = false; % Flag to track if any event within this segment was actually processed
 
     % --- DEBUG: Check if segment is processed based on condition ---
     fprintf('AR Debug: Processing Segment %d. Condition: %s. Is Checkable (step/turn/FOG): %d\n', i, trialInfo.condition, isCheckableSegment);
 
     if isCheckableSegment
-        % Check if necessary data properties exist - skip segment if not
-        if ~isprop(cleanedSeg(i), 'eventProcess') || isempty(cleanedSeg(i).eventProcess) || ...
-           ~isprop(cleanedSeg(i), 'sampledProcess') || isempty(cleanedSeg(i).sampledProcess)
-            fprintf('AR Debug: Segment %d skipped - Missing or empty eventProcess or sampledProcess property.\n', i);
-            continue;
-        end
 
         % Extract data and time vector
         data = cleanedSeg(i).sampledProcess; % Assuming this contains .values and .tvec or is the SampledProcess object itself

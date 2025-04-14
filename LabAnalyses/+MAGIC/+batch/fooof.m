@@ -38,8 +38,9 @@ function fooof_results = fooof(freqs, power_spectrum, f_range, settings, return_
 
     % Check settings - get defaults for those not provided
     settings = MAGIC.batch.fooof_check_settings(settings);
-   
-
+    
+%    np = py.importlib.import_module('numpy');
+    
 
     % Convert inputs
     freqs = py.numpy.array(freqs);
