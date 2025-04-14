@@ -1,124 +1,64 @@
-function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection( cleanedSeg, baselineStruct)
-% computePSDandArtifactRejection - Performs artifact rejection based on aperiodic components
-% relative to a trial-specific baseline.
-%
-% In this version, the baseline signal is directly retrieved from the baselineStruct generated
-% in step1_preprocess.m. The baselineStruct must include the following fields for each trial:
-%    - trialKey: unique identifier (e.g. 'patient_run_trial')
-%    - window: a two-element vector specifying the baseline start and end times [start, end] in seconds
-%    - signal: the baseline signal (matrix with samples x channels)
-%
-% Inputs:
-%   rawSeg         - Raw segmented data structure (not modified here; kept for compatibility)
-%   cleanedSeg     - Cleaned segmented data structure that will be modified if artifacts are detected
-%   trials         - Trial metadata used to determine trial-specific parameters
-%   baselineStruct - Structure array with baseline information (see above)
-%
-% Outputs:
-%   cleanedSeg_flagged - The cleaned segmented data with channels zeroed if flagged.
-%   stats              - Structure containing summary statistics from artifact rejection.
-%   artifactFlags      - Logical matrix indicating which channels were flagged per segment.
-%
-% Key MATLAB Functions:
-%   spectrogram: Computes the Short-Time Fourier Transform (STFT) of the signal to estimate the PSD.
-%                Its outputs include:
-%                   - s: STFT matrix (complex values)
-%                   - f: Vector of frequency bins
-%   polyfit: Performs a linear regression on the log-transformed data.
-%            Here, it fits a line to the log-log power spectrum so that the intercept (p(2)) 
-%            represents the aperiodic (1/f) component.
-%   arrayfun: Used to search the baselineStruct array for a matching trial key.
-%
+function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
+%% Aperiodic Parameters and Basic Setup
+multiplicativeThreshold = 1.5;
+thresholdAdd = log10(multiplicativeThreshold);
+fs = cleanedSeg(1).sampledProcess.Fs;
+eventWindowSec = [-1, 1];
+baselineEventName = 'BSL';
+stepEventNames = {'FO', 'FC'};
+freqRangeHz = [4, 80];
+winLenSamples  = round(fs * 0.5);
+overlapSamples = round(winLenSamples * 0.5);
+nfft           = 1024;
 
-%% --- Aperiodic Parameters and Basic Setup ---
-multiplicativeThreshold = 1.5;            % Event aperiodic component must be 1.5 times higher than baseline.
-thresholdAdd = log10(multiplicativeThreshold);  % In log10 space, this becomes an additive threshold.
+%% Define FOOOF settings
+fooofSettings = struct();
+fooofSettings.peak_width_limits = [1 12];
+fooofSettings.max_n_peaks = 5;
+fooofSettings.min_peak_height = 0;       % adjust as needed
+fooofSettings.peak_threshold = 2.0;        % adjust as needed
+fooofSettings.aperiodic_mode = 'fixed';    % or 'knee'
+fooofSettings.verbose = false;
 
-% Sampling frequency: we assume all segments share the same sampling info.
-fs = cleanedSeg(1).sampledProcess.Fs; 
-eventWindowSec = [-1, 1];       % Window around the event (in seconds)
-baselineEventName = 'BSL';      % Baseline event name (unused with new approach)
-stepEventNames = {'FO', 'FC'};  % Step events used for artifact checking
-freqRangeHz = [4, 80];          % Frequency range (Hz) for analysis
-
-% Spectrogram parameters:
-winLenSamples  = round(fs * 0.5);           % 500-ms window length (in samples)
-overlapSamples = round(winLenSamples * 0.5);  % 50% overlap between windows
-nfft           = 1024;                      % Number of FFT points
-
-%% --- Initialization ---
+%% Initialization
 nSegments = numel(cleanedSeg);
 if nSegments == 0
     error('AR: cleanedSeg is empty.');
 end
-if ~isprop(cleanedSeg(1), 'sampledProcess') || isempty(cleanedSeg(1).sampledProcess)
-    error('AR: First segment in cleanedSeg does not have a valid SampledProcess.');
-end
-
-% Determine number of channels from the first segment’s sampledProcess:
 sampleProcess = cleanedSeg(1).sampledProcess;
 if ~isnumeric(sampleProcess)
-    sampleProcess = sampleProcess.values;  % extract numeric matrix if stored as an object
+    sampleProcess = sampleProcess.values;
 end
 nChannels = size(sampleProcess, 2);
-
-% Initialize matrix to track flagged artifact channels per segment:
 artifactFlags = false(nSegments, nChannels);
-
-% We use a containers.Map to store the baseline aperiodic intercept (per trial) from our lookup.
 baselinePowerTrial = containers.Map('KeyType', 'char', 'ValueType', 'any');
-allBaselinePowers = [];  % Accumulate all baseline aperiodic values for statistics
-allEventPowers = [];     % Accumulate event aperiodic values for statistics
+allBaselinePowers = [];
+allEventPowers = [];
 numSegmentsChecked = 0;
 numEventsChecked = 0;
-
-%% --- Pass 1: Retrieve Baseline Aperiodic Component for Each Trial from baselineStruct ---
+%% Pass 1: Retrieve Baseline Aperiodic Component for Each Trial
 disp('AR: Calculating baseline aperiodic component per trial from baselineStruct...');
 for i = 1:nSegments
-    % Verify that the segment has trial metadata in its info map.
-    if ~isKey(cleanedSeg(i).info, 'trial')
-        warning('AR: Segment %d does not have trial info in its map. Skipping baseline calculation.', i);
-        continue;
-    end
     trialInfo = cleanedSeg(i).info('trial');
-    
-    % Create a unique trial key that must match the format used in baselineStruct:
     trialKey = sprintf('%s_%s_%d', trialInfo.patient, trialInfo.run, trialInfo.nTrial);
-    
-    % Search for the matching trial in the baselineStruct using arrayfun:
     idxBaseline = find(arrayfun(@(x) strcmp(x.trialKey, trialKey), baselineStruct));
     if ~isempty(idxBaseline)
-        % Retrieve the baseline signal stored in baselineStruct.
         bslSignal = baselineStruct(idxBaseline).signal;
         if size(bslSignal, 1) < winLenSamples
             warning('AR: Baseline window too short for spectrogram in trial %s. Assigning NaN baseline.', trialKey);
             baselinePowerTrial(trialKey) = nan(1, nChannels);
             continue;
         end
-        
-        % Compute the aperiodic component (intercept) for each channel using spectrogram and polyfit.
         trialBaselineAperiodic = nan(1, nChannels);
         for ch = 1:nChannels
-            try
-                % Compute the STFT of the baseline signal for this channel.
-                [s, f, ~] = spectrogram(bslSignal(:, ch), winLenSamples, overlapSamples, nfft, fs);
-                % Select frequencies within the range of interest.
-                freqIdx = f >= freqRangeHz(1) & f <= freqRangeHz(2);
-                if any(freqIdx)
-                    % Compute power as the square of the absolute value of the STFT coefficients.
-                    powerS = abs(s(freqIdx, :)).^2;
-                    avgPSD = mean(powerS, 2);  % Average the power spectrum over time
-                    % Convert to log–log space.
-                    logFreq = log10(f(freqIdx));
-                    logAvgPSD = log10(avgPSD);
-                    % Fit a linear regression in log–log space. The intercept (p(2)) represents the aperiodic component.
-                    p = polyfit(logFreq, logAvgPSD, 1);
-                    trialBaselineAperiodic(ch) = p(2);
-                else
-                    trialBaselineAperiodic(ch) = NaN;
-                end
-            catch ME
-                warning('AR: Spectrogram failed for baseline channel %d in trial %s: %s', ch, trialKey, ME.message);
+            [s, f, ~] = spectrogram(bslSignal(:, ch), winLenSamples, overlapSamples, nfft, fs);
+            freqIdx = f >= freqRangeHz(1) & f <= freqRangeHz(2);
+            if any(freqIdx)
+                powerS = abs(s(freqIdx, :)).^2;
+                avgPSD = mean(powerS, 2);
+                fooofRes_bsl = MAGIC.batch.fooof(f(freqIdx), avgPSD, [freqRangeHz(1), freqRangeHz(2)], fooofSettings, false);
+                trialBaselineAperiodic(ch) = fooofRes_bsl.aperiodic_params(1);
+            else
                 trialBaselineAperiodic(ch) = NaN;
             end
         end
@@ -131,91 +71,269 @@ for i = 1:nSegments
         baselinePowerTrial(trialKey) = nan(1, nChannels);
     end
 end
-disp('AR: Baseline aperiodic calculation finished.');
+% disp('AR: Baseline aperiodic calculation finished.');
 
-%% --- Pass 2: Check Step Event Aperiodic Power Against Baseline and Flag Artifacts ---
+%% Pass 2: Check Step Event Aperiodic Power Against Baseline and Flag Artifacts
 disp('AR: Checking event aperiodic power and flagging rejections...');
+allEventAperiodicValues = []; % Initialize a temporary array to see all raw FOOOF values
+allEventPowers = [];         % Ensure this is initialized before the loop if it wasn't already
+
 for i = 1:nSegments
+    % Check if segment has trial info - skip if not
     if ~isKey(cleanedSeg(i).info, 'trial')
+        fprintf('AR Debug: Segment %d skipped - No trial info key found.\n', i);
         continue;
     end
     trialInfo = cleanedSeg(i).info('trial');
-    if ~isfield(trialInfo, 'patient') || ~isfield(trialInfo, 'run') || ~isfield(trialInfo, 'nTrial')
+
+    % Check if trial info has necessary fields - skip if not
+    if ~isfield(trialInfo, 'patient') || ~isfield(trialInfo, 'run') || ~isfield(trialInfo, 'nTrial') || ~isfield(trialInfo, 'condition')
+        fprintf('AR Debug: Segment %d skipped - Missing required fields (patient/run/nTrial/condition) in trial info.\n', i);
         continue;
     end
+
+    % Generate trial key and check if baseline power exists - skip if not
     trialKey = sprintf('%s_%s_%d', trialInfo.patient, trialInfo.run, trialInfo.nTrial);
     if ~isKey(baselinePowerTrial, trialKey) || any(isnan(baselinePowerTrial(trialKey)))
+        fprintf('AR Debug: Segment %d (TrialKey: %s) skipped - No valid baseline power found/calculated in Pass 1.\n', i, trialKey);
         continue;
     end
-    currentTrialBaseline = baselinePowerTrial(trialKey);
-    % Only check segments that are of type 'step', 'turn', or 'FOG'
+    currentTrialBaseline = baselinePowerTrial(trialKey); % Get baseline power offset(s) for this trial
+
+    % Define which segment conditions should be checked for step events
     isCheckableSegment = ismember(trialInfo.condition, {'step', 'turn', 'FOG'});
-    segmentCheckedFlag = false;
+    segmentCheckedFlag = false; % Flag to track if any event within this segment was actually processed
+
+    % --- DEBUG: Check if segment is processed based on condition ---
+    fprintf('AR Debug: Processing Segment %d. Condition: %s. Is Checkable (step/turn/FOG): %d\n', i, trialInfo.condition, isCheckableSegment);
+
     if isCheckableSegment
+        % Check if necessary data properties exist - skip segment if not
         if ~isprop(cleanedSeg(i), 'eventProcess') || isempty(cleanedSeg(i).eventProcess) || ...
            ~isprop(cleanedSeg(i), 'sampledProcess') || isempty(cleanedSeg(i).sampledProcess)
+            fprintf('AR Debug: Segment %d skipped - Missing or empty eventProcess or sampledProcess property.\n', i);
             continue;
         end
-        data = cleanedSeg(i).sampledProcess;
-        tVec = data.tvec;
-        % Find all step events in the segment.
-        eventsFound = cleanedSeg(i).eventProcess.find('func', @(x) ismember(x.name.name, stepEventNames));
+
+        % Extract data and time vector
+        data = cleanedSeg(i).sampledProcess; % Assuming this contains .values and .tvec or is the SampledProcess object itself
+         if isobject(data) % Handle case where it's an object
+             if isprop(data, 'values') && isprop(data, 'tvec')
+                 signalValues = data.values;
+                 tVec = data.tvec;
+             else
+                  fprintf('AR Debug: Segment %d skipped - sampledProcess object missing .values or .tvec.\n', i);
+                  continue; % Skip if object doesn't have needed properties
+             end
+         else % Handle case where it might be a simple matrix (less likely based on context)
+             fprintf('AR Debug: Segment %d - sampledProcess is not an object. Code might need adjustment.\n', i);
+             signalValues = data; % Assume data IS the values matrix
+             % tVec would need to be generated/provided differently in this case
+             % tVec = (0:size(signalValues, 1)-1) / fs; % Example if time vector missing
+             fprintf('AR Debug: Segment %d skipped - Time vector missing for non-object sampledProcess.\n', i);
+             continue;
+         end
+        
+        % Find relevant events within this segment
+        eventsFound = cleanedSeg(i).eventProcess.find('func', @(x) ismember(x.name.name, stepEventNames)); % stepEventNames = {'FO', 'FC'}
+
+        % --- DEBUG: Check if step events are found ---
+        fprintf('AR Debug: Segment %d - Found %d step events (FO/FC).\n', i, numel(eventsFound));
         if isempty(eventsFound)
-            continue;
+             fprintf('AR Debug: Segment %d - No step events (FO/FC) found in eventProcess. Skipping event processing for this segment.\n', i);
+             % continue; % Don't skip the whole segment, just this part; proceed to next segment check
         end
+
+        % Loop through each found step event ('FO' or 'FC')
         for ev = 1:numel(eventsFound)
-            numEventsChecked = numEventsChecked + 1;
+            % Note: numEventsChecked should reflect actual checks performed, maybe increment inside channel loop after checks pass?
+            % Consider moving numEventsChecked increment after successful PSD/FOOOF? Or keep as attempt count.
+            % numEventsChecked = numEventsChecked + 1; % Increment count of events looked at
+
             eventTime = eventsFound(ev).tStart;
-            eventWinStart = max(tVec(1), eventTime + eventWindowSec(1));
-            eventWinEnd = min(tVec(end), eventTime + eventWindowSec(2));
+            eventWinStart = max(tVec(1), eventTime + eventWindowSec(1)); % Ensure window doesn't start before data
+            eventWinEnd = min(tVec(end), eventTime + eventWindowSec(2));   % Ensure window doesn't end after data
             eventIdx = tVec >= eventWinStart & tVec <= eventWinEnd;
-            eventSignal = data.values(eventIdx, :);
+
+            % Check if any samples fall within the event window
+             if ~any(eventIdx)
+                 fprintf('AR Debug: Seg %d, Event %d (%s) at %.3fs - No data samples found within the window [%.3f, %.3f]. Skipping.\n', ...
+                         i, ev, eventsFound(ev).name.name, eventTime, eventWinStart, eventWinEnd);
+                 continue; % Skip to next event if window is outside data range or yields no indices
+             end
+            
+            eventSignal = signalValues(eventIdx, :); % Extract signal segment around the event
+
+            % --- DEBUG: Check extracted signal length ---
+            fprintf('AR Debug: Seg %d, Event %d (%s) at %.3fs. Window [%.3f, %.3f]. Extracted signal samples: %d. Required: %d.\n', ...
+                    i, ev, eventsFound(ev).name.name, eventTime, eventWinStart, eventWinEnd, size(eventSignal, 1), winLenSamples);
+
+            % Check if the extracted signal is long enough for spectrogram
             if size(eventSignal, 1) < winLenSamples
-                continue;
+                fprintf('AR Debug: Seg %d, Event %d - Signal too short. Skipping PSD/FOOOF for this event.\n', i, ev);
+                continue; % Skip to the next event
             end
-            segmentCheckedFlag = true;
-            segmentEventAperiodic = nan(1, nChannels);
+
+            % If we get here, we will process this event
+            segmentCheckedFlag = true; % Mark that we attempted analysis on this segment
+            segmentEventAperiodic = nan(1, nChannels); % Initialize aperiodic results for this event's channels
+
+            % Loop through each channel for the current event signal
             for ch = 1:nChannels
-                if artifactFlags(i, ch) || isnan(currentTrialBaseline(ch))
+                % --- DEBUG: Log channel processing start and baseline value ---
+                fprintf('AR Debug: Seg %d, Ev %d (%s), Ch %d processing. Baseline Aper Offset: %.4f\n', ...
+                        i, ev, eventsFound(ev).name.name, ch, currentTrialBaseline(ch));
+
+                % Skip if channel already flagged or baseline is invalid
+                if artifactFlags(i, ch)
+                    fprintf('AR Debug: Seg %d, Ev %d, Ch %d - Skipping (channel already flagged from previous event in same segment).\n', i, ev, ch);
                     continue;
                 end
-                try
-                    [s, f, ~] = spectrogram(eventSignal(:, ch), winLenSamples, overlapSamples, nfft, fs);
-                    freqIdx = f >= freqRangeHz(1) & f <= freqRangeHz(2);
-                    if any(freqIdx)
-                        powerS = abs(s(freqIdx, :)).^2;
-                        avgPSD = mean(powerS, 2);
-                        logFreq = log10(f(freqIdx));
-                        logAvgPSD = log10(avgPSD);
-                        p_event = polyfit(logFreq, logAvgPSD, 1);
-                        eventAperiodic = p_event(2);
-                        segmentEventAperiodic(ch) = eventAperiodic;
-                        % Flag this channel if its event aperiodic component exceeds baseline + threshold.
-                        if eventAperiodic > (currentTrialBaseline(ch) + thresholdAdd)
-                            artifactFlags(i, ch) = true;
-                            % Zero out the channel data in the cleaned segment.
-                            cleanedSeg(i).sampledProcess.values(:, ch) = 0;
-                            fprintf('AR: Segment %d, Channel %d zeroed (event aperiodic: %.2f vs baseline: %.2f).\n', ...
-                                    i, ch, eventAperiodic, currentTrialBaseline(ch));
-                        end
+                 if isnan(currentTrialBaseline(ch))
+                     fprintf('AR Debug: Seg %d, Ev %d, Ch %d - Skipping (baseline aperiodic is NaN).\n', i, ev, ch);
+                     continue;
+                 end
+
+                % --- DEBUG: Check for NaNs/Infs in eventSignal for this channel before spectrogram ---
+                 channelSignal = eventSignal(:, ch);
+                 if any(isnan(channelSignal)) || any(isinf(channelSignal))
+                     fprintf('AR Debug: Seg %d, Ev %d, Ch %d - Input signal for this channel contains NaN/Inf! Skipping spectrogram.\n', i, ev, ch);
+                     continue; % Skip to next channel
+                 end
+                 if all(channelSignal == channelSignal(1)) % Check if signal is constant
+                      fprintf('AR Debug: Seg %d, Ev %d, Ch %d - Input signal is constant! Skipping spectrogram.\n', i, ev, ch);
+                      continue; % Skip to next channel
+                 end
+
+
+                % Calculate spectrogram
+                [s, f, ~] = spectrogram(channelSignal, winLenSamples, overlapSamples, nfft, fs);
+
+                % Find frequency indices within the desired range
+                freqIdx = f >= freqRangeHz(1) & f <= freqRangeHz(2);
+
+                % --- DEBUG: Check frequencies found in the specified range ---
+                fprintf('AR Debug: Seg %d, Ev %d, Ch %d - Spectrogram done. Freqs found in range [%.1f, %.1f] Hz: %d.\n', ...
+                        i, ev, ch, freqRangeHz(1), freqRangeHz(2), sum(freqIdx));
+
+                % Proceed only if frequencies are found in the range
+                if any(freqIdx)
+                    powerS = abs(s(freqIdx, :)).^2; % Calculate power
+                    avgPSD = mean(powerS, 2);       % Average power across time bins
+
+                    % --- DEBUG: Check the calculated average PSD ---
+                    fprintf('AR Debug: Seg %d, Ev %d, Ch %d - Calculated avgPSD (size %d x %d). Has NaN/Inf: %d. Is Empty: %d\n', ...
+                            i, ev, ch, size(avgPSD,1), size(avgPSD,2), any(isnan(avgPSD)) || any(isinf(avgPSD)), isempty(avgPSD));
+                    % fprintf('AR Debug: AvgPSD sample: %s\n', mat2str(avgPSD(1:min(3, end)), 4)); % Optional: view first few values
+
+                    % Skip FOOOF if PSD is problematic
+                    if any(isnan(avgPSD)) || any(isinf(avgPSD)) || isempty(avgPSD)
+                         fprintf('AR Debug: Seg %d, Ev %d, Ch %d - avgPSD is empty or contains NaN/Inf! Skipping FOOOF.\n', i, ev, ch);
+                         continue; % Skip to next channel
                     end
-                catch ME
-                    warning('AR: Spectrogram failed for event channel %d in segment %d (trial %s): %s', ch, i, trialKey, ME.message);
-                end
-            end
-            validMask = ~isnan(segmentEventAperiodic) & ~artifactFlags(i, :);
+
+                    % --- DEBUG: Log before calling FOOOF ---
+                    fprintf('AR Debug: Seg %d, Ev %d, Ch %d - Calling FOOOF...\n', i, ev, ch);
+                    try
+                        % Make sure inputs to FOOOF wrapper match expected dimensions (e.g., row vectors)
+                        % The fooof_mat wrapper might expect row vectors. Check its requirements.
+                        % Assuming f(freqIdx) is column, avgPSD is column from mean(..., 2)
+                        current_freqs = f(freqIdx);
+                        current_psd = avgPSD;
+                        
+                        % Ensure row vectors if needed by the wrapper:
+                        % current_freqs = current_freqs(:)'; 
+                        % current_psd = current_psd(:)';
+
+                        fooofRes_evt = MAGIC.batch.fooof(current_freqs, current_psd, [freqRangeHz(1), freqRangeHz(2)], fooofSettings, false);
+
+                        eventAperiodic = fooofRes_evt.aperiodic_params(1); % Extract aperiodic offset
+                        segmentEventAperiodic(ch) = eventAperiodic;        % Store it for this channel/event
+                        allEventAperiodicValues = [allEventAperiodicValues, eventAperiodic]; % Collect raw value for debugging stats
+
+                        % --- DEBUG: Log FOOOF results ---
+                        fprintf('AR Debug: Seg %d, Ev %d, Ch %d - FOOOF Result Aper Offset: %.4f, Exp: %.4f, R2: %.4f, Err: %.4f\n', ...
+                                i, ev, ch, eventAperiodic, fooofRes_evt.aperiodic_params(2), fooofRes_evt.r_squared, fooofRes_evt.error);
+                        
+                        % Check if the FOOOF result itself is NaN
+                        if isnan(eventAperiodic)
+                             fprintf('AR Debug: Seg %d, Ev %d, Ch %d - FOOOF resulted in NaN aperiodic offset.\n', i, ev, ch);
+                             % Continue to next channel, NaN will be handled by validMask later
+                        end
+
+                        % Check against threshold for artifact flagging
+                        if ~isnan(eventAperiodic) && eventAperiodic > (currentTrialBaseline(ch) + thresholdAdd)
+                            artifactFlags(i, ch) = true; % Flag this segment/channel
+                            cleanedSeg(i).sampledProcess.values(:, ch) = 0; % Zero out flagged channel data in the *original* structure being modified
+                            fprintf('AR Debug: Seg %d, Ev %d, Ch %d - FLAGGED & Zeroed (Event Aper %.4f > Baseline Aper %.4f + Threshold %.4f).\n', ...
+                                    i, ev, ch, eventAperiodic, currentTrialBaseline(ch), thresholdAdd);
+                        end
+
+                    catch fooofError
+                        % --- DEBUG: Catch errors during FOOOF call ---
+                        fprintf('AR Debug: Seg %d, Ev %d, Ch %d - ERROR during FOOOF call: %s\n', i, ev, ch, fooofError.message);
+                        % Consider logging fooofError.stack if needed
+                        segmentEventAperiodic(ch) = NaN; % Ensure it's NaN if FOOOF fails
+                    end % End try-catch for FOOOF
+
+                else % if ~any(freqIdx)
+                    % --- DEBUG: No frequencies found in the specified range ---
+                     fprintf('AR Debug: Seg %d, Ev %d, Ch %d - No frequencies found in range after spectrogram. Skipping FOOOF for this channel.\n', i, ev, ch);
+                     segmentEventAperiodic(ch) = NaN; % Ensure it's NaN if no valid PSD
+                end % End if any(freqIdx)
+            end % End channel loop (for ch = 1:nChannels)
+
+            % After processing all channels for this event, determine which results are valid
+            % Valid means: not flagged as artifact in this segment AND the calculated aperiodic value is not NaN
+            validMask = ~artifactFlags(i, :) & ~isnan(segmentEventAperiodic);
+
+             % --- DEBUG: Log the aperiodic values calculated for this event and the valid count ---
+             fprintf('AR Debug: Seg %d, Ev %d - Event Aper Values (Ch1-N): %s\n', i, ev, mat2str(segmentEventAperiodic, 4));
+             fprintf('AR Debug: Seg %d, Ev %d - Valid values collected (passed NaN/flag check): %d out of %d channels\n', i, ev, sum(validMask), nChannels);
+
+            % Collect only the valid aperiodic powers for final statistics
             if any(validMask)
-                allEventPowers = [allEventPowers; segmentEventAperiodic(validMask)];
+                % Important: Ensure collected values match dimension for averaging later
+                % Collecting as a row vector and stacking vertically seems intended by original code
+                collected_powers = segmentEventAperiodic(validMask);
+                allEventPowers = [allEventPowers; collected_powers(:)']; % Ensure it's added as a row
+                 fprintf('AR Debug: Seg %d, Ev %d - Adding %d valid powers to allEventPowers. New size: %d x %d\n', ...
+                         i, ev, numel(collected_powers), size(allEventPowers, 1), size(allEventPowers, 2));
             end
-        end
+        end % End event loop (for ev = 1:numel(eventsFound))
+
+        % Increment the count of segments where event processing was attempted
         if segmentCheckedFlag
             numSegmentsChecked = numSegmentsChecked + 1;
+             % Reset flag for next segment or perhaps keep it if needed elsewhere? Check logic.
         end
-    end
-end
+    end % End if isCheckableSegment
+end % End segment loop (for i = 1:nSegments)
+
 disp('AR: Aperiodic rejection flagging finished.');
 
-%% --- Pass 3: Update Segment Metadata with Artifact Flags ---
+% --- DEBUG: Final checks before calculating stats ---
+fprintf('AR Debug: Finished Pass 2.\n');
+fprintf('AR Debug: Total raw event aperiodic values calculated (before flagging/NaN removal): %d\n', numel(allEventAperiodicValues));
+if ~isempty(allEventAperiodicValues)
+    fprintf('AR Debug: Range of raw values: [%.4f, %.4f]. Mean: %.4f, Median: %.4f\n', ...
+        min(allEventAperiodicValues), max(allEventAperiodicValues), mean(allEventAperiodicValues,'omitnan'), median(allEventAperiodicValues,'omitnan'));
+end
+fprintf('AR Debug: Final `allEventPowers` array size for averaging: %d x %d.\n', size(allEventPowers, 1), size(allEventPowers, 2));
+fprintf('AR Debug: `allEventPowers` Is empty: %d. Contains NaN: %d\n', isempty(allEventPowers), any(isnan(allEventPowers(:))));
+
+if ~isempty(allEventPowers)
+    fprintf('AR Debug: Sample of first 5 rows of allEventPowers (or fewer):\n');
+    disp(allEventPowers(1:min(5, size(allEventPowers,1)), :));
+    % Check dimensions if averaging per channel later
+    if size(allEventPowers, 2) ~= nChannels && size(allEventPowers,1) > 0
+         fprintf('AR WARNING: Dimension mismatch detected in allEventPowers. Columns (%d) do not match nChannels (%d). Averaging might be overall, not per-channel.\n', ...
+                 size(allEventPowers, 2), nChannels);
+    end
+else
+     fprintf('AR Debug: `allEventPowers` is empty. Final average step power will be NaN.\n');
+end
+%% Pass 3: Update Segment Metadata with Artifact Flags
 disp('AR: Adding artifact flags to segment metadata...');
 cleanedSeg_flagged = cleanedSeg;
 for i = 1:nSegments
@@ -224,7 +342,6 @@ for i = 1:nSegments
         if isKey(cleanedSeg_flagged(i).info, 'trial')
             trialInfo = cleanedSeg_flagged(i).info('trial');
             trialInfo.artifactChannels = flaggedChannels;
-            % Append '_wrong' to the condition if not already flagged.
             if ~endsWith(trialInfo.condition, '_wrong')
                 trialInfo.condition = [trialInfo.condition, '_wrong'];
             end
@@ -237,7 +354,7 @@ for i = 1:nSegments
 end
 disp('AR: Metadata flagging finished.');
 
-%% --- Compile Statistics ---
+%% Compile Statistics
 stats = struct();
 stats.totalSegments = nSegments;
 stats.numSegmentsChecked = numSegmentsChecked;
@@ -272,5 +389,4 @@ end
 stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
 stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
-
 end
