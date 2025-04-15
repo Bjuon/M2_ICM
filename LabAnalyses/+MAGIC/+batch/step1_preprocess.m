@@ -24,7 +24,6 @@ global max_dur
 global med run
 global rawLFPDir cleanLFPDir
 global ChannelMontage
-
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
@@ -222,7 +221,7 @@ for f = 1 : numel(files)
                         baselineStruct(end+1).trialKey = trialKey;
                         baselineStruct(end).med = med;  % <== Added medication state for later reference
                         baselineStruct(end).window = [baselineStart, baselineEnd];
-                        % Optionally, extract the baseline signal from the raw LFP data:
+                        % Extract the baseline signal from the raw LFP data:
                         t_full = (0:size(rawLFP_data,1)-1) / data.Fs;
                         idxBaseline = t_full >= baselineStart & t_full <= baselineEnd;
                         baselineStruct(end).signal = rawLFP_data(idxBaseline, :);
@@ -533,52 +532,49 @@ end
 
 %% --- NEW: Apply Spectrogram-Based Artifact Rejection ---
 if todo.thenaisie == 1 % Using the flag as provided
-    disp('--- Starting Spectrogram-Based Artifact Rejection ---');
-    if exist('seg_clean', 'var') && ~isempty(seg_clean) && ...
-       exist('trials', 'var') && ~isempty(trials) && ...
-       exist('seg_raw', 'var') && ~isempty(seg_raw)
+    disp('--- Starting Thenaisie-Based Steps Rejection ---');
        
         % Call the modified AR function. It modifies seg_clean.
         [seg_clean, rejectionStats, artifactFlags] = MAGIC.batch.computePSDandArtifactRejection(seg_clean, baselineStruct);
         
-        % --- Debug Print: Check for Zeroed Channels ---
-        for idx = 1:numel(seg_clean)
-            % Retrieve the LFP values from the current segment's SampledProcess.
-            % The "values" property may be stored as a cell array of numeric data.
-            values = seg_clean(idx).sampledProcess.values;
-            
-            % Check if "values" is a cell; if so, convert it to a numeric matrix.
-            if iscell(values)
-                % cell2mat concatenates the contents of the cell array into a regular numeric array.
-                values = cell2mat(values);
-            end
-            
-            % Use the "all" function to check each channel:
-            % all(values == 0, 1) returns a logical row vector (one entry per channel)
-            % where "true" means that every sample in that channel is equal to zero.
-            zeroedChannels = find(all(values == 0, 1));
-            
-            % If any channels are completely zeroed, output a debug message.
-            if ~isempty(zeroedChannels)
-                % fprintf prints the segment index and the indices of zeroed channels.
-                fprintf('DEBUG: In segment %d, zeroed channels: %s\n', idx, mat2str(zeroedChannels));
-            end
-        end
+%         % --- Debug Print: Check for Zeroed Channels ---
+%         for idx = 1:numel(seg_clean)
+%             % Retrieve the LFP values from the current segment's SampledProcess.
+%             % The "values" property may be stored as a cell array of numeric data.
+%             values = seg_clean(idx).sampledProcess.values;
+%             
+%             % Check if "values" is a cell; if so, convert it to a numeric matrix.
+%             if iscell(values)
+%                 % cell2mat concatenates the contents of the cell array into a regular numeric array.
+%                 values = cell2mat(values);
+%             end
+%             
+%             % Use the "all" function to check each channel:
+%             % all(values == 0, 1) returns a logical row vector (one entry per channel)
+%             % where "true" means that every sample in that channel is equal to zero.
+%             zeroedChannels = find(all(values == 0, 1));
+%             
+%             % If any channels are completely zeroed, output a debug message.
+%             if ~isempty(zeroedChannels)
+%                 % fprintf prints the segment index and the indices of zeroed channels.
+%                 fprintf('DEBUG: In segment %d, zeroed channels: %s\n', idx, mat2str(zeroedChannels));
+%             end
+%         end
 
         
         %% --- Calculate and Display Summary Statistics ---
         totalSegs = rejectionStats.totalSegments;
         flaggedSegsCount = sum(any(artifactFlags, 2));  % Segments with at least one flagged channel
         percentageFlaggedSegs = (flaggedSegsCount / totalSegs) * 100;
-        avgBaselinePowerOverall = rejectionStats.overallAverageBaselinePower;
-        avgEventPowerOverall = rejectionStats.overallAverageEventPower;
+        avgBaselineAperiodicComponents = rejectionStats.overallAverageBaselineAperiodicComponents;
+        avgEventAperiodicComponents = rejectionStats.overallAverageEventAperiodicComponents;
         
         fprintf('\n--- Artifact Rejection Statistics (Spectrogram Method) ---\n');
         fprintf('Total Segments: %d\n', totalSegs);
         fprintf('Flagged Segments: %d\n', flaggedSegsCount);
         fprintf('Percentage Flagged: %.2f%%\n', percentageFlaggedSegs);
-        fprintf('Average Baseline Aperiodic Component: %.4f\n', avgBaselinePowerOverall);
-        fprintf('Average Step Aperiodic Component: %.4f\n', avgEventPowerOverall);
+        fprintf('Average Baseline Aperiodic Component: %.4f\n', avgBaselineAperiodicComponents);
+        fprintf('Average Step Aperiodic Component: %.4f\n', avgEventAperiodicComponents);
         fprintf('--------------------------------------------------------\n\n');
         
         % Optional: Display per-channel statistics.
@@ -586,19 +582,11 @@ if todo.thenaisie == 1 % Using the flag as provided
         disp(rejectionStats.rejectedSegmentsCountPerChannel);
         disp('Per-channel rejection percentages:');
         disp(rejectionStats.percentageSegmentsRejectedPerChannel);
+
+        seg = {seg_raw, seg_clean};
         
         disp('--- Spectrogram-Based Artifact Rejection Finished ---');
-    else
-        warning('Clean/Raw segments (seg_clean/seg_raw) or trial metadata not available. Skipping Spectrogram AR.');
-    end
-end
+ end
 
-% Ensure seg is assigned correctly whether AR ran or not.
-if exist('seg_clean', 'var') && exist('seg_raw', 'var')
-    seg = {seg_raw, seg_clean};  % seg_clean is the potentially modified one.
-else
-    warning('seg_raw or seg_clean not properly defined at end of file processing. Creating empty seg.');
-    seg = {}; % Create empty seg if not defined.
-end
 clear f files;
 end
