@@ -1,4 +1,6 @@
 function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
+global TrialRejectionDir 
+todo.plot =1;
 %% Aperiodic Parameters and Basic Setup
 multiplicativeThreshold = 1.5; % 1.5x baseline vs step 
 thresholdAdd = log10(multiplicativeThreshold); % about 0.1761
@@ -188,8 +190,8 @@ for i = 1:nSegments
                     'fooofResults', fooofRes_evt);
                 
                 % Compare event aperiodic offset with the baseline.
-                 fprintf('Channel %d: Event offset = %.4f, Threshold = %.4f\n', ...
-                    ch, eventAperiodicOffsets(ch), currentTrialBaseline(ch) * multiplicativeThreshold);
+%                  fprintf('Channel %d: Event offset = %.4f, Threshold = %.4f\n', ...
+%                     ch, eventAperiodicOffsets(ch), currentTrialBaseline(ch) * multiplicativeThreshold);
                 if eventAperiodicOffsets(ch) > (currentTrialBaseline(ch) * multiplicativeThreshold)
                  % log10(1.5) = 0.1761
                     artifactFlags(i, ch) = true;
@@ -269,4 +271,132 @@ stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
 stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
 
+%% Pass 4 : Plotting 
+
+if todo.plot
+    if ~exist(TrialRejectionDir, 'dir')
+    mkdir(TrialRejectionDir);
+    end
+    % Create a new figure for this event in the segment
+    figure('Name', sprintf('Segment %d - Event %d', i, ev), 'Color', [1 1 1]);
+    
+    % Define subplots layout: 4 subplots per row.
+    numPlotsPerRow = 4;
+    numRows = ceil(nChannels / numPlotsPerRow);
+
+    legendHandles = [];
+
+    
+     for ch = 1:nChannels
+        ax = subplot(numRows, numPlotsPerRow, ch); 
+        hold(ax, 'on');
+        
+        %------------------------
+        % Retrieve Baseline Data
+        %------------------------
+        % Assuming baselineStruct is a struct array and its fields are stored as cell arrays per channel.
+        baseF = baselineStruct(idxBaseline).f{ch};        
+        basePSD = baselineStruct(idxBaseline).avgPSD{ch};   
+        
+        %------------------------
+        % Retrieve Event Data
+        %------------------------
+        % Use a try-catch block to catch any dot-indexing errors.
+        try
+            % If eventPSD is a struct array (as defined), this is the correct usage:
+            evtF = eventPSD(ev).perChannelPSD{ch}.f;
+            evtPSD = eventPSD(ev).perChannelPSD{ch}.avgPSD;
+            eFooof = eventPSD(ev).perChannelPSD{ch}.fooofResults;
+        catch ME
+            fprintf('ERROR accessing eventPSD for channel %d: %s\n', ch, ME.message);
+            % Optionally, display additional info:
+            disp('Debug info:');
+            disp(eventPSD(ev));  % display the event structure for this event
+            continue;
+        end
+        
+        %------------------------
+        % Plot Baseline PSD
+        %------------------------
+        if ~isempty(baseF) && ~isempty(basePSD)
+            h1 = plot(ax, baseF, 10*log10(basePSD), 'k-', 'LineWidth', 1.5);
+        else
+            h1 = [];
+        end
+        
+        %------------------------
+        % Plot Event PSD
+        %------------------------
+        if ~isempty(evtF) && ~isempty(evtPSD)
+            h2 = plot(ax, evtF, 10*log10(evtPSD), 'b-', 'LineWidth', 1.5);
+        else
+            h2 = [];
+        end
+        
+        %------------------------
+        % Plot Baseline Aperiodic Fit
+        %------------------------
+        bFooof = baselineStruct(idxBaseline).fooofResults{ch};
+        if ~isempty(bFooof)
+            offsetB = bFooof.aperiodic_params(1);
+            slopeB  = bFooof.aperiodic_params(2);
+            % Reconstruct the baseline aperiodic fit curve.
+            baseAperFit = 10.^(offsetB + slopeB .* log10(baseF));
+            h3 = plot(ax, baseF, 10*log10(baseAperFit), 'k--', 'LineWidth', 1.0);
+        else
+            h3 = [];
+        end
+        
+        %------------------------
+        % Plot Event Aperiodic Fit
+        %------------------------
+        if ~isempty(eFooof)
+            offsetE = eFooof.aperiodic_params(1);
+            slopeE  = eFooof.aperiodic_params(2);
+            evtAperFit = 10.^(offsetE + slopeE .* log10(evtF));
+            h4 = plot(ax, evtF, 10*log10(evtAperFit), 'b--', 'LineWidth', 1.0);
+        else
+            h4 = [];
+        end
+        
+        %------------------------
+        % Annotate the Subplot
+        %------------------------
+        if artifactFlags(i, ch)
+            title(ax, sprintf('CH%d: FLAGGED', ch), 'FontWeight', 'bold');
+        else
+            title(ax, sprintf('CH%d: OK', ch));
+        end
+        
+        xlabel(ax, 'Freq (Hz)');
+        ylabel(ax, 'Power (dB)');
+        xlim(ax, freqRangeHz);
+        ylim(ax, [-10, 40]);  % Adjust if needed
+        hold(ax, 'off');
+        
+        % Save the legend handles from the first subplot only.
+        if ch == 1
+            legendHandles = [h1, h2, h3, h4];
+        end
+    end  % end of loop over channels
+    
+    %-------------------------------------------
+    % Create ONE legend for the entire figure.
+    %-------------------------------------------
+    % We use the handles from the first subplot as representative.
+    % Create an invisible axis to host a common legend, or simply call legend once.
+    lgd = legend(legendHandles, {'Baseline PSD','Event PSD','Baseline Aperiodic','Event Aperiodic'}, ...
+                 'Orientation','horizontal','Location','southoutside');
+    
+    % Global title for the figure.
+    sgtitle(sprintf('Segment %d, Event %d (Time = %.2f s)', i, ev, eventsFound(ev).tStart), ...
+            'FontWeight','bold', 'FontSize', 12);
+    
+    %-------------------------------------------
+    % Save and close the figure.
+    %-------------------------------------------
+    figFilename = fullfile(TrialRejectionDir, sprintf('Segment_%d_Event_%d.png', i, ev));
+    saveas(gcf, figFilename);
+    close(gcf);
+end
 end
