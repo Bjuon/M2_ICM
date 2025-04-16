@@ -48,7 +48,7 @@ disp('AR: Calculating baseline aperiodic component...');
 
 for i = 1:nSegments
     trialInfo = cleanedSeg(i).info('trial');
-    trialKey = sprintf('%s_%s_%d_%s', trialInfo.patient, trialInfo.run, trialInfo.nTrial, trialInfo.medication);
+    trialKey = sprintf('%s_%d_%s', trialInfo.patient, trialInfo.nTrial, trialInfo.medication);
     idxBaseline = find(arrayfun(@(x) strcmp(x.trialKey, trialKey), baselineStruct));
     
     if ~isempty(idxBaseline)
@@ -138,13 +138,15 @@ for i = 1:nSegments
         continue;
     end
     
-    % For storing per-event metrics in this segment.
+
     eventPSD = struct('eventTime', cell(1, numel(eventsFound)), ...
                       'eventAperiodic', cell(1, numel(eventsFound)), ...
-                      'perChannelPSD', cell(1, numel(eventsFound)));
+                      'perChannelPSD', cell(1, numel(eventsFound)), ...
+                      'eventArtifactFlags', cell(1, numel(eventsFound)));  % NEW FIELD
     
     % Process each event.
     for ev = 1:numel(eventsFound)
+     %    fprintf('Processing Segment %d, Event %d: Event time = %.2f sec\n', i, ev, eventsFound(ev).tStart);
         numEventsChecked = numEventsChecked + 1;
         eventTime = eventsFound(ev).tStart;
         % Define event window relative to eventTime.
@@ -159,17 +161,15 @@ for i = 1:nSegments
             continue;
         end
         
-        % Initialize per-channel storage for this event.
+        % Initialize storage for this event.
         perChannelPSD = cell(1, nChannels);
         eventAperiodicOffsets = nan(1, nChannels);
+        eventArtifactFlags = false(1, nChannels);  % LOCAL flags for THIS event
         
         for ch = 1:nChannels
-            % Skip channel if previously flagged.
-            if artifactFlags(i, ch)
-                continue;
-            end
             channelSignal = eventSignal(:, ch);
             if any(isnan(channelSignal)) || any(isinf(channelSignal))
+                fprintf('Segment %d, Event %d, Channel %d skipped: signal contains NaN or Inf values.\n', i, ev, ch);
                 continue;
             end
             
@@ -190,13 +190,10 @@ for i = 1:nSegments
                     'fooofResults', fooofRes_evt);
                 
                 % Compare event aperiodic offset with the baseline.
-%                  fprintf('Channel %d: Event offset = %.4f, Threshold = %.4f\n', ...
-%                     ch, eventAperiodicOffsets(ch), currentTrialBaseline(ch) * multiplicativeThreshold);
                 if eventAperiodicOffsets(ch) > (currentTrialBaseline(ch) * multiplicativeThreshold)
-                 % log10(1.5) = 0.1761
-                    artifactFlags(i, ch) = true;
-                    % Zero the channel data in this segment.
-                    cleanedSeg(i).sampledProcess.values{1,1}(:, ch) = 0;
+                    eventArtifactFlags(ch) = true;
+                    % Zero the channel data for this event only.
+                    eventSignal(:, ch) = 0;
                 end
             else
                 eventAperiodicOffsets(ch) = NaN;
@@ -204,20 +201,25 @@ for i = 1:nSegments
             end
         end
         
-        % Save event information.
+        % Save event information including the local (per-event) flagged channels.
         eventPSD(ev).eventTime = eventTime;
         eventPSD(ev).eventAperiodic = eventAperiodicOffsets;
         eventPSD(ev).perChannelPSD = perChannelPSD;
+        eventPSD(ev).eventArtifactFlags = eventArtifactFlags;  % NEW
         
-        % Accumulate valid event offsets (for overall statistics)
-        validMask = ~artifactFlags(i, :) & ~isnan(eventAperiodicOffsets);
+        % For overall statistics, accumulate only those offsets from channels NOT flagged in this event.
+        validMask = ~eventArtifactFlags & ~isnan(eventAperiodicOffsets);
         if any(validMask)
             allEventAperiodicComponents = [allEventAperiodicComponents, eventAperiodicOffsets(validMask)];
         end
-    end
     
-    % Store per-event PSD info in the segment's info map under key 'psdInfo'
-    cleanedSeg(i).info('psdInfo') = eventPSD;
+    
+    end
+
+
+        % Store per-event PSD info in the segment's info map under key 'psdInfo'
+        cleanedSeg(i).info('psdInfo') = eventPSD;
+
 end
 
 %% Pass 3: Update Segment Metadata with Artifact Flags
@@ -226,7 +228,6 @@ cleanedSeg_flagged = cleanedSeg;
 for i = 1:nSegments
     flaggedChannels = find(artifactFlags(i, :));
     if ~isempty(flaggedChannels)
-        % Instead of trying to assign to trialInfo.artifactChannels (which is not allowed),
         % we store the flagged channel indices in the segment's info map with a new key.
         cleanedSeg_flagged(i).info('artifactChannels') = flaggedChannels;
         
@@ -271,132 +272,153 @@ stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
 stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
 
-%% Pass 4 : Plotting 
-
+% --- New Plot Section (Pass 4: Plotting) ---
 if todo.plot
     if ~exist(TrialRejectionDir, 'dir')
-    mkdir(TrialRejectionDir);
+        mkdir(TrialRejectionDir);
     end
-    % Create a new figure for this event in the segment
-    figure('Name', sprintf('Segment %d - Event %d', i, ev), 'Color', [1 1 1]);
-    
-    % Define subplots layout: 4 subplots per row.
-    numPlotsPerRow = 4;
-    numRows = ceil(nChannels / numPlotsPerRow);
 
-    legendHandles = [];
+    % Loop over each segment
+    for i = 1:nSegments
+        trialInfo = cleanedSeg_flagged(i).info('trial');
+        % Process only segments with trial.condition of 'step'
+        if ~strcmp(trialInfo.condition, 'step')
+            continue;
+        end
 
-    
-     for ch = 1:nChannels
-        ax = subplot(numRows, numPlotsPerRow, ch); 
-        hold(ax, 'on');
+        % Extract patient trigram (last 3 letters) and build key part (e.g., 'Rj_1_OFF')
+        patientTrig = trialInfo.patient;
+        patientTrig = patientTrig(end-2:end);
         
-        %------------------------
-        % Retrieve Baseline Data
-        %------------------------
-        % Assuming baselineStruct is a struct array and its fields are stored as cell arrays per channel.
-        baseF = baselineStruct(idxBaseline).f{ch};        
-        basePSD = baselineStruct(idxBaseline).avgPSD{ch};   
-        
-        %------------------------
-        % Retrieve Event Data
-        %------------------------
-        % Use a try-catch block to catch any dot-indexing errors.
-        try
-            % If eventPSD is a struct array (as defined), this is the correct usage:
-            evtF = eventPSD(ev).perChannelPSD{ch}.f;
-            evtPSD = eventPSD(ev).perChannelPSD{ch}.avgPSD;
-            eFooof = eventPSD(ev).perChannelPSD{ch}.fooofResults;
-        catch ME
-            fprintf('ERROR accessing eventPSD for channel %d: %s\n', ch, ME.message);
-            % Optionally, display additional info:
-            disp('Debug info:');
-            disp(eventPSD(ev));  % display the event structure for this event
+        trialKeyPart = sprintf('%s_%s_%s', patientTrig, trialInfo.run, trialInfo.medication);
+
+        % Retrieve event PSD info stored in the segment (from Pass 2)
+        eventPSD = cleanedSeg(i).info('psdInfo');
+        if isempty(eventPSD)
             continue;
         end
         
-        %------------------------
-        % Plot Baseline PSD
-        %------------------------
-        if ~isempty(baseF) && ~isempty(basePSD)
-            h1 = plot(ax, baseF, 10*log10(basePSD), 'k-', 'LineWidth', 1.5);
-        else
-            h1 = [];
+        % For baseline retrieval, compute the full trial key used in baselineStruct
+        trialKeyFull = sprintf('%s_%d_%s', trialInfo.patient, trialInfo.nTrial, trialInfo.medication);
+        idxBaseline = find(arrayfun(@(x) strcmp(x.trialKey, trialKeyFull), baselineStruct), 1);
+        if isempty(idxBaseline)
+            warning('No baseline found for trial %s', trialKeyFull);
+            continue;
         end
         
-        %------------------------
-        % Plot Event PSD
-        %------------------------
-        if ~isempty(evtF) && ~isempty(evtPSD)
-            h2 = plot(ax, evtF, 10*log10(evtPSD), 'b-', 'LineWidth', 1.5);
-        else
-            h2 = [];
-        end
+        % Use the eventProcess values from the flagged segment to extract the event name.
+        eventProcessValues = cleanedSeg_flagged(i).eventProcess.values;
         
-        %------------------------
-        % Plot Baseline Aperiodic Fit
-        %------------------------
-        bFooof = baselineStruct(idxBaseline).fooofResults{ch};
-        if ~isempty(bFooof)
-            offsetB = bFooof.aperiodic_params(1);
-            slopeB  = bFooof.aperiodic_params(2);
-            % Reconstruct the baseline aperiodic fit curve.
-            baseAperFit = 10.^(offsetB + slopeB .* log10(baseF));
-            h3 = plot(ax, baseF, 10*log10(baseAperFit), 'k--', 'LineWidth', 1.0);
-        else
-            h3 = [];
-        end
-        
-        %------------------------
-        % Plot Event Aperiodic Fit
-        %------------------------
-        if ~isempty(eFooof)
-            offsetE = eFooof.aperiodic_params(1);
-            slopeE  = eFooof.aperiodic_params(2);
-            evtAperFit = 10.^(offsetE + slopeE .* log10(evtF));
-            h4 = plot(ax, evtF, 10*log10(evtAperFit), 'b--', 'LineWidth', 1.0);
-        else
-            h4 = [];
-        end
-        
-        %------------------------
-        % Annotate the Subplot
-        %------------------------
-        if artifactFlags(i, ch)
-            title(ax, sprintf('CH%d: FLAGGED', ch), 'FontWeight', 'bold');
-        else
-            title(ax, sprintf('CH%d: OK', ch));
-        end
-        
-        xlabel(ax, 'Freq (Hz)');
-        ylabel(ax, 'Power (dB)');
-        xlim(ax, freqRangeHz);
-        ylim(ax, [-10, 40]);  % Adjust if needed
-        hold(ax, 'off');
-        
-        % Save the legend handles from the first subplot only.
-        if ch == 1
-            legendHandles = [h1, h2, h3, h4];
-        end
-    end  % end of loop over channels
-    
-    %-------------------------------------------
-    % Create ONE legend for the entire figure.
-    %-------------------------------------------
-    % We use the handles from the first subplot as representative.
-    % Create an invisible axis to host a common legend, or simply call legend once.
-    lgd = legend(legendHandles, {'Baseline PSD','Event PSD','Baseline Aperiodic','Event Aperiodic'}, ...
-                 'Orientation','horizontal','Location','southoutside');
-    
-    % Global title for the figure.
-    sgtitle(sprintf('Segment %d, Event %d (Time = %.2f s)', i, ev, eventsFound(ev).tStart), ...
-            'FontWeight','bold', 'FontSize', 12);
-    
-    %-------------------------------------------
-    % Save and close the figure.
-    %-------------------------------------------
-    figFilename = fullfile(TrialRejectionDir, sprintf('Segment_%d_Event_%d.png', i, ev));
-    saveas(gcf, figFilename);
-    close(gcf);
-end
+        numEventsThisSegment = numel(eventProcessValues{1,1});
+
+        for ev = 1:numEventsThisSegment
+
+            currEventName = eventProcessValues{1,1}(ev).name.name;
+            
+            % Build the figure name using trial key part, event name, and trial nstep
+            figName = sprintf('%s_%s_%d', trialKeyPart, currEventName, trialInfo.nStep);
+            
+            % Create a new figure with a white background
+            figure('Name', figName, 'Color', [1 1 1]);
+            
+            % Define subplot grid: 4 plots per row.
+            numPlotsPerRow = 4;
+            numRows = ceil(nChannels / numPlotsPerRow);
+            legendHandles = [];
+            
+            % Loop over each channel to plot baseline and event data.
+            for ch = 1:nChannels
+                ax = subplot(numRows, numPlotsPerRow, ch);
+                hold(ax, 'on');
+                
+                %---------- Retrieve Baseline Data ----------
+                baseF = baselineStruct(idxBaseline).f{ch};
+                basePSD = baselineStruct(idxBaseline).avgPSD{ch};
+                
+                %---------- Retrieve Event Data ----------
+                try
+                    evtData = eventPSD(ev).perChannelPSD{ch};
+                    evtF = evtData.f;
+                    evtPSD = evtData.avgPSD;
+                    eFooof = evtData.fooofResults;
+                catch ME
+                    fprintf('ERROR accessing eventPSD for channel %d: %s\n', ch, ME.message);
+                    continue;
+                end
+                
+                %---------- Plot Baseline PSD ----------
+                if ~isempty(baseF) && ~isempty(basePSD)
+                    h1 = plot(ax, baseF, 10*log10(basePSD), 'k-', 'LineWidth', 1.5);
+                else
+                    h1 = [];
+                end
+                
+                %---------- Plot Event PSD ----------
+                if ~isempty(evtF) && ~isempty(evtPSD)
+                    h2 = plot(ax, evtF, 10*log10(evtPSD), 'b-', 'LineWidth', 1.5);
+                else
+                    h2 = [];
+                end
+                
+                %---------- Plot Baseline Aperiodic Fit ----------
+                bFooof = baselineStruct(idxBaseline).fooofResults{ch};
+                if ~isempty(bFooof)
+                    offsetB = bFooof.aperiodic_params(1);
+                    slopeB  = bFooof.aperiodic_params(2);
+                    baseAperFit = 10.^(offsetB + slopeB .* log10(baseF));
+                    h3 = plot(ax, baseF, 10*log10(baseAperFit), 'k--', 'LineWidth', 1.0);
+                else
+                    h3 = [];
+                end
+                
+                %---------- Plot Event Aperiodic Fit ----------
+                if ~isempty(eFooof)
+                    offsetE = eFooof.aperiodic_params(1);
+                    slopeE  = eFooof.aperiodic_params(2);
+                    evtAperFit = 10.^(offsetE + slopeE .* log10(evtF));
+                    h4 = plot(ax, evtF, 10*log10(evtAperFit), 'b--', 'LineWidth', 1.0);
+                else
+                    h4 = [];
+                end
+                
+                %---------- Annotate the Subplot ----------
+                if artifactFlags(i, ch)
+                    title(ax, sprintf('CH%d: FLAGGED', ch), 'FontWeight', 'bold');
+                else
+                    title(ax, sprintf('CH%d: OK', ch));
+                end
+                xlabel(ax, 'Freq (Hz)');
+                ylabel(ax, 'Power (dB)');
+                xlim(ax, freqRangeHz);
+                % Updated y-axis limit for a higher upper range
+                ylim(ax, [-10, 60]);  
+                hold(ax, 'off');
+                
+                % Save the legend handles from the first subplot as representative.
+                if ch == 1
+                    legendHandles = [h1, h2, h3, h4];
+                end
+            end   % End channel loop
+            
+            %---------- Add a Global Title to the Figure Using figName ----------
+            sgtitle(figName, 'FontWeight', 'bold', 'FontSize', 12);
+            
+            %---------- Create a Legend Just Under the Title ----------
+            lgd = legend(legendHandles, ...
+                {'Baseline PSD', 'Event PSD', 'Baseline Aperiodic', 'Event Aperiodic'}, ...
+                'Orientation', 'horizontal', ...    % Single row
+                'Box', 'off', ...                   % Remove legend box outline
+                'NumColumns', 4);                   % All four entries on one line
+            % Set the legend position manually (normalized units) to appear just below the title.
+            set(lgd, 'Units', 'normalized', 'Position', [0.1 0.85 0.8 0.05]);  
+            
+            % Set figure window size and position
+            set(gcf, 'Position', [100, 100, 1200, 800]);  % [left, bottom, width, height] in screen pixels
+                    
+            %---------- Save and Close the Figure ----------
+            figFilename = fullfile(TrialRejectionDir, [figName, '.png']);
+            saveas(gcf, figFilename);
+            close(gcf);
+        end  % End event loop
+    end  % End segment loop
 end
