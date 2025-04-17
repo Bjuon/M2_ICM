@@ -113,7 +113,7 @@ for i = 1:nSegments
     numSegmentsChecked = numSegmentsChecked + 1;
     
     % Retrieve baseline for this trial using trialKey
-    trialKey = sprintf('%s_%s_%d_%s', trialInfo.patient, trialInfo.run, trialInfo.nTrial, trialInfo.medication);
+    trialKey = sprintf('%s_%d_%s', trialInfo.patient, trialInfo.nTrial, trialInfo.medication);
     idxBaseline = find(arrayfun(@(x) strcmp(x.trialKey, trialKey), baselineStruct), 1);
     if ~isempty(idxBaseline)
         currentTrialBaseline = baselineStruct(idxBaseline).aperiodic;  % 1-by-nChannels numeric vector
@@ -192,6 +192,8 @@ for i = 1:nSegments
                 % Compare event aperiodic offset with the baseline.
                 if eventAperiodicOffsets(ch) > (currentTrialBaseline(ch) * multiplicativeThreshold)
                     eventArtifactFlags(ch) = true;
+                    artifactFlags(i, ch) = true;
+
                     % Zero the channel data for this event only.
                     eventSignal(:, ch) = 0;
                 end
@@ -391,7 +393,7 @@ if todo.plot
                 ylabel(ax, 'Power (dB)');
                 xlim(ax, freqRangeHz);
                 % Updated y-axis limit for a higher upper range
-                ylim(ax, [-10, 60]);  
+                %ylim(ax, [-10, 60]);  
                 hold(ax, 'off');
                 
                 % Save the legend handles from the first subplot as representative.
@@ -401,7 +403,7 @@ if todo.plot
             end   % End channel loop
             
             %---------- Add a Global Title to the Figure Using figName ----------
-            sgtitle(figName, 'FontWeight', 'bold', 'FontSize', 12);
+            sgtitle(figName, 'FontWeight', 'bold', 'FontSize', 12, 'Interpreter','none');
             
             %---------- Create a Legend Just Under the Title ----------
             lgd = legend(legendHandles, ...
