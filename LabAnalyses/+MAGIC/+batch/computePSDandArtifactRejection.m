@@ -309,8 +309,8 @@ if todo.plot
                   'FontSize',12);
 
             % Reserve the first row for legend
-            axLeg = nexttile(tl, 1, [1 numCols]);
-            axis(axLeg,'off');
+%             axLeg = nexttile(tl, 1, [1 numCols]);
+%             axis(axLeg,'off');
 
             % Preallocate
             legendHandles = gobjects(1,4);
@@ -362,19 +362,22 @@ if todo.plot
             end
 
             % Create legend in the reserved axes
-            lg = legend(axLeg, legendHandles, ...
-            {'Baseline PSD','Event PSD','Baseline Aperiodic','Event Aperiodic'}, ...
-            'Orientation','horizontal', ...
-            'Box','off', ...
-            'FontSize',14);
+            lg = legend(legendHandles, ...
+                {'Baseline PSD','Event PSD','Baseline Aperiodic','Event Aperiodic'}, ...
+                'Orientation','horizontal', ...
+                'Box','off', ...
+                'FontSize',14);
+            
+            % …and tell it to live in the “north” tile of your layout:
+            lg.Layout.Tile = 'north';
 
-            % Now re‐position it to be centered and up against the tiles:
-            lg.Units = 'normalized';
-            pos = lg.Position;
-            pos(1) = 0.5 - pos(3)/2;   % center horizontally in the figure
-            pos(2) = 0.85;             % raise it near the top (tweak this)
-            pos(4) = 0.001;             % optionally slim its height if too tall
-            lg.Position = pos;
+%             % Now re‐position it to be centered and up against the tiles:
+%             lg.Units = 'normalized';
+%             pos = lg.Position;
+%             pos(1) = 0.5 - pos(3)/2;   % center horizontally in the figure
+%             pos(2) = 0.9;             % raise it near the top (tweak this)
+%             pos(4) = 0.001;             % optionally slim its height if too tall
+%             lg.Position = pos;
 
             % Finalize
             set(gcf,'Position',[100 100 1200 800]);
