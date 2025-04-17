@@ -274,153 +274,112 @@ stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
 stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
 
-% --- New Plot Section (Pass 4: Plotting) ---
+%% Pass 4: Plotting with y=0–100 dB and tight legend (MATLAB 2021b)
 if todo.plot
-    if ~exist(TrialRejectionDir, 'dir')
+    if ~exist(TrialRejectionDir,'dir')
         mkdir(TrialRejectionDir);
     end
 
-    % Loop over each segment
     for i = 1:nSegments
         trialInfo = cleanedSeg_flagged(i).info('trial');
-        % Process only segments with trial.condition of 'step'
-        if ~strcmp(trialInfo.condition, 'step')
-            continue;
-        end
+        if ~strcmp(trialInfo.condition,'step'), continue; end
 
-        % Extract patient trigram (last 3 letters) and build key part (e.g., 'Rj_1_OFF')
-        patientTrig = trialInfo.patient;
-        patientTrig = patientTrig(end-2:end);
-        
-        trialKeyPart = sprintf('%s_%s_%s', patientTrig, trialInfo.run, trialInfo.medication);
+        key = sprintf('%s_%s_%s', ...
+            trialInfo.patient(end-2:end), trialInfo.run, trialInfo.medication);
+        evs = cleanedSeg_flagged(i).eventProcess.values{1,1};
 
-        % Retrieve event PSD info stored in the segment (from Pass 2)
-        eventPSD = cleanedSeg(i).info('psdInfo');
-        if isempty(eventPSD)
-            continue;
-        end
-        
-        % For baseline retrieval, compute the full trial key used in baselineStruct
-        trialKeyFull = sprintf('%s_%d_%s', trialInfo.patient, trialInfo.nTrial, trialInfo.medication);
-        idxBaseline = find(arrayfun(@(x) strcmp(x.trialKey, trialKeyFull), baselineStruct), 1);
-        if isempty(idxBaseline)
-            warning('No baseline found for trial %s', trialKeyFull);
-            continue;
-        end
-        
-        % Use the eventProcess values from the flagged segment to extract the event name.
-        eventProcessValues = cleanedSeg_flagged(i).eventProcess.values;
-        
-        numEventsThisSegment = numel(eventProcessValues{1,1});
+        for ev = 1:numel(evs)
+            evName  = evs(ev).name.name;
+            figName = sprintf('%s_%s_%d', key, evName, trialInfo.nStep);
 
-        for ev = 1:numEventsThisSegment
+            % New figure
+            figure('Name', figName, 'Color','w');
+            numCols = 4;
+            numRows = ceil(nChannels/numCols);
 
-            currEventName = eventProcessValues{1,1}(ev).name.name;
-            
-            % Build the figure name using trial key part, event name, and trial nstep
-            figName = sprintf('%s_%s_%d', trialKeyPart, currEventName, trialInfo.nStep);
-            
-            % Create a new figure with a white background
-            figure('Name', figName, 'Color', [1 1 1]);
-            
-            % Define subplot grid: 4 plots per row.
-            numPlotsPerRow = 4;
-            numRows = ceil(nChannels / numPlotsPerRow);
-            legendHandles = [];
-            
-            % Loop over each channel to plot baseline and event data.
+            % Layout: rows = numRows+1, cols = numCols
+            tl = tiledlayout(numRows+1, numCols, ...
+                            'TileSpacing','compact', ...
+                            'Padding','compact');
+
+            % Title across all columns
+            title(tl, figName, ...
+                  'Interpreter','none', ...
+                  'FontWeight','bold', ...
+                  'FontSize',12);
+
+            % Reserve the first row for legend
+            axLeg = nexttile(tl, 1, [1 numCols]);
+            axis(axLeg,'off');
+
+            % Preallocate
+            legendHandles = gobjects(1,4);
+
+            % Plot each channel in rows 2..end
             for ch = 1:nChannels
-                ax = subplot(numRows, numPlotsPerRow, ch);
-                hold(ax, 'on');
-                
-                %---------- Retrieve Baseline Data ----------
-                baseF = baselineStruct(idxBaseline).f{ch};
-                basePSD = baselineStruct(idxBaseline).avgPSD{ch};
-                
-                %---------- Retrieve Event Data ----------
-                try
-                    evtData = eventPSD(ev).perChannelPSD{ch};
-                    evtF = evtData.f;
-                    evtPSD = evtData.avgPSD;
-                    eFooof = evtData.fooofResults;
-                catch ME
-                    fprintf('ERROR accessing eventPSD for channel %d: %s\n', ch, ME.message);
-                    continue;
-                end
-                
-                %---------- Plot Baseline PSD ----------
-                if ~isempty(baseF) && ~isempty(basePSD)
-                    h1 = plot(ax, baseF, 10*log10(basePSD), 'k-', 'LineWidth', 1.5);
+                ax = nexttile(tl, ch + numCols);
+                hold(ax,'on');
+
+                % Baseline PSD (black)
+                fBsl   = baselineStruct(idxBaseline).f{ch};
+                pBsl   = baselineStruct(idxBaseline).avgPSD{ch};
+                h1     = plot(ax, fBsl, 10*log10(pBsl), 'k-', 'LineWidth',1.5);
+
+                % Event PSD (blue)
+                evt    = eventPSD(ev).perChannelPSD{ch};
+                h2     = plot(ax, evt.f, 10*log10(evt.avgPSD), 'b-', 'LineWidth',1.5);
+
+                % Baseline aperiodic fit (dashed)
+                bf     = baselineStruct(idxBaseline).fooofResults{ch};
+                fitB   = 10.^(bf.aperiodic_params(1) + bf.aperiodic_params(2).*log10(fBsl));
+                h3     = plot(ax, fBsl, 10*log10(fitB), '--', 'LineWidth',1);
+
+                % Event aperiodic fit (dashed)
+                ef     = evt.fooofResults;
+                fitE   = 10.^(ef.aperiodic_params(1) + ef.aperiodic_params(2).*log10(evt.f));
+                h4     = plot(ax, evt.f, 10*log10(fitE), '--', 'LineWidth',1);
+
+                % Channel title
+                if artifactFlags(i,ch)
+                    title(ax, sprintf('CH%d: FLAGGED', ch), 'FontWeight','bold');
                 else
-                    h1 = [];
+                    title(ax, sprintf('CH%d: OK',      ch));
                 end
-                
-                %---------- Plot Event PSD ----------
-                if ~isempty(evtF) && ~isempty(evtPSD)
-                    h2 = plot(ax, evtF, 10*log10(evtPSD), 'b-', 'LineWidth', 1.5);
-                else
-                    h2 = [];
-                end
-                
-                %---------- Plot Baseline Aperiodic Fit ----------
-                bFooof = baselineStruct(idxBaseline).fooofResults{ch};
-                if ~isempty(bFooof)
-                    offsetB = bFooof.aperiodic_params(1);
-                    slopeB  = bFooof.aperiodic_params(2);
-                    baseAperFit = 10.^(offsetB + slopeB .* log10(baseF));
-                    h3 = plot(ax, baseF, 10*log10(baseAperFit), 'k--', 'LineWidth', 1.0);
-                else
-                    h3 = [];
-                end
-                
-                %---------- Plot Event Aperiodic Fit ----------
-                if ~isempty(eFooof)
-                    offsetE = eFooof.aperiodic_params(1);
-                    slopeE  = eFooof.aperiodic_params(2);
-                    evtAperFit = 10.^(offsetE + slopeE .* log10(evtF));
-                    h4 = plot(ax, evtF, 10*log10(evtAperFit), 'b--', 'LineWidth', 1.0);
-                else
-                    h4 = [];
-                end
-                
-                %---------- Annotate the Subplot ----------
-                if artifactFlags(i, ch)
-                    title(ax, sprintf('CH%d: FLAGGED', ch), 'FontWeight', 'bold');
-                else
-                    title(ax, sprintf('CH%d: OK', ch));
-                end
-                xlabel(ax, 'Freq (Hz)');
-                ylabel(ax, 'Power (dB)');
+
+                xlabel(ax,'Freq (Hz)');
+                ylabel(ax,'Power (dB)');
+
+                % **Hard y‑limits from 0 to 100 dB**
+                ylim(ax, [0 100]);
                 xlim(ax, freqRangeHz);
-                % Updated y-axis limit for a higher upper range
-                %ylim(ax, [-10, 60]);  
-                hold(ax, 'off');
-                
-                % Save the legend handles from the first subplot as representative.
+
+                hold(ax,'off');
+
+                % Capture handles on the first channel
                 if ch == 1
                     legendHandles = [h1, h2, h3, h4];
                 end
-            end   % End channel loop
-            
-            %---------- Add a Global Title to the Figure Using figName ----------
-            sgtitle(figName, 'FontWeight', 'bold', 'FontSize', 12, 'Interpreter','none');
-            
-            %---------- Create a Legend Just Under the Title ----------
-            lgd = legend(legendHandles, ...
-                {'Baseline PSD', 'Event PSD', 'Baseline Aperiodic', 'Event Aperiodic'}, ...
-                'Orientation', 'horizontal', ...    % Single row
-                'Box', 'off', ...                   % Remove legend box outline
-                'NumColumns', 4);                   % All four entries on one line
-            % Set the legend position manually (normalized units) to appear just below the title.
-            set(lgd, 'Units', 'normalized', 'Position', [0.1 0.85 0.8 0.05]);  
-            
-            % Set figure window size and position
-            set(gcf, 'Position', [100, 100, 1200, 800]);  % [left, bottom, width, height] in screen pixels
-                    
-            %---------- Save and Close the Figure ----------
-            figFilename = fullfile(TrialRejectionDir, [figName, '.png']);
-            saveas(gcf, figFilename);
+            end
+
+            % Create legend in the reserved axes
+            lg = legend(axLeg, legendHandles, ...
+            {'Baseline PSD','Event PSD','Baseline Aperiodic','Event Aperiodic'}, ...
+            'Orientation','horizontal', ...
+            'Box','off', ...
+            'FontSize',14);
+
+            % Now re‐position it to be centered and up against the tiles:
+            lg.Units = 'normalized';
+            pos = lg.Position;
+            pos(1) = 0.5 - pos(3)/2;   % center horizontally in the figure
+            pos(2) = 0.85;             % raise it near the top (tweak this)
+            pos(4) = 0.001;             % optionally slim its height if too tall
+            lg.Position = pos;
+
+            % Finalize
+            set(gcf,'Position',[100 100 1200 800]);
+            saveas(gcf, fullfile(TrialRejectionDir, [figName,'.png']));
             close(gcf);
-        end  % End event loop
-    end  % End segment loop
+        end
+    end
 end
