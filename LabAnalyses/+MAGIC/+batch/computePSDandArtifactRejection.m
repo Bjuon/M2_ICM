@@ -1,6 +1,6 @@
 function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
 global TrialRejectionDir 
-todo.plot =0;
+todo.plot =1;
 %% Aperiodic Parameters and Basic Setup
 multiplicativeThreshold = 1.5; % 1.5x baseline vs step 
 thresholdAdd = log10(multiplicativeThreshold); % about 0.1761

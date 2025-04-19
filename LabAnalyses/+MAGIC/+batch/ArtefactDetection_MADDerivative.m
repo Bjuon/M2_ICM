@@ -27,11 +27,13 @@ function [ArtefactFlags, CleanedData] = ArtefactDetection_MADDerivative(data)
 ampFactor = 5; % Filter for outlier removal --> first step
 derivFactor = 1.5; % Filter for derivative MAD 
 
+todo.plot=1;
+
 % Extract raw data and initialize variables
 raw       = data.values{1}; 
 Fs        = data.Fs;
 [nSamples, nChannels] = size(raw);
-timeVec   = (0:nSamples-1)';
+timeVec   = data.times{1, 1}  ;
 
 % --- Step 1: Amplitude-Based MAD Filtering ---
 for ch = 1:nChannels
@@ -98,4 +100,87 @@ for ch = 1:nChannels
     
     % Interpolate the flagged sections using pchip for smooth interpolation.
     CleanedData(:, ch) = interp1(timeVec(goodIdx), CleanedData(goodIdx, ch), timeVec, 'pchip', 'extrap');
+end
+
+% --- Revised Plotting: 3 subplots per channel‐segment with legends ---
+global Deriv_Dir
+
+
+if todo.plot
+    % Ensure output directory exists
+    MAGIC.batch.EnsureDir(Deriv_Dir);
+    
+    % 10 s segments
+    segLen = 10 * Fs;
+    nSeg   = floor(nSamples / segLen);
+
+    for ch = 1:nChannels
+        for segIdx = 1:nSeg
+            % Extract time and data for this channel/segment
+            idx     = (segIdx-1)*segLen + (1:segLen);
+            t       = timeVec(idx);
+            raw_seg = raw(idx, ch);
+
+            % Compute simple and smoothed derivatives
+            diff_seg   = [raw_seg(2) - raw_seg(1); diff(raw_seg)];
+            smooth_seg = movmean(diff_seg, window);
+
+            % Compute thresholds
+            thr_diff   = derivFactor * mad(diff_seg,   1);
+            thr_smooth = derivFactor * mad(smooth_seg, 1);
+
+            % --- Setup tiled layout ---
+            tiledlayout(3,1, 'TileSpacing','compact', 'Padding','compact');
+
+            % 1) Raw signal
+            nexttile;
+            plot(t, raw_seg, 'k', 'LineWidth',1);
+            title(sprintf('Ch %d, Segment %d', ch, segIdx));
+            ylabel('Amplitude');
+            legend('Raw', 'Location','southoutside','Orientation','horizontal');
+
+            % 2) Simple Derivative with clear, black threshold lines
+            nexttile;
+            hold on;
+            % plot derivative
+            hDiff = plot(t, diff_seg, 'b', 'LineWidth',1);
+            % overlay threshold lines in black
+            hThrP = yline(+thr_diff,   'k--', 'LineWidth',1);
+            hThrM = yline(-thr_diff,   'k--', 'LineWidth',1);
+            hold off;
+            % ensure thresholds are within view
+            yMin = min(min(diff_seg), -thr_diff) * 1.1;
+            yMax = max(max(diff_seg),  +thr_diff) * 1.1;
+            ylim([yMin, yMax]);
+            xlabel('Time (s)');
+            ylabel('Diff');
+            title('Simple Derivative');
+            legend([hDiff, hThrP, hThrM], ...
+                   {'Diff','+Thr','-Thr'}, ...
+                   'Location','southoutside','Orientation','horizontal');
+
+            % 3) Smoothed Derivative
+            nexttile;
+            hold on;
+            hSmooth = plot(t, smooth_seg, 'r', 'LineWidth',1);
+            hSthrP  = yline(+thr_smooth, 'r--', 'LineWidth',1);
+            hSthrM  = yline(-thr_smooth, 'r--', 'LineWidth',1);
+            hold off;
+            % adjust y‐limits similarly
+            yMin2 = min(min(smooth_seg), -thr_smooth) * 1.1;
+            yMax2 = max(max(smooth_seg),  +thr_smooth) * 1.1;
+            ylim([yMin2, yMax2]);
+            xlabel('Time (s)');
+            ylabel('Smoothed Diff');
+            title('Movmean‐Smoothed Derivative');
+            legend([hSmooth, hSthrP, hSthrM], ...
+                   {'Smooth','+Thr','-Thr'}, ...
+                   'Location','southoutside','Orientation','horizontal');
+
+            % Save and close
+            fname = sprintf('Ch%02d_Seg%02d_Compare.png', ch, segIdx);
+            saveas(gcf, fullfile(Deriv_Dir, fname));
+            close(gcf);
+        end
+    end
 end

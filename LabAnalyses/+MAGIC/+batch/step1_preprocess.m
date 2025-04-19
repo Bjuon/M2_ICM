@@ -536,30 +536,6 @@ if todo.thenaisie == 1 % Using the flag as provided
        
         % Call the modified AR function. It modifies seg_clean.
         [seg_clean, rejectionStats, artifactFlags] = MAGIC.batch.computePSDandArtifactRejection(seg_clean, baselineStruct);
-        
-%         % --- Debug Print: Check for Zeroed Channels ---
-%         for idx = 1:numel(seg_clean)
-%             % Retrieve the LFP values from the current segment's SampledProcess.
-%             % The "values" property may be stored as a cell array of numeric data.
-%             values = seg_clean(idx).sampledProcess.values;
-%             
-%             % Check if "values" is a cell; if so, convert it to a numeric matrix.
-%             if iscell(values)
-%                 % cell2mat concatenates the contents of the cell array into a regular numeric array.
-%                 values = cell2mat(values);
-%             end
-%             
-%             % Use the "all" function to check each channel:
-%             % all(values == 0, 1) returns a logical row vector (one entry per channel)
-%             % where "true" means that every sample in that channel is equal to zero.
-%             zeroedChannels = find(all(values == 0, 1));
-%             
-%             % If any channels are completely zeroed, output a debug message.
-%             if ~isempty(zeroedChannels)
-%                 % fprintf prints the segment index and the indices of zeroed channels.
-%                 fprintf('DEBUG: In segment %d, zeroed channels: %s\n', idx, mat2str(zeroedChannels));
-%             end
-%         end
 
         
         %% --- Calculate and Display Summary Statistics ---

@@ -37,7 +37,7 @@ global reject_table
 global tasks
 
 global rawLFPDir cleanLFPDir rawTFDir cleanTFDir artefacts_results_Dir
-global TrialRejectionDir
+global TrialRejectionDir Deriv_Dir
 global run
 global ChannelMontage
 global med subject event s 
@@ -122,6 +122,7 @@ FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
 LocTablePath   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA', 'MAGIC_loc_electrodes.xlsx');
+Deriv_Dir = fullfile(FigDir, 'DerivPlots'); 
 TrialRejectionDir = fullfile(FigDir, 'ThennaisiePlots'); 
 
 if strcmp(segType, 'step')
