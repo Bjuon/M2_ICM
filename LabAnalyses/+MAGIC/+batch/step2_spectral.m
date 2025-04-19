@@ -27,7 +27,7 @@ d = linq(seg);
 
 if ~isempty(e)
    temp = d.where(@(x) x.info('trial').quality == 1);
-    if strcmp(segType, 'step')
+   if strcmp(segType, 'step')
         if strcmp(e, 'FOG_S') || strcmp(e, 'TURN_S')
             SyncWin = [-2.5 2];
         else
@@ -52,7 +52,7 @@ else
             temp = d.where(@(x) strcmp(x.info('trial').condition, 'APA'));
             winBsl = [0.4  0.9 + tBlock] - tBlock/2;
         case {'FO', 'FC'}
-            temp = d.where(@(x) strcmp(x.info('trial').condition, 'step'));
+            temp = d.where(@(x) startsWith(x.info('trial').condition,'step'));
             winBsl = [0.4  0.9 + tBlock] - tBlock/2;
         case {'TURN_S', 'TURN_E'}
             temp = d.where(@(x) strcmp(x.info('trial').condition, 'turn'));
@@ -77,6 +77,22 @@ else
     
     %% Spectral transformation
     lfp = [temp.sampledProcess];
+    % --- zero spectral input for CLEAN data only, skip “*_wrong” -------------
+    if strcmpi(version,'clean')
+        for tIdx = 1:numel(temp)
+            cond = temp(tIdx).info('trial').condition;
+            if endsWith(cond,'_wrong')
+                badCh = temp(tIdx).info('artifactChannels');
+                if ~isempty(badCh)
+                    lfp(tIdx).values{1}(:,badCh) = 0;
+%                     fprintf('step2_spectral: seg %d – zeroed channels %s (step_wrong)\n', ...
+%                             tIdx, mat2str(badCh));
+                end
+            end
+        end
+   end
+
+
     if ~isempty(lfp)
         TF = tfr(lfp, 'method', 'chronux', 'tBlock', tBlock, 'tStep', 0.03, ...
             'f', [fqStart 100], 'tapers', [3 5], 'pad', n_pad);

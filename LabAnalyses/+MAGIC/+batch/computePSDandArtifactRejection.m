@@ -1,6 +1,6 @@
 function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
 global TrialRejectionDir 
-todo.plot =1;
+todo.plot =0;
 %% Aperiodic Parameters and Basic Setup
 multiplicativeThreshold = 1.5; % 1.5x baseline vs step 
 thresholdAdd = log10(multiplicativeThreshold); % about 0.1761
@@ -25,6 +25,7 @@ fooofSettings.aperiodic_mode = 'fixed';    % or 'knee'
 fooofSettings.verbose = false;
 
 %% Initialization
+cleanedSeg_flagged = cleanedSeg;
 nSegments = numel(cleanedSeg);
 if nSegments == 0
     error('AR: cleanedSeg is empty.');
@@ -44,7 +45,7 @@ numSegmentsChecked = 0;
 numEventsChecked = 0;
 
 %% Pass 1: Retrieve Baseline Aperiodic Component for Each Trial
-disp('AR: Calculating baseline aperiodic component...');
+disp('Calculating baseline aperiodic component...');
 
 for i = 1:nSegments
     trialInfo = cleanedSeg(i).info('trial');
@@ -102,7 +103,7 @@ end
 disp('Baseline Computation Finished');
 
 %% Pass 2: Compute Event PSD/FOOOF Metrics and Compare to Baseline
-disp('AR: Computing event aperiodic power for step events (FO/FC)...');
+disp('Computing event aperiodic component for step events (FO/FC)...');
 
 % Loop over all segments (only process segments with condition 'step')
 for i = 1:nSegments
@@ -193,9 +194,6 @@ for i = 1:nSegments
                 if eventAperiodicOffsets(ch) > (currentTrialBaseline(ch) * multiplicativeThreshold)
                     eventArtifactFlags(ch) = true;
                     artifactFlags(i, ch) = true;
-
-                    % Zero the channel data for this event only.
-                    eventSignal(:, ch) = 0;
                 end
             else
                 eventAperiodicOffsets(ch) = NaN;
@@ -220,13 +218,12 @@ for i = 1:nSegments
 
 
         % Store per-event PSD info in the segment's info map under key 'psdInfo'
-        cleanedSeg(i).info('psdInfo') = eventPSD;
+    cleanedSeg_flagged(i).info('psdInfo') = eventPSD;                          % << CHANGED
 
 end
 
 %% Pass 3: Update Segment Metadata with Artifact Flags
-disp('AR: Adding artifact flags to segment metadata...');
-cleanedSeg_flagged = cleanedSeg;
+disp('Adding artifact flags to segment metadata...');
 for i = 1:nSegments
     flaggedChannels = find(artifactFlags(i, :));
     if ~isempty(flaggedChannels)
@@ -247,7 +244,7 @@ for i = 1:nSegments
         end
     end
 end
-disp('AR: Metadata flagging finished.');
+disp('Metadata flagging finished.');
 
 %% Compile Statistics
 stats = struct();
@@ -274,7 +271,7 @@ stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
 stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
 
-%% Pass 4: Plotting with y=0–100 dB and tight legend (MATLAB 2021b)
+%% Pass 4: Plotting 
 if todo.plot
     if ~exist(TrialRejectionDir,'dir')
         mkdir(TrialRejectionDir);
@@ -282,42 +279,55 @@ if todo.plot
 
     for i = 1:nSegments
         trialInfo = cleanedSeg_flagged(i).info('trial');
-        if ~strcmp(trialInfo.condition,'step'), continue; end
+        if ~startsWith(trialInfo.condition,'step'), continue; end
+        % ── 1)  RESET idxBaseline *for this segment only* ───────────────────
+        % build a suffix of the form  “FRj_1_OFF”  (patient, trial#, med state)
+        keySuffix = sprintf('%s_%d_%s', ...
+                            trialInfo.patient(end-2:end), ...   % FRj
+                            trialInfo.nTrial, ...               % 1
+                            trialInfo.medication);              % OFF
 
-        key = sprintf('%s_%s_%s', ...
-            trialInfo.patient(end-2:end), trialInfo.run, trialInfo.medication);
+        % find the *first* baselineStruct entry whose trialKey ends with that suffix
+        idxBaseline = find(endsWith({baselineStruct.trialKey}, keySuffix), 1);
+
+%         fprintf('[Pass4]  Seg %3d  |  keySuffix = %s  |  idxBaseline = %d\n', ...
+%         i, keySuffix, idxBaseline);
+        if isempty(idxBaseline)
+            warning('Plot‑PSD: baseline “%s” not found – segment skipped', keySuffix);
+            continue
+        end
+
+        % pull the PSD / FOOOF results that belong to THIS segment
+        eventPSD = cleanedSeg_flagged(i).info('psdInfo');
+
         evs = cleanedSeg_flagged(i).eventProcess.values{1,1};
 
-        for ev = 1:numel(evs)
-            evName  = evs(ev).name.name;
-            figName = sprintf('%s_%s_%d', key, evName, trialInfo.nStep);
+        for evIdx = 1:numel(eventPSD)
+             evName = evs(evIdx).name.name;   % event (FO / FC)
 
+            figName = sprintf('%s_%s_step%02d', ...
+                              keySuffix, evName, i);
             % New figure
             figure('Name', figName, 'Color','w');
             numCols = 4;
             numRows = ceil(nChannels/numCols);
 
-            % Layout: rows = numRows+1, cols = numCols
-            tl = tiledlayout(numRows+1, numCols, ...
+            tl = tiledlayout(numRows, numCols, ...
                             'TileSpacing','compact', ...
                             'Padding','compact');
 
-            % Title across all columns
-            title(tl, figName, ...
-                  'Interpreter','none', ...
-                  'FontWeight','bold', ...
-                  'FontSize',12);
-
-            % Reserve the first row for legend
-%             axLeg = nexttile(tl, 1, [1 numCols]);
-%             axis(axLeg,'off');
+            % Title
+            title(tl, strrep(figName,'_',' '), ...  
+              'Interpreter','none', ...
+              'FontWeight','bold', ...
+              'FontSize',12);
 
             % Preallocate
             legendHandles = gobjects(1,4);
 
             % Plot each channel in rows 2..end
             for ch = 1:nChannels
-                ax = nexttile(tl, ch + numCols);
+                ax = nexttile(tl, ch);
                 hold(ax,'on');
 
                 % Baseline PSD (black)
@@ -326,7 +336,7 @@ if todo.plot
                 h1     = plot(ax, fBsl, 10*log10(pBsl), 'k-', 'LineWidth',1.5);
 
                 % Event PSD (blue)
-                evt    = eventPSD(ev).perChannelPSD{ch};
+                evt    = eventPSD(evIdx).perChannelPSD{ch};
                 h2     = plot(ax, evt.f, 10*log10(evt.avgPSD), 'b-', 'LineWidth',1.5);
 
                 % Baseline aperiodic fit (dashed)
@@ -341,9 +351,9 @@ if todo.plot
 
                 % Channel title
                 if artifactFlags(i,ch)
-                    title(ax, sprintf('CH%d: FLAGGED', ch), 'FontWeight','bold');
+                    title(ax, sprintf('CH%d: FLAGGED', ch));
                 else
-                    title(ax, sprintf('CH%d: OK',      ch));
+                    title(ax, sprintf('CH%d: OK',ch));
                 end
 
                 xlabel(ax,'Freq (Hz)');
@@ -367,17 +377,7 @@ if todo.plot
                 'Orientation','horizontal', ...
                 'Box','off', ...
                 'FontSize',14);
-            
-            % …and tell it to live in the “north” tile of your layout:
-            lg.Layout.Tile = 'north';
-
-%             % Now re‐position it to be centered and up against the tiles:
-%             lg.Units = 'normalized';
-%             pos = lg.Position;
-%             pos(1) = 0.5 - pos(3)/2;   % center horizontally in the figure
-%             pos(2) = 0.9;             % raise it near the top (tweak this)
-%             pos(4) = 0.001;             % optionally slim its height if too tall
-%             lg.Position = pos;
+           lg.Layout.Tile = 'north';
 
             % Finalize
             set(gcf,'Position',[100 100 1200 800]);
