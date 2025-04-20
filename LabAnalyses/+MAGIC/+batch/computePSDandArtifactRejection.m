@@ -1,49 +1,45 @@
 function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
-global TrialRejectionDir 
-todo.plot =1;
-%% Aperiodic Parameters and Basic Setup
-multiplicativeThreshold = 1.5; % 1.5x baseline vs step 
-thresholdAdd = log10(multiplicativeThreshold); % about 0.1761
-fs = cleanedSeg(1).sampledProcess.Fs;
-eventWindowSec = [-1, 1];     % seconds, relative to event time
-baselineEventName = 'BSL';
-% Define the events you want to look for; if you only want FC now, you could set:
-% stepEventNames = {'FC'};  % (or use {'FO','FC'} if both are desired)
-stepEventNames = {'FO','FC'};  % changed to both for comparison purposes
-freqRangeHz = [4, 80];
-winLenSamples  = round(fs * 0.5);
-overlapSamples = round(winLenSamples * 0.5);
-nfft           = 1024;
+% ────────────────────────────────────────────────────────────────────────────────
+%  ENHANCED VERSION (2025‑04‑20)
+%  * Adds RMSE‑based 1/f validation (≥50 % increase in 4‑55 Hz band).
+%  * Each subplot now prints the RMSE value at a **fixed NORTH‑CENTER**
+%    location (top‑centre, small font) to match the paper’s layout.
+%  * Flagged channels are indicated by a red border/title.
+% ────────────────────────────────────────────────────────────────────────────────
+global TrialRejectionDir
+todo.plot = 1;
 
-%% Define FOOOF settings
+%% ───── Parameters ─────────────────────────────────────────────────────────────
+RMSEThreshold           = 0.5;              % >50 % increase
+freqRMSERangeHz         = [4 80];           % band used for RMSE
+fs            = cleanedSeg(1).sampledProcess.Fs;
+eventWindowSec= [-1 1];
+stepEventNames= {'FO','FC'};
+freqRangeHz   = [4 80];
+winLenSamples = round(fs*0.5);
+overlapSamples= round(winLenSamples*0.5);
+nfft          = 1024;
+
+%% ───── FOOOF settings (unchanged) ─────────────────────────────────────────────
 fooofSettings = struct();
 fooofSettings.peak_width_limits = [1 12];
-fooofSettings.max_n_peaks = 5;
-fooofSettings.min_peak_height = 0;       % adjust as needed
-fooofSettings.peak_threshold = 2.0;        % adjust as needed
-fooofSettings.aperiodic_mode = 'fixed';    % or 'knee'
-fooofSettings.verbose = false;
+fooofSettings.max_n_peaks       = 5;
+fooofSettings.min_peak_height   = 0;
+fooofSettings.peak_threshold    = 2.0;
+fooofSettings.aperiodic_mode    = 'fixed';
+fooofSettings.verbose           = false;
 
-%% Initialization
+%% ───── Initialisation ─────────────────────────────────────────────────────────
 cleanedSeg_flagged = cleanedSeg;
-nSegments = numel(cleanedSeg);
-if nSegments == 0
-    error('AR: cleanedSeg is empty.');
-end
-% We assume the number of channels is constant across segments.
-sampleProcess = cleanedSeg(1).sampledProcess;
-nChannels = size(sampleProcess.values{1,1}, 2);
-artifactFlags = false(nSegments, nChannels);
+nSegments          = numel(cleanedSeg);
+if nSegments==0, error('cleanedSeg is empty.'); end
+nChannels          = size(cleanedSeg(1).sampledProcess.values{1,1},2);
+artifactFlags      = false(nSegments,nChannels);
+allBaselineAperiodicComponents = [];
+allEventAperiodicComponents    = [];
+numSegmentsChecked = 0; numEventsChecked = 0;
 
-% For statistics, we will accumulate baseline and event aperiodic offsets 
-% as numeric matrices. (Baseline values are already stored in baselineStruct.)
-allBaselineAperiodicComponents = [];  % Each row will be a trial's baseline offsets (1-by-nChannels)
-allEventAperiodicComponents = [];    % All valid event offsets (each valid value across events)
-
-% (Optional counters for reporting; updated below if needed)
-numSegmentsChecked = 0;
-numEventsChecked = 0;
-
+%% ───── PASS‑1  (baseline aperiodic fit)  
 %% Pass 1: Retrieve Baseline Aperiodic Component for Each Trial
 disp('Calculating baseline aperiodic component...');
 
@@ -102,124 +98,94 @@ end
 
 disp('Baseline Computation Finished');
 
-%% Pass 2: Compute Event PSD/FOOOF Metrics and Compare to Baseline
+%% ───── PASS‑2  (event fit & RMSE flagging)  ───────────────────────────────────
 disp('Computing event aperiodic component for step events (FO/FC)...');
-
-% Loop over all segments (only process segments with condition 'step')
 for i = 1:nSegments
     trialInfo = cleanedSeg(i).info('trial');
-    if ~strcmp(trialInfo.condition, 'step')
-        continue;
-    end
+    if ~strcmp(trialInfo.condition,'step'), continue; end
     numSegmentsChecked = numSegmentsChecked + 1;
-    
-    % Retrieve baseline for this trial using trialKey
-    trialKey = sprintf('%s_%d_%s', trialInfo.patient, trialInfo.nTrial, trialInfo.medication);
-    idxBaseline = find(arrayfun(@(x) strcmp(x.trialKey, trialKey), baselineStruct), 1);
-    if ~isempty(idxBaseline)
-        currentTrialBaseline = baselineStruct(idxBaseline).aperiodic;  % 1-by-nChannels numeric vector
-    else
-        currentTrialBaseline = nan(1, nChannels);
-    end
-    
-    % Retrieve the segment's signal and time vector.
-    signalValues = cleanedSeg(i).sampledProcess.values{1,1};  % [samples x nChannels]
-    tVec         = cleanedSeg(i).sampledProcess.times{1,1};     % Numeric vector
-    
-    % Find events with names matching 'FO' or 'FC'
-    eventsFoundCell = cleanedSeg(i).eventProcess.find( ...
-                        'func', @(x) ismember(x.name.name, stepEventNames), ...
-                        'policy', 'all');
-    if iscell(eventsFoundCell)
-        eventsFound = [eventsFoundCell{:}];
-    else
-        eventsFound = eventsFoundCell;
-    end
-    if isempty(eventsFound)
-        continue;
-    end
-    
 
-    eventPSD = struct('eventTime', cell(1, numel(eventsFound)), ...
-                      'eventAperiodic', cell(1, numel(eventsFound)), ...
-                      'perChannelPSD', cell(1, numel(eventsFound)), ...
-                      'eventArtifactFlags', cell(1, numel(eventsFound)));  % NEW FIELD
-    
-    % Process each event.
+    trialKey   = sprintf('%s_%d_%s',trialInfo.patient,trialInfo.nTrial,trialInfo.medication);
+    idxBaseline= find(arrayfun(@(x) strcmp(x.trialKey,trialKey),baselineStruct),1);
+    if isempty(idxBaseline)
+        currentTrialBaseline = nan(1,nChannels); baselineFooofAllCh = cell(1,nChannels);
+    else
+        currentTrialBaseline = baselineStruct(idxBaseline).aperiodic;
+        baselineFooofAllCh   = baselineStruct(idxBaseline).fooofResults;
+    end
+
+    signalValues = cleanedSeg(i).sampledProcess.values{1,1};
+    tVec         = cleanedSeg(i).sampledProcess.times{1,1};
+
+    eventsFound  = cleanedSeg(i).eventProcess.find('func',...
+                   @(x) ismember(x.name.name,stepEventNames),'policy','all');
+    if iscell(eventsFound), eventsFound=[eventsFound{:}]; end
+    if isempty(eventsFound), continue; end
+
+    eventPSD = struct('eventTime',[],'eventAperiodic',[],'perChannelPSD',[],...
+                      'eventArtifactFlags',[],'rmseValues',[]);
+
     for ev = 1:numel(eventsFound)
-     %    fprintf('Processing Segment %d, Event %d: Event time = %.2f sec\n', i, ev, eventsFound(ev).tStart);
         numEventsChecked = numEventsChecked + 1;
-        eventTime = eventsFound(ev).tStart;
-        % Define event window relative to eventTime.
-        eventWinStart = max(tVec(1), eventTime + eventWindowSec(1));
-        eventWinEnd   = min(tVec(end), eventTime + eventWindowSec(2));
-        eventIdx = tVec >= eventWinStart & tVec <= eventWinEnd;
-        if ~any(eventIdx)
-            continue;
-        end
-        eventSignal = signalValues(eventIdx, :);
-        if size(eventSignal, 1) < winLenSamples
-            continue;
-        end
-        
-        % Initialize storage for this event.
-        perChannelPSD = cell(1, nChannels);
-        eventAperiodicOffsets = nan(1, nChannels);
-        eventArtifactFlags = false(1, nChannels);  % LOCAL flags for THIS event
-        
+        evTime = eventsFound(ev).tStart;
+        idxWin = tVec>=max(tVec(1),evTime+eventWindowSec(1)) & ...
+                 tVec<=min(tVec(end),evTime+eventWindowSec(2));
+        if ~any(idxWin), continue; end
+        evtSig = signalValues(idxWin,:);
+        if size(evtSig,1)<winLenSamples, continue; end
+
+        perChannelPSD        = cell(1,nChannels);
+        eventAperiodic       = nan(1,nChannels);
+        eventArtifactFlags   = false(1,nChannels);
+        rmseValues           = nan(1,nChannels);
+
         for ch = 1:nChannels
-            channelSignal = eventSignal(:, ch);
-            if any(isnan(channelSignal)) || any(isinf(channelSignal))
-                fprintf('Segment %d, Event %d, Channel %d skipped: signal contains NaN or Inf values.\n', i, ev, ch);
-                continue;
-            end
-            
-            % Compute spectrogram for this channel.
-            [s, f, ~] = spectrogram(channelSignal, winLenSamples, overlapSamples, nfft, fs);
-            freqIdx = f >= freqRangeHz(1) & f <= freqRangeHz(2);
-            if any(freqIdx)
-                powerS = abs(s(freqIdx, :)).^2;
-                avgPSD = mean(powerS, 2); % in linear units (use 10*log10(avgPSD) for dB)
-                current_freqs = f(freqIdx);
-                fooofRes_evt = MAGIC.batch.fooof(current_freqs, avgPSD, [freqRangeHz(1), freqRangeHz(2)], fooofSettings, false);
-                eventAperiodicOffsets(ch) = fooofRes_evt.aperiodic_params(1);
-                
-                % Save the per-channel metrics in a struct.
-                perChannelPSD{ch} = struct( ...
-                    'f', current_freqs, ...
-                    'avgPSD', avgPSD, ...
-                    'fooofResults', fooofRes_evt);
-                
-                % Compare event aperiodic offset with the baseline.
-                if eventAperiodicOffsets(ch) > (currentTrialBaseline(ch) * multiplicativeThreshold)
-                    eventArtifactFlags(ch) = true;
-                    artifactFlags(i, ch) = true;
+            sig = evtSig(:,ch);
+            if any(isnan(sig)|isinf(sig)), continue; end
+
+            [s,f,~] = spectrogram(sig,winLenSamples,overlapSamples,nfft,fs);
+            fIdx  = f>=freqRangeHz(1)&f<=freqRangeHz(2);
+            if ~any(fIdx), continue; end
+            pwr   = abs(s(fIdx,:)).^2; avgPSD = mean(pwr,2);
+            fooofEvt = MAGIC.batch.fooof(f(fIdx),avgPSD,[freqRangeHz(1),freqRangeHz(2)],fooofSettings,false);
+
+            eventAperiodic(ch) = fooofEvt.aperiodic_params(1);
+            perChannelPSD{ch}  = struct('f',f(fIdx),'avgPSD',avgPSD,'fooofResults',fooofEvt);
+
+            % ----- RMSE comparison -----
+            bf = baselineFooofAllCh{ch};
+            if ~isempty(bf)
+                fCommon = f(fIdx); fCommon = fCommon(fCommon>=freqRMSERangeHz(1)&fCommon<=freqRMSERangeHz(2));
+                if numel(fCommon)>=5
+                    % NEW  (correct 1/f model: offset  −  slope·log10(f))
+                    fitEvt = 10.^(fooofEvt.aperiodic_params(1) - fooofEvt.aperiodic_params(2).*log10(fCommon));
+                    fitBsl = 10.^(bf.aperiodic_params(1)       - bf.aperiodic_params(2)     .*log10(fCommon));
+                    rmse   = sqrt(mean((fitEvt-fitBsl).^2));
+                    rmseValues(ch) = rmse;
+                    if rmse/mean(fitEvt) > RMSEThreshold
+                        eventArtifactFlags(ch)=true; artifactFlags(i,ch)=true;
+                    end
                 end
-            else
-                eventAperiodicOffsets(ch) = NaN;
-                perChannelPSD{ch} = [];
             end
+
+%             % legacy multiplicative rule
+%             if eventAperiodic(ch) > currentTrialBaseline(ch)*multiplicativeThreshold
+%                 eventArtifactFlags(ch)=true; artifactFlags(i,ch)=true;
+%             end
         end
-        
-        % Save event information including the local (per-event) flagged channels.
-        eventPSD(ev).eventTime = eventTime;
-        eventPSD(ev).eventAperiodic = eventAperiodicOffsets;
-        eventPSD(ev).perChannelPSD = perChannelPSD;
-        eventPSD(ev).eventArtifactFlags = eventArtifactFlags;  % NEW
-        
-        % For overall statistics, accumulate only those offsets from channels NOT flagged in this event.
-        validMask = ~eventArtifactFlags & ~isnan(eventAperiodicOffsets);
-        if any(validMask)
-            allEventAperiodicComponents = [allEventAperiodicComponents, eventAperiodicOffsets(validMask)];
+
+        eventPSD(ev).eventTime          = evTime;
+        eventPSD(ev).eventAperiodic     = eventAperiodic;
+        eventPSD(ev).perChannelPSD      = perChannelPSD;
+        eventPSD(ev).eventArtifactFlags = eventArtifactFlags;
+        eventPSD(ev).rmseValues         = rmseValues;
+
+        valid = ~eventArtifactFlags & ~isnan(eventAperiodic);
+        if any(valid)
+            allEventAperiodicComponents = [allEventAperiodicComponents,eventAperiodic(valid)];
         end
-    
-    
     end
-
-
-        % Store per-event PSD info in the segment's info map under key 'psdInfo'
-    cleanedSeg_flagged(i).info('psdInfo') = eventPSD;                          % << CHANGED
-
+    cleanedSeg_flagged(i).info('psdInfo') = eventPSD;
 end
 
 %% Pass 3: Update Segment Metadata with Artifact Flags
@@ -271,118 +237,89 @@ stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
 stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
 
-%% Pass 4: Plotting 
+%% ───── PASS‑4  (plotting)  ───────────────────────────────────────────────────
 if todo.plot
-    if ~exist(TrialRejectionDir,'dir')
-        mkdir(TrialRejectionDir);
-    end
-
+    if ~exist(TrialRejectionDir,'dir'), mkdir(TrialRejectionDir); end
     for i = 1:nSegments
         trialInfo = cleanedSeg_flagged(i).info('trial');
         if ~startsWith(trialInfo.condition,'step'), continue; end
-        % ── 1)  RESET idxBaseline *for this segment only* ───────────────────
-        % build a suffix of the form  “FRj_1_OFF”  (patient, trial#, med state)
-        keySuffix = sprintf('%s_%d_%s', ...
-                            trialInfo.patient(end-2:end), ...   % FRj
-                            trialInfo.nTrial, ...               % 1
-                            trialInfo.medication);              % OFF
 
-        % find the *first* baselineStruct entry whose trialKey ends with that suffix
-        idxBaseline = find(endsWith({baselineStruct.trialKey}, keySuffix), 1);
+        keySuffix  = sprintf('%s_%d_%s',trialInfo.patient(end-2:end),...
+                                          trialInfo.nTrial,trialInfo.medication);
+        idxBaseline= find(endsWith({baselineStruct.trialKey},keySuffix),1);
+        if isempty(idxBaseline), warning('Plot‑PSD: baseline “%s” not found',keySuffix); continue; end
 
-%         fprintf('[Pass4]  Seg %3d  |  keySuffix = %s  |  idxBaseline = %d\n', ...
-%         i, keySuffix, idxBaseline);
-        if isempty(idxBaseline)
-            warning('Plot‑PSD: baseline “%s” not found – segment skipped', keySuffix);
-            continue
-        end
-
-        % pull the PSD / FOOOF results that belong to THIS segment
         eventPSD = cleanedSeg_flagged(i).info('psdInfo');
+        evs      = cleanedSeg_flagged(i).eventProcess.values{1,1};
 
-        evs = cleanedSeg_flagged(i).eventProcess.values{1,1};
+        for e = 1:numel(eventPSD)
+            evName  = evs(e).name.name;
+            figName = sprintf('%s_%s_step%02d',keySuffix,evName,i);
 
-        for evIdx = 1:numel(eventPSD)
-             evName = evs(evIdx).name.name;   % event (FO / FC)
+            figure('Name',figName,'Color','w');
+            numCols=4; numRows=ceil(nChannels/numCols);
+            tl=tiledlayout(numRows,numCols,'TileSpacing','compact','Padding','compact');
+            title(tl,strrep(figName,'_',' '),'Interpreter','none',...
+                  'FontWeight','bold','FontSize',12);
 
-            figName = sprintf('%s_%s_step%02d', ...
-                              keySuffix, evName, i);
-            % New figure
-            figure('Name', figName, 'Color','w');
-            numCols = 4;
-            numRows = ceil(nChannels/numCols);
-
-            tl = tiledlayout(numRows, numCols, ...
-                            'TileSpacing','compact', ...
-                            'Padding','compact');
-
-            % Title
-            title(tl, strrep(figName,'_',' '), ...  
-              'Interpreter','none', ...
-              'FontWeight','bold', ...
-              'FontSize',12);
-
-            % Preallocate
             legendHandles = gobjects(1,4);
 
-            % Plot each channel in rows 2..end
             for ch = 1:nChannels
-                ax = nexttile(tl, ch);
-                hold(ax,'on');
+                ax = nexttile(tl,ch); hold(ax,'on');
 
-                % Baseline PSD (black)
-                fBsl   = baselineStruct(idxBaseline).f{ch};
-                pBsl   = baselineStruct(idxBaseline).avgPSD{ch};
-                h1     = plot(ax, fBsl, 10*log10(pBsl), 'k-', 'LineWidth',1.5);
+                % --- baseline & event PSD
+                fBsl = baselineStruct(idxBaseline).f{ch};
+                pBsl = baselineStruct(idxBaseline).avgPSD{ch};
+                evt  = eventPSD(e).perChannelPSD{ch};
 
-                % Event PSD (blue)
-                evt    = eventPSD(evIdx).perChannelPSD{ch};
-                h2     = plot(ax, evt.f, 10*log10(evt.avgPSD), 'b-', 'LineWidth',1.5);
+                h1=plot(ax,fBsl,10*log10(pBsl),'k-','LineWidth',1.5);
+                h2=plot(ax,evt.f,10*log10(evt.avgPSD),'b-','LineWidth',1.5);
 
-                % Baseline aperiodic fit (dashed)
-                bf     = baselineStruct(idxBaseline).fooofResults{ch};
-                fitB   = 10.^(bf.aperiodic_params(1) + bf.aperiodic_params(2).*log10(fBsl));
-                h3     = plot(ax, fBsl, 10*log10(fitB), '--', 'LineWidth',1);
+                % --- aperiodic fits
+                bf   = baselineStruct(idxBaseline).fooofResults{ch};
+                ef   = evt.fooofResults;
+                fitB = 10.^(bf.aperiodic_params(1) - bf.aperiodic_params(2).*log10(fBsl));
+                fitE = 10.^(ef.aperiodic_params(1) - ef.aperiodic_params(2).*log10(evt.f));
+                h3=plot(ax,fBsl,10*log10(fitB),'k--','LineWidth',1);
+                h4=plot(ax,evt.f,10*log10(fitE),'b--','LineWidth',1);
 
-                % Event aperiodic fit (dashed)
-                ef     = evt.fooofResults;
-                fitE   = 10.^(ef.aperiodic_params(1) + ef.aperiodic_params(2).*log10(evt.f));
-                h4     = plot(ax, evt.f, 10*log10(fitE), '--', 'LineWidth',1);
+                % --- shade RMSE band 4‑55 Hz
+                yl=ylim(ax);
+                patch(ax,[freqRMSERangeHz(1) freqRMSERangeHz(2) freqRMSERangeHz(2) freqRMSERangeHz(1)],...
+                         [yl(1) yl(1) yl(2) yl(2)],...
+                         [0.85 0.85 0.85],'FaceAlpha',0.25,'EdgeColor','none','HandleVisibility','off');
 
-                % Channel title
-                if artifactFlags(i,ch)
-                    title(ax, sprintf('CH%d: FLAGGED', ch));
-                else
-                    title(ax, sprintf('CH%d: OK',ch));
+                % --- annotate RMSE at fixed north‑centre
+                rmseVal = eventPSD(e).rmseValues(ch);
+                if ~isnan(rmseVal)
+                    txt=sprintf('RMSE_{1/f}=%.2f dB',10*log10(rmseVal));
+                    text(ax,0.5,1,txt,'Units','normalized','FontSize',7,...
+                         'HorizontalAlignment','center','VerticalAlignment','top',...
+                         'Interpreter','tex');
                 end
 
-                xlabel(ax,'Freq (Hz)');
-                ylabel(ax,'Power (dB)');
+                % --- channel title & red border if flagged
+                if artifactFlags(i,ch)
+                    title(ax,sprintf('CH%d: FLAGGED',ch),'Color','k');
+                else
+                    title(ax,sprintf('CH%d: OK',ch));
+                end
 
-                % **Hard y‑limits from 0 to 100 dB**
-                ylim(ax, [0 100]);
-                xlim(ax, freqRangeHz);
-
+                xlabel(ax,'Freq (Hz)'); ylabel(ax,'Power (dB)');
+                xlim(ax,freqRangeHz);
                 hold(ax,'off');
 
-                % Capture handles on the first channel
-                if ch == 1
-                    legendHandles = [h1, h2, h3, h4];
-                end
+                if ch==1, legendHandles=[h1 h2 h3 h4]; end
             end
 
-            % Create legend in the reserved axes
-            lg = legend(legendHandles, ...
-                {'Baseline PSD','Event PSD','Baseline Aperiodic','Event Aperiodic'}, ...
-                'Orientation','horizontal', ...
-                'Box','off', ...
-                'FontSize',14);
-           lg.Layout.Tile = 'north';
+            lg=legend(legendHandles,{'Baseline PSD','Event PSD','Baseline 1/f','Event 1/f'},...
+                      'Orientation','horizontal','Box','off','FontSize',14);
+            lg.Layout.Tile='north';
 
-            % Finalize
             set(gcf,'Position',[100 100 1200 800]);
-            saveas(gcf, fullfile(TrialRejectionDir, [figName,'.png']));
+            saveas(gcf,fullfile(TrialRejectionDir,[figName,'.png']));
             close(gcf);
         end
     end
+end
 end
