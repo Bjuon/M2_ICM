@@ -127,7 +127,7 @@ for i = 1:nSegments
 
     for ev = 1:numel(eventsFound)
         numEventsChecked = numEventsChecked + 1;
-        evTime = eventsFound(ev).tStart;
+        evTime = eventsFound(ev).tStart; % demander à mathieu si bon tstart
         idxWin = tVec>=max(tVec(1),evTime+eventWindowSec(1)) & ...
                  tVec<=min(tVec(end),evTime+eventWindowSec(2));
         if ~any(idxWin), continue; end
@@ -254,8 +254,7 @@ if todo.plot
 
         for e = 1:numel(eventPSD)
             evName  = evs(e).name.name;
-            figName = sprintf('%s_%s_step%02d',keySuffix,evName,i);
-
+            figName = sprintf('%s_%s_step%02d', keySuffix, evName, trialInfo.nStep);
             figure('Name',figName,'Color','w');
             numCols=4; numRows=ceil(nChannels/numCols);
             tl=tiledlayout(numRows,numCols,'TileSpacing','compact','Padding','compact');
@@ -283,11 +282,11 @@ if todo.plot
                 h3=plot(ax,fBsl,10*log10(fitB),'k--','LineWidth',1);
                 h4=plot(ax,evt.f,10*log10(fitE),'b--','LineWidth',1);
 
-                % --- shade RMSE band 4‑55 Hz
-                yl=ylim(ax);
-                patch(ax,[freqRMSERangeHz(1) freqRMSERangeHz(2) freqRMSERangeHz(2) freqRMSERangeHz(1)],...
-                         [yl(1) yl(1) yl(2) yl(2)],...
-                         [0.85 0.85 0.85],'FaceAlpha',0.25,'EdgeColor','none','HandleVisibility','off');
+%                 % --- shade RMSE band 4‑55 Hz
+%                 yl=ylim(ax);
+% %                 patch(ax,[freqRMSERangeHz(1) freqRMSERangeHz(2) freqRMSERangeHz(2) freqRMSERangeHz(1)],...
+% %                          [yl(1) yl(1) yl(2) yl(2)],...
+% %                          [0.85 0.85 0.85],'FaceAlpha',0.25,'EdgeColor','none','HandleVisibility','off');
 
                 % --- annotate RMSE at fixed north‑centre
                 rmseVal = eventPSD(e).rmseValues(ch);
@@ -298,8 +297,9 @@ if todo.plot
                          'Interpreter','tex');
                 end
 
-                % --- channel title & red border if flagged
-                if artifactFlags(i,ch)
+                % --- channel title if flagged
+                isFlaggedNow = eventPSD(e).eventArtifactFlags(ch);   % <<—— per‑event flag
+                if isFlaggedNow
                     title(ax,sprintf('CH%d: FLAGGED',ch),'Color','k');
                 else
                     title(ax,sprintf('CH%d: OK',ch));
