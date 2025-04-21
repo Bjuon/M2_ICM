@@ -544,13 +544,22 @@ if todo.thenaisie == 1 % Using the flag as provided
         percentageFlaggedSegs = (flaggedSegsCount / totalSegs) * 100;
         avgBaselineAperiodicComponents = rejectionStats.overallAverageBaselineAperiodicComponents;
         avgEventAperiodicComponents = rejectionStats.overallAverageEventAperiodicComponents;
-        
+        meanRMSE    = rejectionStats.meanEventRMSE;
+        medianRMSE  = rejectionStats.medianEventRMSE;
+        maxRMSE     = rejectionStats.maxEventRMSE;
+        numRMSE     = rejectionStats.numEventRMSE;
+
+
         fprintf('\n--- Artifact Rejection Statistics (Spectrogram Method) ---\n');
         fprintf('Total Segments: %d\n', totalSegs);
         fprintf('Flagged Segments: %d\n', flaggedSegsCount);
         fprintf('Percentage Flagged: %.2f%%\n', percentageFlaggedSegs);
         fprintf('Average Baseline Aperiodic Component: %.4f\n', avgBaselineAperiodicComponents);
         fprintf('Average Step Aperiodic Component: %.4f\n', avgEventAperiodicComponents);
+        fprintf('Mean Event RMSE: %.4f\n',    meanRMSE);
+        fprintf('Median Event RMSE: %.4f\n',  medianRMSE);
+        fprintf('Max Event RMSE: %.4f\n',     maxRMSE);
+        fprintf('Total RMSE Samples: %d\n\n', numRMSE);
         fprintf('--------------------------------------------------------\n\n');
         
         % Optional: Display per-channel statistics.

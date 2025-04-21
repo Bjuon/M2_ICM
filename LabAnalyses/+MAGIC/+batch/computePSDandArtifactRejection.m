@@ -6,12 +6,12 @@ global TrialRejectionDir
 todo.plot = 1;
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
-RMSEThreshold           = 0.5;              % >50 % increase
-freqRMSERangeHz         = [4 80];           % band used for RMSE
+RMSEThreshold           = 0.1;              % >50 % increase
+freqRMSERangeHz         = [4 55];           % band used for RMSE
 fs            = cleanedSeg(1).sampledProcess.Fs;
 eventWindowSec= [-1 1];
 stepEventNames= {'FO','FC'};
-freqRangeHz   = [4 80];
+freqRangeHz   = [4 55];
 winLenSamples = round(fs*0.5);
 overlapSamples= round(winLenSamples*0.5);
 nfft          = 1024;
@@ -33,6 +33,7 @@ nChannels          = size(cleanedSeg(1).sampledProcess.values{1,1},2);
 artifactFlags      = false(nSegments,nChannels);
 allBaselineAperiodicComponents = [];
 allEventAperiodicComponents    = [];
+allEventRmses                   = [];
 numSegmentsChecked = 0; numEventsChecked = 0;
 
 %% ───── PASS‑1  (baseline aperiodic fit)  
@@ -174,6 +175,8 @@ for i = 1:nSegments
         eventPSD(ev).eventAperiodic     = eventAperiodic;
         eventPSD(ev).perChannelPSD      = perChannelPSD;
         eventPSD(ev).eventArtifactFlags = eventArtifactFlags;
+        validRmse = rmseValues(~isnan(rmseValues));
+        allEventRmses = [allEventRmses, validRmse];
         eventPSD(ev).rmseValues         = rmseValues;
 
         valid = ~eventArtifactFlags & ~isnan(eventAperiodic);
@@ -232,6 +235,20 @@ end
 stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
 stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
+
+% <<< ADDED: RMSE summary statistics
+if ~isempty(allEventRmses)
+    stats.meanEventRMSE   = mean(allEventRmses, 'omitnan');
+    stats.medianEventRMSE = median(allEventRmses, 'omitnan');
+    stats.maxEventRMSE    = max(allEventRmses, [], 'omitnan');
+    stats.numEventRMSE    = numel(allEventRmses);
+else
+    stats.meanEventRMSE   = NaN;
+    stats.medianEventRMSE = NaN;
+    stats.maxEventRMSE    = NaN;
+    stats.numEventRMSE    = 0;
+end
+
 
 %% ───── PASS‑4  (plotting)  ───────────────────────────────────────────────────
 if todo.plot
