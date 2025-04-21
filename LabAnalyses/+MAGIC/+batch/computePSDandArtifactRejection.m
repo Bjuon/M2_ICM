@@ -1,10 +1,6 @@
 function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
 % ────────────────────────────────────────────────────────────────────────────────
-%  ENHANCED VERSION (2025‑04‑20)
-%  * Adds RMSE‑based 1/f validation (≥50 % increase in 4‑55 Hz band).
-%  * Each subplot now prints the RMSE value at a **fixed NORTH‑CENTER**
-%    location (top‑centre, small font) to match the paper’s layout.
-%  * Flagged channels are indicated by a red border/title.
+%  RMSE‑based 1/f validation (≥50 % increase in 4‑55 Hz band).
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
 todo.plot = 1;
@@ -282,20 +278,27 @@ if todo.plot
                 h3=plot(ax,fBsl,10*log10(fitB),'k--','LineWidth',1);
                 h4=plot(ax,evt.f,10*log10(fitE),'b--','LineWidth',1);
 
-%                 % --- shade RMSE band 4‑55 Hz
-%                 yl=ylim(ax);
-% %                 patch(ax,[freqRMSERangeHz(1) freqRMSERangeHz(2) freqRMSERangeHz(2) freqRMSERangeHz(1)],...
-% %                          [yl(1) yl(1) yl(2) yl(2)],...
-% %                          [0.85 0.85 0.85],'FaceAlpha',0.25,'EdgeColor','none','HandleVisibility','off');
 
                 % --- annotate RMSE at fixed north‑centre
                 rmseVal = eventPSD(e).rmseValues(ch);
                 if ~isnan(rmseVal)
-                    txt=sprintf('RMSE_{1/f}=%.2f dB',10*log10(rmseVal));
-                    text(ax,0.5,1,txt,'Units','normalized','FontSize',7,...
-                         'HorizontalAlignment','center','VerticalAlignment','top',...
-                         'Interpreter','tex');
-                end
+                    % reconstruct the event 1/f curve for this channel
+                    freqs    = evt.f;                     % frequency vector used in the event PSD
+                    fooofEvt = evt.fooofResults;          % saved FOOOF result
+                    % 1/f model: power = 10^(offset − slope*log10(freq))
+                    fitEvt   = 10.^( fooofEvt.aperiodic_params(1) ...
+                                   - fooofEvt.aperiodic_params(2).*log10(freqs) );
+                    % compute the normalized RMSE ratio: rmse / mean(event‑fit)
+                    relRatio = rmseVal ./ mean(fitEvt);
+                    % turn that into a text label (linear ratio and its dB equivalent)
+                    txt = sprintf('RelRMSE=%.2f (%.1f dB)', relRatio, 10*log10(relRatio));
+                    text(ax, 0.5, 1, txt, ...
+                         'Units','normalized', ...
+                         'FontSize',7, ...
+                         'HorizontalAlignment','center', ...
+                         'VerticalAlignment','top', ...
+                         'Interpreter','none');
+                 end
 
                 % --- channel title if flagged
                 isFlaggedNow = eventPSD(e).eventArtifactFlags(ch);   % <<—— per‑event flag
