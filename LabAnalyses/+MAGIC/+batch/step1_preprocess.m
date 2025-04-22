@@ -554,12 +554,14 @@ if todo.thenaisie == 1 % Using the flag as provided
         fprintf('Total Segments: %d\n', totalSegs);
         fprintf('Flagged Segments: %d\n', flaggedSegsCount);
         fprintf('Percentage Flagged: %.2f%%\n', percentageFlaggedSegs);
+    
+      
+
         fprintf('Average Baseline Aperiodic Component: %.4f\n', avgBaselineAperiodicComponents);
         fprintf('Average Step Aperiodic Component: %.4f\n', avgEventAperiodicComponents);
-        fprintf('Mean Event RMSE: %.4f\n',    meanRMSE);
-        fprintf('Median Event RMSE: %.4f\n',  medianRMSE);
-        fprintf('Max Event RMSE: %.4f\n',     maxRMSE);
-        fprintf('Total RMSE Samples: %d\n\n', numRMSE);
+        fprintf('Mean Relative RMSE (ratio): %.2f\n',   rejectionStats.meanRelativeRMSE);
+        fprintf('Median Relative RMSE: %.2f\n',         rejectionStats.medianRelativeRMSE);
+        fprintf('Max Relative RMSE: %.2f\n\n',          rejectionStats.maxRelativeRMSE);
         fprintf('--------------------------------------------------------\n\n');
         
         % Optional: Display per-channel statistics.
@@ -567,6 +569,10 @@ if todo.thenaisie == 1 % Using the flag as provided
         disp(rejectionStats.rejectedSegmentsCountPerChannel);
         disp('Per-channel rejection percentages:');
         disp(rejectionStats.percentageSegmentsRejectedPerChannel);
+        fprintf('Average OK channels/segment: %.1f\n', rejectionStats.averageOKChannelsPerSeg);
+        fprintf('Median OK channels/segment:  %.1f\n', rejectionStats.medianOKChannelsPerSeg);
+        fprintf('Range OK channels/segment:   %d–%d\n\n', ...
+        rejectionStats.minOKChannelsPerSeg, rejectionStats.maxOKChannelsPerSeg);
 
         seg = {seg_raw, seg_clean};
         

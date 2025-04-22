@@ -3,10 +3,10 @@ function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejec
 %  RMSE‑based 1/f validation (≥50 % increase in 4‑55 Hz band).
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
-todo.plot = 1;
+todo.plot = 0;
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
-RMSEThreshold           = 0.1;              % >50 % increase
+RMSEThreshold           = 0.5;              % >50 % increase
 freqRMSERangeHz         = [4 55];           % band used for RMSE
 fs            = cleanedSeg(1).sampledProcess.Fs;
 eventWindowSec= [-1 1];
@@ -97,6 +97,8 @@ disp('Baseline Computation Finished');
 
 %% ───── PASS‑2  (event fit & RMSE flagging)  ───────────────────────────────────
 disp('Computing event aperiodic component for step events (FO/FC)...');
+relRmses = [];  % <<< NEW: collect all relative RMSE ratios
+
 for i = 1:nSegments
     trialInfo = cleanedSeg(i).info('trial');
     if ~strcmp(trialInfo.condition,'step'), continue; end
@@ -159,16 +161,16 @@ for i = 1:nSegments
                     fitBsl = 10.^(bf.aperiodic_params(1)       - bf.aperiodic_params(2)     .*log10(fCommon));
                     rmse   = sqrt(mean((fitEvt-fitBsl).^2));
                     rmseValues(ch) = rmse;
-                    if rmse/mean(fitEvt) > RMSEThreshold
+                         % <<< NEW: compute relative RMSE ratio
+                    relRatio = rmse / mean(fitEvt);
+                    relRmses(end+1) = relRatio;
+                    eventPSD(ev).relativeRmse(ch) = relRatio;  % optional per-event storage
+
+                    if relRatio > RMSEThreshold
                         eventArtifactFlags(ch)=true; artifactFlags(i,ch)=true;
                     end
                 end
             end
-
-%             % legacy multiplicative rule
-%             if eventAperiodic(ch) > currentTrialBaseline(ch)*multiplicativeThreshold
-%                 eventArtifactFlags(ch)=true; artifactFlags(i,ch)=true;
-%             end
         end
 
         eventPSD(ev).eventTime          = evTime;
@@ -248,6 +250,16 @@ else
     stats.maxEventRMSE    = NaN;
     stats.numEventRMSE    = 0;
 end
+if ~isempty(relRmses)
+    stats.meanRelativeRMSE   = mean(relRmses,   'omitnan');
+    stats.medianRelativeRMSE = median(relRmses, 'omitnan');
+    stats.maxRelativeRMSE    = max(relRmses,    [], 'omitnan');
+else
+    stats.meanRelativeRMSE   = NaN;
+    stats.medianRelativeRMSE = NaN;
+    stats.maxRelativeRMSE    = NaN;
+end
+
 
 
 %% ───── PASS‑4  (plotting)  ───────────────────────────────────────────────────
@@ -342,4 +354,15 @@ if todo.plot
         end
     end
 end
+
+% artifactFlags is [nSegments×nChannels] logical: true=flagged
+okChannelsPerSeg = sum(~artifactFlags, 2);   % how many channels survived in each segment
+
+% Store into stats for downstream printing:
+stats.okChannelsPerSegment    = okChannelsPerSeg;                 % vector [nSegments×1]
+stats.averageOKChannelsPerSeg = mean(okChannelsPerSeg,   'omitnan');
+stats.medianOKChannelsPerSeg  = median(okChannelsPerSeg, 'omitnan');
+stats.minOKChannelsPerSeg     = min(okChannelsPerSeg);
+stats.maxOKChannelsPerSeg     = max(okChannelsPerSeg);
+
 end

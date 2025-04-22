@@ -77,21 +77,43 @@ else
     
     %% Spectral transformation
     lfp = [temp.sampledProcess];
-    % --- zero spectral input for CLEAN data only, skip “*_wrong” -------------
-    if strcmpi(version,'clean')
-        for tIdx = 1:numel(temp)
-            cond = temp(tIdx).info('trial').condition;
-            if endsWith(cond,'_wrong')
-                badCh = temp(tIdx).info('artifactChannels');
-                if ~isempty(badCh)
-                    lfp(tIdx).values{1}(:,badCh) = 0;
+% --- zero spectral input for CLEAN data only, skip “*_wrong” and drop trials with all channels bad -------------
+if strcmpi(version,'clean')
+    % initialize logical mask for trials to skip
+    skipTrials = false(1, numel(temp));
+
+    for tIdx = 1:numel(temp)
+        cond  = temp(tIdx).info('trial').condition;
+        if endsWith(cond, '_wrong')
+            badCh = temp(tIdx).info('artifactChannels');
+            if ~isempty(badCh)
+                % total number of channels in this trial
+                nCh = size(lfp(tIdx).values{1}, 2);
+                
+                if numel(badCh) == nCh
+                    % if _all_ channels are marked bad, skip this trial entirely
+                    skipTrials(tIdx) = true;
+%                     fprintf('step2_spectral: seg %d – skipping trial (all channels bad)\n', tIdx);
+                    continue;
+                else
+                    % otherwise zero out only the bad channels
+                    lfp(tIdx).values{1}(:, badCh) = 0;
 %                     fprintf('step2_spectral: seg %d – zeroed channels %s (step_wrong)\n', ...
 %                             tIdx, mat2str(badCh));
                 end
             end
         end
-   end
+    end
 
+    % --- ADDED: if no LFP remains after cleaning, print message and exit gracefully
+    if isempty(lfp)
+        msg = sprintf('step2_spectral: no valid LFP segments remain after artifact cleaning for event "%s". Exiting.', e);
+        disp(msg);
+        dataTF   = [];
+        existTF  = false;
+        return;
+    end
+end
 
     if ~isempty(lfp)
         TF = tfr(lfp, 'method', 'chronux', 'tBlock', tBlock, 'tStep', 0.03, ...
