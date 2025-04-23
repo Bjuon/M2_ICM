@@ -235,10 +235,10 @@ else
 end
 
 stats.rejectedSegmentsCountPerChannel = sum(artifactFlags, 1);
-stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / nSegments) * 100;
+stats.percentageSegmentsRejectedPerChannel = (stats.rejectedSegmentsCountPerChannel / numSegmentsChecked) * 100;
 stats.totalFlaggedChannels = sum(artifactFlags(:));
 
-% <<< ADDED: RMSE summary statistics
+% RMSE summary statistics
 if ~isempty(allEventRmses)
     stats.meanEventRMSE   = mean(allEventRmses, 'omitnan');
     stats.medianEventRMSE = median(allEventRmses, 'omitnan');
@@ -250,24 +250,119 @@ else
     stats.maxEventRMSE    = NaN;
     stats.numEventRMSE    = 0;
 end
+
 if ~isempty(relRmses)
+    stats.minRelativeRMSE    = min(relRmses,    [], 'omitnan');
     stats.meanRelativeRMSE   = mean(relRmses,   'omitnan');
-    stats.medianRelativeRMSE = median(relRmses, 'omitnan');
     stats.maxRelativeRMSE    = max(relRmses,    [], 'omitnan');
 else
+    stats.minRelativeRMSE    = NaN;
     stats.meanRelativeRMSE   = NaN;
-    stats.medianRelativeRMSE = NaN;
     stats.maxRelativeRMSE    = NaN;
 end
+
+stats.freqRangeHz        = freqRangeHz;
+stats.freqRMSERangeHz    = freqRMSERangeHz;
+stats.RMSEThreshold      = RMSEThreshold;
+stats.fooofSettings      = fooofSettings;
+
+% Initialize counters
+usableFO = 0;     % number of FO events with ≥1 OK channel
+usableFC = 0;     % number of FC events with ≥1 OK channel
+FOcounts  = [];   % for each FO event, number of OK channels
+FCcounts  = [];   % for each FC event, number of OK channels
+
+
+for i = 1:nSegments
+    % Only care about 'step' segments
+    tinfo = cleanedSeg_flagged(i).info('trial');
+    if ~startsWith(tinfo.condition,'step'), continue; end
+
+    evs = cleanedSeg_flagged(i).eventProcess.values{1,1};
+    psd = cleanedSeg_flagged(i).info('psdInfo');
+
+    for e = 1:numel(psd)
+        okCh = find(~psd(e).eventArtifactFlags);
+
+        if ~isempty(okCh)
+            switch evs(e).name.name
+                case 'FO'
+                    usableFO = usableFO + 1;
+                    FOcounts(end+1) = numel(okCh);
+
+                    
+                case 'FC'
+                    usableFC = usableFC + 1;
+                    FCcounts(end+1) = numel(okCh);
+            end
+        end
+    end
+end
+
+% --- Print summary statistics to the command window ---
+fprintf('\n=== Usable step events (≥1 OK channel) ===\n');
+fprintf('FO events: %d\n', usableFO);
+fprintf('FC events: %d\n', usableFC);
+
+fprintf('\n=== OK-channel count distribution per event ===\n');
+if ~isempty(FOcounts)
+    fprintf('  FO – min: %d, mean: %.1f, max: %d OK channels\n', ...
+        min(FOcounts), mean(FOcounts), max(FOcounts));
+else
+    fprintf('  FO – no usable events\n');
+end
+if ~isempty(FCcounts)
+    fprintf('  FC – min: %d, mean: %.1f, max: %d OK channels\n', ...
+        min(FCcounts), mean(FCcounts), max(FCcounts));
+else
+    fprintf('  FC – no usable events\n');
+end
+
+
+% Store into stats
+stats.usableEvents.FO = usableFO;
+stats.usableEvents.FC = usableFC;
+
+for i = 1:nSegments
+    tinfo = cleanedSeg_flagged(i).info('trial');
+    if ~startsWith(tinfo.condition,'step'), continue; end
+
+    % build list of channel names once
+    labels = cleanedSeg_flagged(i).sampledProcess.labels;
+    chanNames = cellfun(@(L) L.name, num2cell(labels), 'uni',false);
+
+    keySuffix = sprintf('%s_%d_%s', tinfo.patient(end-2:end), tinfo.nTrial, tinfo.medication);
+    eventPSD  = cleanedSeg_flagged(i).info('psdInfo');
+    evs       = cleanedSeg_flagged(i).eventProcess.values{1,1};
+
+    for e = 1:numel(eventPSD)
+        % find OK‐channel **names**
+        okIdx = find(~eventPSD(e).eventArtifactFlags);
+        if isempty(okIdx), continue; end
+        okNames = chanNames(okIdx);
+
+        figName = sprintf('%s_%s_step%02d', keySuffix, evs(e).name.name, tinfo.nStep);
+
+        % join into comma‐separated list
+        fprintf('Event %s: OK channels [%s]\n', ...
+            figName, strjoin(okNames, ', '));
+    end
+
 
 
 
 %% ───── PASS‑4  (plotting)  ───────────────────────────────────────────────────
 if todo.plot
     if ~exist(TrialRejectionDir,'dir'), mkdir(TrialRejectionDir); end
+
     for i = 1:nSegments
         trialInfo = cleanedSeg_flagged(i).info('trial');
         if ~startsWith(trialInfo.condition,'step'), continue; end
+
+          % get channel names once
+        labels   = cleanedSeg_flagged(i).sampledProcess.labels;
+        chanNames= cellfun(@(L) L.name, num2cell(labels), 'uni',false);
+
 
         keySuffix  = sprintf('%s_%d_%s',trialInfo.patient(end-2:end),...
                                           trialInfo.nTrial,trialInfo.medication);
@@ -332,9 +427,9 @@ if todo.plot
                 % --- channel title if flagged
                 isFlaggedNow = eventPSD(e).eventArtifactFlags(ch);   % <<—— per‑event flag
                 if isFlaggedNow
-                    title(ax,sprintf('CH%d: FLAGGED',ch),'Color','k');
+                    title(ax, sprintf('%s: FLAGGED', chanNames{ch}), 'Color','k');
                 else
-                    title(ax,sprintf('CH%d: OK',ch));
+                    title(ax, sprintf('%s: OK',      chanNames{ch}));
                 end
 
                 xlabel(ax,'Freq (Hz)'); ylabel(ax,'Power (dB)');
@@ -350,19 +445,10 @@ if todo.plot
 
             set(gcf,'Position',[100 100 1200 800]);
             saveas(gcf,fullfile(TrialRejectionDir,[figName,'.png']));
+          
             close(gcf);
         end
     end
 end
-
-% artifactFlags is [nSegments×nChannels] logical: true=flagged
-okChannelsPerSeg = sum(~artifactFlags, 2);   % how many channels survived in each segment
-
-% Store into stats for downstream printing:
-stats.okChannelsPerSegment    = okChannelsPerSeg;                 % vector [nSegments×1]
-stats.averageOKChannelsPerSeg = mean(okChannelsPerSeg,   'omitnan');
-stats.medianOKChannelsPerSeg  = median(okChannelsPerSeg, 'omitnan');
-stats.minOKChannelsPerSeg     = min(okChannelsPerSeg);
-stats.maxOKChannelsPerSeg     = max(okChannelsPerSeg);
 
 end

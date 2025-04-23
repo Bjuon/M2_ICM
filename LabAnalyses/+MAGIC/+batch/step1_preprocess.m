@@ -539,9 +539,9 @@ if todo.thenaisie == 1 % Using the flag as provided
 
         
         %% --- Calculate and Display Summary Statistics ---
-        totalSegs = rejectionStats.totalSegments;
-        flaggedSegsCount = sum(any(artifactFlags, 2));  % Segments with at least one flagged channel
-        percentageFlaggedSegs = (flaggedSegsCount / totalSegs) * 100;
+        totalStepSegs       = rejectionStats.numSegmentsChecked;
+        flaggedSegsCount    = sum(any(artifactFlags, 2));  % flagged in ANY channel, across ALL segments
+        percentageFlaggedSegs = (flaggedSegsCount / totalStepSegs) * 100;
         avgBaselineAperiodicComponents = rejectionStats.overallAverageBaselineAperiodicComponents;
         avgEventAperiodicComponents = rejectionStats.overallAverageEventAperiodicComponents;
         meanRMSE    = rejectionStats.meanEventRMSE;
@@ -549,30 +549,29 @@ if todo.thenaisie == 1 % Using the flag as provided
         maxRMSE     = rejectionStats.maxEventRMSE;
         numRMSE     = rejectionStats.numEventRMSE;
 
-
-        fprintf('\n--- Artifact Rejection Statistics (Spectrogram Method) ---\n');
-        fprintf('Total Segments: %d\n', totalSegs);
-        fprintf('Flagged Segments: %d\n', flaggedSegsCount);
-        fprintf('Percentage Flagged: %.2f%%\n', percentageFlaggedSegs);
-    
-      
-
-        fprintf('Average Baseline Aperiodic Component: %.4f\n', avgBaselineAperiodicComponents);
-        fprintf('Average Step Aperiodic Component: %.4f\n', avgEventAperiodicComponents);
-        fprintf('Mean Relative RMSE (ratio): %.2f\n',   rejectionStats.meanRelativeRMSE);
-        fprintf('Median Relative RMSE: %.2f\n',         rejectionStats.medianRelativeRMSE);
-        fprintf('Max Relative RMSE: %.2f\n\n',          rejectionStats.maxRelativeRMSE);
-        fprintf('--------------------------------------------------------\n\n');
+        fprintf('\n--- Spectrogram AR Settings ---\n');
+        fprintf('FOOOF freq range: [%d %d] Hz\n', rejectionStats.freqRangeHz(1), rejectionStats.freqRangeHz(2));
+        fprintf('RMSE freq range: [%d %d] Hz\n', rejectionStats.freqRMSERangeHz(1), rejectionStats.freqRMSERangeHz(2));
+        fprintf('RMSE threshold: %.2f\n', rejectionStats.RMSEThreshold);
+        p = rejectionStats.fooofSettings;
+        fprintf('FOOOF settings: peak_width_limits=[%d %d], max_n_peaks=%d, peak_threshold=%.1f, aperiodic_mode=%s\n', ...
+            p.peak_width_limits(1), p.peak_width_limits(2), p.max_n_peaks, p.peak_threshold, p.aperiodic_mode);
         
-        % Optional: Display per-channel statistics.
-        disp('Per-channel rejection counts:');
-        disp(rejectionStats.rejectedSegmentsCountPerChannel);
-        disp('Per-channel rejection percentages:');
-        disp(rejectionStats.percentageSegmentsRejectedPerChannel);
-        fprintf('Average OK channels/segment: %.1f\n', rejectionStats.averageOKChannelsPerSeg);
-        fprintf('Median OK channels/segment:  %.1f\n', rejectionStats.medianOKChannelsPerSeg);
-        fprintf('Range OK channels/segment:   %d–%d\n\n', ...
-        rejectionStats.minOKChannelsPerSeg, rejectionStats.maxOKChannelsPerSeg);
+        fprintf('\n--- Key Outcome Statistics ---\n');
+        fprintf(' Total step segments analyzed:          %d\n', totalStepSegs);
+        fprintf(' Step segments with ≥1 flagged channel: %d\n', flaggedSegsCount);
+        fprintf(' %% step segments flagged:             %.2f%%\n\n', percentageFlaggedSegs);
+        fprintf('Avg baseline aperiodic: %.4f\n', avgBaselineAperiodicComponents);
+        fprintf('Avg step aperiodic:    %.4f\n', avgEventAperiodicComponents);
+        fprintf('Mean relative RMSE:     %.2f\n', rejectionStats.meanRelativeRMSE);
+        fprintf('Min relative RMSE:      %.2f\n', rejectionStats.minRelativeRMSE);
+        fprintf('Max relative RMSE:      %.2f\n\n', rejectionStats.maxRelativeRMSE);
+        
+        fprintf('Channel-wise flagged %%:\n');
+        for ch = 1:numel(rejectionStats.percentageSegmentsRejectedPerChannel)
+            fprintf('  Ch%d: %.1f%%\n', ch, rejectionStats.percentageSegmentsRejectedPerChannel(ch));
+        end
+        fprintf('\n');
 
         seg = {seg_raw, seg_clean};
         
