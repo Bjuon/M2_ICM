@@ -3,7 +3,7 @@ function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejec
 %  RMSE‑based 1/f validation (≥50 % increase in 4‑55 Hz band).
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
-todo.plot = 0;
+todo.plot = 1;
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
 RMSEThreshold           = 0.5;              % >50 % increase
@@ -30,6 +30,9 @@ cleanedSeg_flagged = cleanedSeg;
 nSegments          = numel(cleanedSeg);
 if nSegments==0, error('cleanedSeg is empty.'); end
 nChannels          = size(cleanedSeg(1).sampledProcess.values{1,1},2);
+labels     = cleanedSeg(1).sampledProcess.labels;          % struct array
+chanNames  = cellfun(@(L) L.name, num2cell(labels), ...
+                     'UniformOutput', false);
 artifactFlags      = false(nSegments,nChannels);
 allBaselineAperiodicComponents = [];
 allEventAperiodicComponents    = [];
@@ -63,8 +66,12 @@ for i = 1:nSegments
             [s, f, ~] = spectrogram(bslSignal(:, ch), winLenSamples, overlapSamples, nfft, fs);
             freqIdx = (f >= freqRangeHz(1)) & (f <= freqRangeHz(2));
             if any(freqIdx)
-                powerS = abs(s(freqIdx, :)).^2;
+                powerS = abs(s(freqIdx, :)).^2 + eps; % added espilon to avoid zero values
                 avgPSD = mean(powerS, 2);  % avgPSD in linear power units
+                if any(~isfinite(avgPSD))
+                   warning('AR: canal %d du trial %s ignoré (PSD invalide).', ch, trialKey);
+                   continue
+                end
                 fooofRes_bsl = MAGIC.batch.fooof(f(freqIdx), avgPSD, [freqRangeHz(1), freqRangeHz(2)], fooofSettings, false);
                 trialBaselineAperiodic(ch) = fooofRes_bsl.aperiodic_params(1);
                 
@@ -96,7 +103,7 @@ end
 disp('Baseline Computation Finished');
 
 %% ───── PASS‑2  (event fit & RMSE flagging)  ───────────────────────────────────
-disp('Computing event aperiodic component for step events (FO/FC)...');
+disp('Computing event aperiodic fit for step events (FO/FC) and computing relative RMSE...');
 relRmses = [];  % <<< NEW: collect all relative RMSE ratios
 
 for i = 1:nSegments
@@ -145,7 +152,7 @@ for i = 1:nSegments
             [s,f,~] = spectrogram(sig,winLenSamples,overlapSamples,nfft,fs);
             fIdx  = f>=freqRangeHz(1)&f<=freqRangeHz(2);
             if ~any(fIdx), continue; end
-            pwr   = abs(s(fIdx,:)).^2; avgPSD = mean(pwr,2);
+              pwr   = abs(s(fIdx,:)).^2 + eps; avgPSD = mean(pwr,2); % added espilon to avoid zero values
             fooofEvt = MAGIC.batch.fooof(f(fIdx),avgPSD,[freqRangeHz(1),freqRangeHz(2)],fooofSettings,false);
 
             eventAperiodic(ch) = fooofEvt.aperiodic_params(1);
@@ -218,7 +225,7 @@ stats = struct();
 stats.totalSegments = nSegments;
 stats.numSegmentsChecked = numSegmentsChecked;
 stats.numEventsChecked = numEventsChecked;
-
+stats.channelNames       = chanNames;
 if ~isempty(allBaselineAperiodicComponents)
     stats.averageBaselineAperiodicComponents = mean(allBaselineAperiodicComponents, 1, 'omitnan');
     stats.overallAverageBaselineAperiodicComponents = mean(stats.averageBaselineAperiodicComponents, 'omitnan');
@@ -327,10 +334,6 @@ for i = 1:nSegments
     tinfo = cleanedSeg_flagged(i).info('trial');
     if ~startsWith(tinfo.condition,'step'), continue; end
 
-    % build list of channel names once
-    labels = cleanedSeg_flagged(i).sampledProcess.labels;
-    chanNames = cellfun(@(L) L.name, num2cell(labels), 'uni',false);
-
     keySuffix = sprintf('%s_%d_%s', tinfo.patient(end-2:end), tinfo.nTrial, tinfo.medication);
     eventPSD  = cleanedSeg_flagged(i).info('psdInfo');
     evs       = cleanedSeg_flagged(i).eventProcess.values{1,1};
@@ -347,14 +350,17 @@ for i = 1:nSegments
         fprintf('Event %s: OK channels [%s]\n', ...
             figName, strjoin(okNames, ', '));
     end
-
-
-
+end
 
 %% ───── PASS‑4  (plotting)  ───────────────────────────────────────────────────
 if todo.plot
-    if ~exist(TrialRejectionDir,'dir'), mkdir(TrialRejectionDir); end
+    set(groot,'DefaultFigureVisible','off') % Don't show figures
 
+     patientTrig = cleanedSeg_flagged(i).info('trial').patient(end-2:end);
+     patientDir  = fullfile(TrialRejectionDir, patientTrig);
+    if ~exist(patientDir, 'dir')
+        mkdir(patientDir);
+    end
     for i = 1:nSegments
         trialInfo = cleanedSeg_flagged(i).info('trial');
         if ~startsWith(trialInfo.condition,'step'), continue; end
@@ -444,7 +450,7 @@ if todo.plot
             lg.Layout.Tile='north';
 
             set(gcf,'Position',[100 100 1200 800]);
-            saveas(gcf,fullfile(TrialRejectionDir,[figName,'.png']));
+            saveas(gcf,fullfile(patientDir,[figName,'.png']));
           
             close(gcf);
         end

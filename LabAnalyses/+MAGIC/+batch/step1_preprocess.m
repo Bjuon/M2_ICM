@@ -539,15 +539,12 @@ if todo.thenaisie == 1 % Using the flag as provided
 
         
         %% --- Calculate and Display Summary Statistics ---
+        totalSeg = rejectionStats.totalSegments;
         totalStepSegs       = rejectionStats.numSegmentsChecked;
         flaggedSegsCount    = sum(any(artifactFlags, 2));  % flagged in ANY channel, across ALL segments
         percentageFlaggedSegs = (flaggedSegsCount / totalStepSegs) * 100;
         avgBaselineAperiodicComponents = rejectionStats.overallAverageBaselineAperiodicComponents;
         avgEventAperiodicComponents = rejectionStats.overallAverageEventAperiodicComponents;
-        meanRMSE    = rejectionStats.meanEventRMSE;
-        medianRMSE  = rejectionStats.medianEventRMSE;
-        maxRMSE     = rejectionStats.maxEventRMSE;
-        numRMSE     = rejectionStats.numEventRMSE;
 
         fprintf('\n--- Spectrogram AR Settings ---\n');
         fprintf('FOOOF freq range: [%d %d] Hz\n', rejectionStats.freqRangeHz(1), rejectionStats.freqRangeHz(2));
@@ -558,6 +555,7 @@ if todo.thenaisie == 1 % Using the flag as provided
             p.peak_width_limits(1), p.peak_width_limits(2), p.max_n_peaks, p.peak_threshold, p.aperiodic_mode);
         
         fprintf('\n--- Key Outcome Statistics ---\n');
+        fprintf(' Total segments           %d\n', totalSeg);
         fprintf(' Total step segments analyzed:          %d\n', totalStepSegs);
         fprintf(' Step segments with ≥1 flagged channel: %d\n', flaggedSegsCount);
         fprintf(' %% step segments flagged:             %.2f%%\n\n', percentageFlaggedSegs);
@@ -569,7 +567,9 @@ if todo.thenaisie == 1 % Using the flag as provided
         
         fprintf('Channel-wise flagged %%:\n');
         for ch = 1:numel(rejectionStats.percentageSegmentsRejectedPerChannel)
-            fprintf('  Ch%d: %.1f%%\n', ch, rejectionStats.percentageSegmentsRejectedPerChannel(ch));
+           fprintf('  %-4s: %.1f%%\n', ...
+           rejectionStats.channelNames{ch}, ...
+           rejectionStats.percentageSegmentsRejectedPerChannel(ch));
         end
         fprintf('\n');
 

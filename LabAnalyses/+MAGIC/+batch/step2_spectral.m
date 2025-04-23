@@ -26,7 +26,8 @@ end
 d = linq(seg);
 
 if ~isempty(e)
-   temp = d.where(@(x) x.info('trial').quality == 1);
+    temp = d; 
+%    temp = d.where(@(x) x.info('trial').quality == 1);
    if strcmp(segType, 'step')
         if strcmp(e, 'FOG_S') || strcmp(e, 'TURN_S')
             SyncWin = [-2.5 2];
@@ -77,44 +78,66 @@ else
     
     %% Spectral transformation
     lfp = [temp.sampledProcess];
-% --- zero spectral input for CLEAN data only, skip “*_wrong” and drop trials with all channels bad -------------
-if strcmpi(version,'clean')
-    % initialize logical mask for trials to skip
-    skipTrials = false(1, numel(temp));
+ 
+      % ---------------------------------------------------------------
+    % ---  ZERO-out bad channels *for the current event only*      ---
+    % ---------------------------------------------------------------
+    if strcmpi(version,'clean')
 
-    for tIdx = 1:numel(temp)
-        cond  = temp(tIdx).info('trial').condition;
-        if endsWith(cond, '_wrong')
-            badCh = temp(tIdx).info('artifactChannels');
-            if ~isempty(badCh)
-                % total number of channels in this trial
-                nCh = size(lfp(tIdx).values{1}, 2);
-                
-                if numel(badCh) == nCh
-                    % if _all_ channels are marked bad, skip this trial entirely
-                    skipTrials(tIdx) = true;
-%                     fprintf('step2_spectral: seg %d – skipping trial (all channels bad)\n', tIdx);
-                    continue;
-                else
-                    % otherwise zero out only the bad channels
-                    lfp(tIdx).values{1}(:, badCh) = 0;
-%                     fprintf('step2_spectral: seg %d – zeroed channels %s (step_wrong)\n', ...
-%                             tIdx, mat2str(badCh));
-                end
+        skipTrials          = false(1,numel(temp));
+        keptCnt   = 0;   droppedCnt = 0;
+
+        for tIdx = 1:numel(temp)
+
+            % ---- 1. get the artefact flags for THIS event (e) ----
+            evtNames = arrayfun(@(x) x.name.name, ...
+                                temp(tIdx).eventProcess.values{1}, ...
+                                'uni', 0);
+            evtIdx   = find(strcmp(evtNames, e));       % FO = 1 , FC = 2
+            if isempty(evtIdx)
+                warning('step2_spectral: event ‘‘%s’’ missing in seg %d',e,tIdx);
+                continue
+            end
+
+            % `psdInfo` was added by computePSDandArtifactRejection in step-1
+            psdInf   = temp(tIdx).info('psdInfo');
+            badFlags = logical(psdInf(evtIdx).eventArtifactFlags);   % 1 = flagged
+            badCh    = find(badFlags);
+            nCh      = size(lfp(tIdx).values{1},2);
+
+            % ---- 2. decide keep / skip & possibly zero channels ----
+            if isempty(badCh)                     % nothing flagged
+                keptCnt = keptCnt + 1;
+%                 fprintf('[step2] KEEP  seg %3d – all %d channels OK\n',tIdx,nCh);
+
+            elseif numel(badCh) == nCh            % every channel bad
+                skipTrials(tIdx) = true;
+                droppedCnt       = droppedCnt + 1;
+%                 fprintf('[step2] SKIP  seg %3d – %d/%d bad channels (all)\n',tIdx,nCh,nCh);
+
+            else                                  % mixture of good & bad
+                lfp(tIdx).values{1}(:,badCh) = 0; % hard-zero bad channels
+                keptCnt = keptCnt + 1;
+%                 fprintf('[step2] KEEP  seg %3d – zeroed %d/%d bad channels\n', ...
+                 %       tIdx,numel(badCh),nCh);
             end
         end
-    end
 
-    % --- ADDED: if no LFP remains after cleaning, print message and exit gracefully
-    if isempty(lfp)
-        msg = sprintf('step2_spectral: no valid LFP segments remain after artifact cleaning for event "%s". Exiting.', e);
-        disp(msg);
-        dataTF   = [];
-        existTF  = false;
-        return;
-    end
-end
+        % ---- 3. physically drop the “all-bad” segments -------------
+        if any(skipTrials)
+            temp(skipTrials) = [];
+            lfp(skipTrials)  = [];
+        end
+        fprintf('[step2] SUMMARY – %d segments kept | %d dropped\n\n', ...
+                keptCnt, droppedCnt);
 
+        if isempty(lfp)          % nothing left = abort
+            dataTF  = [];
+            existTF = false;
+            fprintf('[step2] No usable segments remain – exiting.\n');
+            return
+        end
+    end
     if ~isempty(lfp)
         TF = tfr(lfp, 'method', 'chronux', 'tBlock', tBlock, 'tStep', 0.03, ...
             'f', [fqStart 100], 'tapers', [3 5], 'pad', n_pad);
