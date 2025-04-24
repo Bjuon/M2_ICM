@@ -3,7 +3,8 @@ function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejec
 %  RMSE‑based 1/f validation (≥50 % increase in 4‑55 Hz band).
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
-todo.plot = 1;
+todo.plot = 0;
+plotVisible = 'on'; % set off or on figure visibility 
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
 RMSEThreshold           = 0.5;              % >50 % increase
@@ -33,6 +34,21 @@ nChannels          = size(cleanedSeg(1).sampledProcess.values{1,1},2);
 labels     = cleanedSeg(1).sampledProcess.labels;          % struct array
 chanNames  = cellfun(@(L) L.name, num2cell(labels), ...
                      'UniformOutput', false);
+
+sampleVals    = cleanedSeg(1).sampledProcess.values{1,1};  
+emptyChannels = all(isnan(sampleVals) | sampleVals==0, 1); 
+if any(emptyChannels)
+    warning('computePSD:EmptyChannels', ...
+            'Excluding empty channels: %s', ...
+            strjoin(chanNames(emptyChannels), ', '));
+end
+
+% precompute list of “good” channels -->
+goodChIdx      = find(~emptyChannels);  
+nGoodChannels  = numel(goodChIdx);
+
+
+
 artifactFlags      = false(nSegments,nChannels);
 allBaselineAperiodicComponents = [];
 allEventAperiodicComponents    = [];
@@ -62,7 +78,15 @@ for i = 1:nSegments
         baselineAvgPSD = cell(1, nChannels);      
         baselineFooofRes = cell(1, nChannels);      
         
+   
         for ch = 1:nChannels
+          if emptyChannels(ch)                 % skip entirely empty channels
+            trialBaselineAperiodic(ch) = NaN;
+            baselineFrequencies{ch}       = [];
+            baselineAvgPSD{ch}           = [];
+            baselineFooofRes{ch}         = [];
+            continue;
+          end
             [s, f, ~] = spectrogram(bslSignal(:, ch), winLenSamples, overlapSamples, nfft, fs);
             freqIdx = (f >= freqRangeHz(1)) & (f <= freqRangeHz(2));
             if any(freqIdx)
@@ -146,6 +170,9 @@ for i = 1:nSegments
         rmseValues           = nan(1,nChannels);
 
         for ch = 1:nChannels
+            if emptyChannels(ch)           % also skip in event‐PSD
+                continue;
+            end
             sig = evtSig(:,ch);
             if any(isnan(sig)|isinf(sig)), continue; end
 
@@ -289,8 +316,7 @@ for i = 1:nSegments
     psd = cleanedSeg_flagged(i).info('psdInfo');
 
     for e = 1:numel(psd)
-        okCh = find(~psd(e).eventArtifactFlags);
-
+        okCh = find(~psd(e).eventArtifactFlags & ~emptyChannels);
         if ~isempty(okCh)
             switch evs(e).name.name
                 case 'FO'
@@ -340,7 +366,7 @@ for i = 1:nSegments
 
     for e = 1:numel(eventPSD)
         % find OK‐channel **names**
-        okIdx = find(~eventPSD(e).eventArtifactFlags);
+        okIdx = find( ~eventPSD(e).eventArtifactFlags & ~emptyChannels );        
         if isempty(okIdx), continue; end
         okNames = chanNames(okIdx);
 
@@ -354,7 +380,7 @@ end
 
 %% ───── PASS‑4  (plotting)  ───────────────────────────────────────────────────
 if todo.plot
-    set(groot,'DefaultFigureVisible','off') % Don't show figures
+    disp('Plotting Thenaisie start')
 
      patientTrig = cleanedSeg_flagged(i).info('trial').patient(end-2:end);
      patientDir  = fullfile(TrialRejectionDir, patientTrig);
@@ -364,11 +390,6 @@ if todo.plot
     for i = 1:nSegments
         trialInfo = cleanedSeg_flagged(i).info('trial');
         if ~startsWith(trialInfo.condition,'step'), continue; end
-
-          % get channel names once
-        labels   = cleanedSeg_flagged(i).sampledProcess.labels;
-        chanNames= cellfun(@(L) L.name, num2cell(labels), 'uni',false);
-
 
         keySuffix  = sprintf('%s_%d_%s',trialInfo.patient(end-2:end),...
                                           trialInfo.nTrial,trialInfo.medication);
@@ -381,16 +402,18 @@ if todo.plot
         for e = 1:numel(eventPSD)
             evName  = evs(e).name.name;
             figName = sprintf('%s_%s_step%02d', keySuffix, evName, trialInfo.nStep);
-            figure('Name',figName,'Color','w');
-            numCols=4; numRows=ceil(nChannels/numCols);
+            figure('Name',figName,'Color','w', 'Visible', plotVisible);
+            numCols=4; numRows=ceil(nGoodChannels/numCols); % changed to good channels
             tl=tiledlayout(numRows,numCols,'TileSpacing','compact','Padding','compact');
             title(tl,strrep(figName,'_',' '),'Interpreter','none',...
                   'FontWeight','bold','FontSize',12);
 
             legendHandles = gobjects(1,4);
 
-            for ch = 1:nChannels
-                ax = nexttile(tl,ch); hold(ax,'on');
+            for idx = 1:nGoodChannels
+                ch = goodChIdx(idx);          % actual channel number
+
+                ax = nexttile(tl,idx); hold(ax,'on');
 
                 % --- baseline & event PSD
                 fBsl = baselineStruct(idxBaseline).f{ch};
@@ -442,7 +465,7 @@ if todo.plot
                 xlim(ax,freqRangeHz);
                 hold(ax,'off');
 
-                if ch==1, legendHandles=[h1 h2 h3 h4]; end
+                if idx==1, legendHandles=[h1 h2 h3 h4]; end
             end
 
             lg=legend(legendHandles,{'Baseline PSD','Event PSD','Baseline 1/f','Event 1/f'},...

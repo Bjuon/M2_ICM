@@ -80,7 +80,7 @@ else
     lfp = [temp.sampledProcess];
  
       % ---------------------------------------------------------------
-    % ---  ZERO-out bad channels *for the current event only*      ---
+    % ---  ZERO-out bad & empty channels *for the current event only* -     ---
     % ---------------------------------------------------------------
     if strcmpi(version,'clean')
 
@@ -102,8 +102,12 @@ else
             % `psdInfo` was added by computePSDandArtifactRejection in step-1
             psdInf   = temp(tIdx).info('psdInfo');
             badFlags = logical(psdInf(evtIdx).eventArtifactFlags);   % 1 = flagged
-            badCh    = find(badFlags);
-            nCh      = size(lfp(tIdx).values{1},2);
+            vals       = lfp(tIdx).values{1};                       % matrix: time × channels
+            emptyMask  = all(isnan(vals) | vals==0, 1);            % 1 = empty channel
+            badCombined = badFlags | emptyMask;            
+            
+            badCh = find(badCombined);
+            nCh   = size(vals, 2);
 
             % ---- 2. decide keep / skip & possibly zero channels ----
             if isempty(badCh)                     % nothing flagged

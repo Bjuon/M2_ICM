@@ -44,7 +44,7 @@ global med subject event s
 
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
-todo.raw             = 0; % create raw data
+todo.raw             = 1; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
@@ -144,7 +144,7 @@ if ~argin
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
 %    subject   = complet(1:end-1)
-    subject = {'FEp_0536'}
+    subject = {'BEm_000a'}
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])

@@ -27,7 +27,9 @@ function [ArtefactFlags, CleanedData] = ArtefactDetection_MADDerivative(data)
 ampFactor = 5; % Filter for outlier removal --> first step
 derivFactor = 1.5; % Filter for derivative MAD 
 
-todo.plot=0;
+todo.plot=1;
+
+plotVisible = 'off'; 
 
 % Extract raw data and initialize variables
 raw       = data.values{1}; 
@@ -45,7 +47,7 @@ for ch = 1:nChannels
     raw(:, ch) = interp1(timeVec(goodIdx), raw(goodIdx, ch), timeVec, 'spline', 'extrap');
 end
 
-% --- Step 2: Derivative-Based Filtering ---
+% --- Method 1 : Simple Derivative-Based Filtering ---
 % % Compute temporal derivative (prepend first value to maintain size)
 % deriv = diff(raw); 
 % deriv = [deriv(1, :); deriv];
@@ -65,8 +67,12 @@ end
 % end
 % 
 % end
+% it’s asymmetric and sensitive to noise—every little perturbation shows up.
 
-% Compute temporal derivative using central differences for better symmetry.
+
+
+
+% Method 2 : Compute temporal derivative using central differences .
 % For the first and last sample we use forward and backward differences, respectively.
 deriv = zeros(size(raw));
 deriv(1,:) = raw(2,:) - raw(1,:);
@@ -75,13 +81,13 @@ deriv(end,:) = raw(end,:) - raw(end-1,:);
 
 % Apply smoothing to extract the slow component of the derivative.
 % Adjust the window length according to the data characteristics.
-window = round(0.1 * Fs);  % e.g., 0.1-second window; you might tweak this value.
+window = round(0.1 * Fs);  % e.g., 0.1-second window; % tester 0.05
 smooth_deriv = movmean(deriv, window);
 
 % Compute the residual (fast component) by subtracting the slow, smoothed derivative.
 residual = deriv - smooth_deriv;
 
-% Initialize outputs (unchanged)
+% Flagging Logic (unchanged)
 ArtefactFlags = false(nSamples, nChannels);
 CleanedData   = raw; 
 
@@ -105,8 +111,8 @@ end
 % --- Revised Plotting: 3 subplots per channel‐segment with legends ---
 global Deriv_Dir
 
-
 if todo.plot
+    disp('Start Plotting Deriv')
     % Ensure output directory exists
     MAGIC.batch.EnsureDir(Deriv_Dir);
     
@@ -130,6 +136,7 @@ if todo.plot
             thr_smooth = derivFactor * mad(smooth_seg, 1);
 
             % --- Setup tiled layout ---
+            fig = figure('Visible',plotVisible);
             tiledlayout(3,1, 'TileSpacing','compact', 'Padding','compact');
 
             % 1) Raw signal
