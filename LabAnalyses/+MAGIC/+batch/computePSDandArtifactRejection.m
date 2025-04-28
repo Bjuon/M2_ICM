@@ -1,18 +1,18 @@
 function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejection(cleanedSeg, baselineStruct)
 % ────────────────────────────────────────────────────────────────────────────────
-%  RMSE‑based 1/f validation (≥50 % increase in 4‑55 Hz band).
+%  RMSE‑based 1/f validation (≥50 % increase in 10‑55 Hz band).
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
-todo.plot = 0;
+todo.plot = 1;
 plotVisible = 'on'; % set off or on figure visibility 
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
 RMSEThreshold           = 0.5;              % >50 % increase
-freqRMSERangeHz         = [4 55];           % band used for RMSE
+freqRMSERangeHz         = [10 55];           % band used for RMSE
 fs            = cleanedSeg(1).sampledProcess.Fs;
 eventWindowSec= [-1 1];
 stepEventNames= {'FO','FC'};
-freqRangeHz   = [4 55];
+freqRangeHz   = [10 55];
 winLenSamples = round(fs*0.5);
 overlapSamples= round(winLenSamples*0.5);
 nfft          = 1024;

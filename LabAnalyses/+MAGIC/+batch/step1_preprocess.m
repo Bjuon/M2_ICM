@@ -213,8 +213,22 @@ for f = 1 : numel(files)
 
                              % --- NEW: Gather baseline information into baselineStruct ---
                         % Compute the absolute baseline times by adding offset to the trial start (LFPtrial_start):
-                        baselineStart = LFPtrial_start + (PreStart - 0.8);
-                        baselineEnd   = LFPtrial_start + (PreStart - 0.1);
+                        %First baseline copy BSL event : too shaky
+%                         baselineStart = LFPtrial_start + (PreStart - 0.8);
+%                         baselineEnd   = LFPtrial_start + (PreStart - 0.1);
+
+
+%                       baseline de - 2 min 
+                        baselineStart = max(0, LFPtrial_start - 120);
+                        baselineEnd   = LFPtrial_start;
+
+                        
+
+
+                        % baseline 1.2 secondes avant la BSL classique 
+%                         baselineStart = LFPtrial_start + (PreStart - 1.2);
+%                         baselineEnd   = LFPtrial_start + (PreStart - 0.1);
+
                         % Create the trial key from your known metadata
                         trialKey = sprintf('%s_%d_%s', RecID, MAGIC_trials.Trialnum{t}, med);
                         % Store the baseline info: trialKey, med state, the baseline window, and optionally the signal.
@@ -225,6 +239,11 @@ for f = 1 : numel(files)
                         t_full = (0:size(rawLFP_data,1)-1) / data.Fs;
                         idxBaseline = t_full >= baselineStart & t_full <= baselineEnd;
                         baselineStruct(end).signal = rawLFP_data(idxBaseline, :);
+
+                         % --- PRINT ±6 s baseline window ---
+                        fprintf('Trial %s (med=%s): ±120s baseline window [%.2f, %.2f] s\n\n', ...
+                                trialKey, med, baselineStart, baselineEnd);
+
                         % FIX
                         if validity || ~AlsoIncludeWrongEvent
                             e(2)  = metadata.event.Response('tStart', PreStart, 'tEnd', PreStart, 'name', FIX  , 'description', MAGIC.batch.Artefact_in_this_event_per_channel(t_ref, LFPtrial_start, 'encode', Artefacts_Detected_per_Sample, 0, 0, 0));
