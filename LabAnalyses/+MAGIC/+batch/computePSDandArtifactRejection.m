@@ -56,7 +56,6 @@ allEventRmses                   = [];
 numSegmentsChecked = 0; numEventsChecked = 0;
 
 %% ───── PASS‑1  (baseline aperiodic fit)  
-%% Pass 1: Retrieve Baseline Aperiodic Component for Each Trial
 disp('Calculating baseline aperiodic component...');
 
 for i = 1:nSegments

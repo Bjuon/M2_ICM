@@ -28,6 +28,7 @@ todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
 todo.thenaisie =1; 
+todo.Deriv = 1;
 baselineStruct = struct('trialKey', {}, 'window', {}, 'signal', {});  % This will gather baseline info for each trial
 
 
@@ -139,10 +140,9 @@ for f = 1 : numel(files)
                 
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts
-       disp(['Detecting and removing artefacts in raw LFP data ', med, ' state ', run]);
+       disp(['Removing Outliers in raw LFP data ', med, ' state ', run]);
 
-       % [Artefacts, Cleaned_Data] =
-       % MAGIC.batch.Artefact_detection_Mad_Filter(data);  % data from the raw file
+        [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_Mad_Filter(data);  % 6X MAD Outlier filter 
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
 
       % first emd with interpolation and all the plotting 
@@ -151,7 +151,7 @@ for f = 1 : numel(files)
       %  [Artefacts_Detected_per_Sample, Cleaned_Data, Stats] = MAGIC.batch.Artefact_detection_hybrid(data);
       %  [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_Detection_mathys_SuBar_simplified(data);
          %   [Artefacts_Detected_per_Sample, Cleaned_Data] = MAGIC.batch.Artefact_detection_mathys_ml(data);
-         [Artefacts, Cleaned_Data] = MAGIC.batch.ArtefactDetection_MADDerivative(data);  % MAD filter + derivative interpol
+        % [Artefacts, Cleaned_Data] = MAGIC.batch.ArtefactDetection_MADDerivative(data);  % derivative interpol
 
     end   
 %     --- Replot Cleaned LFP ---
@@ -222,9 +222,6 @@ for f = 1 : numel(files)
                         baselineStart = max(0, LFPtrial_start - 120);
                         baselineEnd   = LFPtrial_start;
 
-                        
-
-
                         % baseline 1.2 secondes avant la BSL classique 
 %                         baselineStart = LFPtrial_start + (PreStart - 1.2);
 %                         baselineEnd   = LFPtrial_start + (PreStart - 0.1);
@@ -240,9 +237,9 @@ for f = 1 : numel(files)
                         idxBaseline = t_full >= baselineStart & t_full <= baselineEnd;
                         baselineStruct(end).signal = rawLFP_data(idxBaseline, :);
 
-                         % --- PRINT ±6 s baseline window ---
-                        fprintf('Trial %s (med=%s): ±120s baseline window [%.2f, %.2f] s\n\n', ...
-                                trialKey, med, baselineStart, baselineEnd);
+                         % --- PRINT baseline window ---
+%                         fprintf('[Debug] Trial %s (med=%s): ±120s baseline window [%.2f, %.2f] s\n\n', ...
+%                                 trialKey, med, baselineStart, baselineEnd);
 
                         % FIX
                         if validity || ~AlsoIncludeWrongEvent
@@ -548,8 +545,43 @@ for f = 1 : numel(files)
 
     
 end
+%% Deriv Based Processing
+if todo.Deriv
+    disp('Starting Derivative-Based Cleaning & Stats');
 
-%% --- NEW: Apply Spectrogram-Based Artifact Rejection ---
+    % call the function
+    [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative(seg_clean);
+
+    % --- DISPLAY SUMMARY STATISTICS ---
+    fprintf('\n=== Derivative-Based Artifact Detection Summary ===\n');
+    fprintf('\n%% Segments flagged per channel:\n');
+    for ch = 1:numel(stats.percentageSegmentsRejectedPerChannel)
+        lbl = seg_clean(1).sampledProcess.labels(ch).name;
+        pct = stats.percentageSegmentsRejectedPerChannel(ch);
+        fprintf('  %s: %.1f%%\n', lbl, pct);
+    end
+
+    fprintf('\nTotal FO/FC events checked: %d\n', stats.numEventsChecked);
+
+    fprintf('\n%% Events flagged per channel:\n');
+    for ch = 1:numel(stats.eventRejectedPercentPerChannel)
+        lbl = seg_clean(1).sampledProcess.labels(ch).name;
+        pct = stats.eventRejectedPercentPerChannel(ch);
+        fprintf('  %s: %.1f%%\n', lbl, pct);
+    end
+
+    fprintf('\nUsable FO events: %d (OK channels – min %d, mean %.1f, max %d)\n', ...
+        stats.usableEvents.FO, ...
+        stats.OKchannelsPerFO.min, stats.OKchannelsPerFO.mean, stats.OKchannelsPerFO.max);
+
+    fprintf('Usable FC events: %d (OK channels – min %d, mean %.1f, max %d)\n', ...
+        stats.usableEvents.FC, ...
+        stats.OKchannelsPerFC.min, stats.OKchannelsPerFC.mean, stats.OKchannelsPerFC.max);
+
+    fprintf('===============================================\n\n');
+end 
+
+%% --- Apply Spectrogram-Based Artifact Rejection ---
 if todo.thenaisie == 1 % Using the flag as provided
     disp('--- Starting Thenaisie-Based Steps Rejection ---');
        
