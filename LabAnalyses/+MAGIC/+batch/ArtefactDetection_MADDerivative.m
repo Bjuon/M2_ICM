@@ -1,128 +1,156 @@
-function [seg_clean, stats] = ArtefactDetection_MADDerivative(seg_clean)
+function [seg_clean, stats] = ArtefactDetection_MADDerivative(seg_clean, method, doPlot, doSurrogate)
 % ArtefactDetection_MADDerivative
-% 2) Derivative MAD interpolation using *central differences* + residual
-%    After cleaning, stores per‑segment flags and per‑event (FO/FC) flags.
-% 3) Returns a stats struct summarising rejection at segment & event level.
-% ----------------------------------------------------------------------
-% OUTPUT
-%   seg_clean – updated Segment array with cleaned data and info fields:
-%                   ▸ .info('derivFlags')       – 1×nCh logical, whole segment
-%                   ▸ .info('derivEventInfo')   – struct array per FO/FC event
-%   stats         – struct with counts, percentages, usable events etc.
+% Performs derivative‐based artefact detection & interpolation using either
+% simple forward differences or central differences + residual, with MAD
+% thresholding. Optionally plots per‐event diagnostics and surrogate tests.
+%
+% USAGE
+%   [seg_clean, stats] = ArtefactDetection_MADDerivative(seg_clean)
+%   [seg_clean, stats] = ArtefactDetection_MADDerivative(seg_clean, method)
+%   [seg_clean, stats] = ArtefactDetection_MADDerivative(seg_clean, method, doPlot)
+%   [seg_clean, stats] = ArtefactDetection_MADDerivative(seg_clean, method, doPlot, doSurrogate)
+%
+% INPUTS
+%   seg_clean  – array of Segment objects, each with:
+%                  .sampledProcess.values{1} ([nSamples×nCh] raw data)
+%                  .sampledProcess.times{1}  ([nSamples×1] time vector)
+%                  .sampledProcess.Fs        (sampling rate)
+%                  .eventProcess             (events array)
+%                  .info('trial')            (trial info: patient, nTrial, medication)
+%   method     – 'simple' or 'central' (default: 'central')
+%   doPlot     – logical: plot per‐event diagnostics for chosen method (default: false)
+%   doSurrogate– logical: perform surrogate‐based PSD plotting for FO events (default: false)
+%
+% OUTPUTS
+%   seg_clean  – same array, but with:
+%                   .sampledProcess.values{1} updated to cleaned data
+%                   .info('derivFlags')       (1×nCh logical per segment)
+%                   .info('derivEventInfo')   (struct array per FO/FC event)
+%   stats      – struct summarising segment & event rejection counts
 
+%% ===== USER-TUNABLE CONSTANTS ==========================================
+derivFactor    = 3;          % threshold = derivFactor × MAD
+smoothWinFrac  = 0.1;         % fraction of Fs for movmean window
+eventWindowSec = [-1 1];       % window (s) around FO/FC for event flags
+stepEventNames = {'FO','FC'};   % event names of interest
 
-%% ===== USER‑TUNABLE CONSTANTS ==========================================
-derivFactor    = 1.5;        % Derivative threshold = derivFactor × MAD
-smoothWinFrac  = 0.05;        % Fraction of Fs for movmean (0.1 ⇒ 100 ms)
-eventWindowSec = [-1 1];     % Window (s) around FO / FC for per‑event flags
-stepEventNames = {'FO','FC'}; % Behavioural event names of interest
-%% ======================================================================
+%% ===== DEFAULT ARGUMENTS ===============================================
+if nargin < 2 || isempty(method),      method      = 'central'; end
+if nargin < 3 || isempty(doPlot),      doPlot      = false;     end
+if nargin < 4 || isempty(doSurrogate), doSurrogate = false;     end
+method = validatestring(lower(method), {'simple','central'});
 
-% Optional diagnostic plotting controlled by global `todo.plot`
-global Deriv_Dir; 
-todo.plot =0;
-todo.plot_surrogate = 1;
-plotVisible = 'on';
+%% ===== INITIALISATION ==================================================
+global Deriv_Dir;
 if isempty(Deriv_Dir), Deriv_Dir = fullfile(pwd,'DerivPlots'); end
+if ~exist(Deriv_Dir,'dir'), mkdir(Deriv_Dir); end
+plotVisible = 'on';
 
-%% ---------- INITIALISATION --------------------------------------------
 nSeg   = numel(seg_clean);
 firstSp= seg_clean(1).sampledProcess;
 [~, nCh] = size(firstSp.values{1});
-segmentFlags  = false(nSeg, nCh);   % whole‑segment flags (any sample)
-allEventFlags = [];                 % will accumulate [nEvents × nCh]
-usableFO = 0; usableFC = 0; FOcounts = []; FCcounts = [];
+
+segmentFlags  = false(nSeg, nCh);   % whole-segment flags
+allEventFlags = [];                 % accumulate across segments
+usableFO = 0; usableFC = 0;
+FOcounts = []; FCcounts = [];
 numEventsChecked = 0;
 
-%% ---------- MAIN LOOP over segments -----------------------------------
+%% ===== MAIN LOOP OVER SEGMENTS ========================================
 for iSeg = 1:nSeg
     sp      = seg_clean(iSeg).sampledProcess;
-    raw     = sp.values{1};     % [samples × channels]
+    raw     = sp.values{1};        % [samples × channels]
     Fs      = sp.Fs;
     timeVec = sp.times{1};
     nSamples= size(raw,1);
 
-  %-------- Derivative‑based MAD interpolation -------------------
+    % Prepare cleaned data container
+    CleanedData = raw;
+    perChanMask = false(nSamples, nCh);
 
-    % --- Method 1 : Simple Derivative‑Based Filtering ------------------
-    % deriv = diff(raw);
-    % deriv = [deriv(1,:); deriv];   % prepend to preserve size
-    % ArtefactFlags = false(nSamples, nCh);
-    % CleanedData   = raw;
-    % for ch = 1:nCh
-    %     d_med = median(deriv(:,ch));
-    %     d_mad = mad(deriv(:,ch),1);
-    %     derivOutliers = abs(deriv(:,ch) - d_med) > derivFactor * d_mad;
-    %     ArtefactFlags(:,ch) = derivOutliers;
-    %     goodIdx = ~derivOutliers;
-    %     if nnz(goodIdx) >= 2
-    %         CleanedData(:,ch) = interp1(timeVec(goodIdx), CleanedData(goodIdx,ch), timeVec, 'pchip', 'extrap');
-    %     end
-    % end
-    % % it’s asymmetric and sensitive to noise—every little perturbation shows up.
+    %% --- CLEANING: choose derivative method --------------------------
+    switch method
+        case 'simple'
+            % forward difference, pad with zeros at end
+            deriv_s = [diff(raw); zeros(1,nCh)];
+            for ch = 1:nCh
+                m   = median(deriv_s(:,ch));
+                sd  = mad(deriv_s(:,ch),1);
+                bad = abs(deriv_s(:,ch) - m) > derivFactor * sd;
+                perChanMask(:,ch) = bad;
+                good = ~bad;
+                if nnz(good) >= 2
+                    CleanedData(:,ch) = interp1(...
+                        timeVec(good), CleanedData(good,ch), timeVec,...
+                        'pchip','extrap');
+                end
+            end
 
-    % --- Method 2 : Central differences + residual (ACTIVE) ------------
-    deriv            = zeros(size(raw));
-    deriv(1,:)       = raw(2,:) - raw(1,:);
-    deriv(2:end-1,:) = (raw(3:end,:) - raw(1:end-2,:)) / 2;
-    deriv(end,:)     = raw(end,:) - raw(end-1,:);
-
-    window       = round(smoothWinFrac * Fs);   % e.g. 0.1 s window
-    smooth_deriv = movmean(deriv, window);
-    residual     = deriv - smooth_deriv;        % fast component
-
-    CleanedData  = raw;                         % start from amp‑cleaned
-    perChanMask  = false(nSamples, nCh);        % store masks for per‑event eval
-
-    for ch = 1:nCh
-        r_med = median(residual(:,ch));
-        r_mad = mad(residual(:,ch),1);
-        outDer= abs(residual(:,ch) - r_med) > derivFactor * r_mad;
-        perChanMask(:,ch)   = outDer;
-        segmentFlags(iSeg,ch)= any(outDer);
-        goodIdx = ~outDer;
-        if nnz(goodIdx) >= 2
-            CleanedData(:,ch) = interp1(timeVec(goodIdx), CleanedData(goodIdx,ch), timeVec, 'pchip', 'extrap');
-        end
+        case 'central'
+            % 3-point central diff + residual
+            deriv            = zeros(size(raw));
+            deriv(1,:)       = raw(2,:) - raw(1,:);
+            deriv(2:end-1,:) = (raw(3:end,:) - raw(1:end-2,:)) / 2;
+            deriv(end,:)     = raw(end,:) - raw(end-1,:);
+            window           = round(smoothWinFrac * Fs);
+            smooth_deriv     = movmean(deriv, window);
+            residual         = deriv - smooth_deriv;
+            for ch = 1:nCh
+                m   = median(residual(:,ch));
+                sd  = mad(residual(:,ch),1);
+                bad = abs(residual(:,ch) - m) > derivFactor * sd;
+                perChanMask(:,ch)   = bad;
+                segmentFlags(iSeg,ch)= any(bad);
+                good = ~bad;
+                if nnz(good) >= 2
+                    CleanedData(:,ch) = interp1(...
+                        timeVec(good), CleanedData(good,ch), timeVec,...
+                        'pchip','extrap');
+                end
+            end
     end
 
-    % Save cleaned trace and segment‑level flags
+    % Save cleaned data & segment‐level flags
     seg_clean(iSeg).sampledProcess.values{1} = CleanedData;
-    seg_clean(iSeg).info('derivFlags')       = segmentFlags(iSeg,:);
+    seg_clean(iSeg).info('derivFlags')       = any(perChanMask,1);
 
-    %% --- STEP 3: Event‑by‑event artefact flags (FO / FC) ---------------
-    evs = seg_clean(iSeg).eventProcess.find('func', @(x) ismember(x.name.name, stepEventNames), 'policy','all');
+    %% --- EVENT‐LEVEL ARTEFACT FLAGGING & PLOTTING --------------------
+    evs = seg_clean(iSeg).eventProcess.find( ...
+        'func', @(x) ismember(x.name.name, stepEventNames), ...
+        'policy','all');
     if iscell(evs), evs = [evs{:}]; end
 
-        % Build once per segment
     trialInfo = seg_clean(iSeg).info('trial');
-    keySuffix = sprintf('%s_%d_%s', trialInfo.patient(end-2:end), trialInfo.nTrial, trialInfo.medication);
-    lblStruct = seg_clean(iSeg).sampledProcess.labels;
-    chanNames = cellfun(@(L)L.name, num2cell(lblStruct),'UniformOutput',false);
+    patientTag = (trialInfo.patient(end-2:end));   % e.g. 'FRJ'
 
+    patientDir = fullfile(Deriv_Dir, patientTag);
+    if ~exist(patientDir,'dir'), mkdir(patientDir); end
 
-    evInfoSeg = struct('eventTime', {}, 'eventName', {}, 'eventArtifactFlags', {});
+    chanNames = cellfun(@(L)L.name, num2cell(seg_clean(iSeg).sampledProcess.labels), ...
+                        'UniformOutput',false);
 
+    evInfoSeg = struct('eventTime',{},'eventName',{},'eventArtifactFlags',{});
+    % Only process segments where condition begins with 'step'
+    if ~startsWith(trialInfo.condition, 'step')
+        continue;
+    end
     for ev = 1:numel(evs)
         numEventsChecked = numEventsChecked + 1;
         evT   = evs(ev).tStart;
-        idxWin= timeVec >= evT + eventWindowSec(1) & timeVec <= evT + eventWindowSec(2);
-        tSeg = timeVec(idxWin) - evT;
-
+        idxWin= timeVec >= evT+eventWindowSec(1) & timeVec <= evT+eventWindowSec(2);
         if ~any(idxWin), continue; end
-        evFlags = any(perChanMask(idxWin,:), 1);   % 1×nCh logical
-        evName = evs(ev).name.name;                     
+        tSeg    = timeVec(idxWin) - evT;
+        evFlags = any(perChanMask(idxWin,:),1);
+        evName  = evs(ev).name.name;
+
+        % Store event info
         evInfoSeg(ev).eventTime          = evT;
         evInfoSeg(ev).eventName          = evName;
         evInfoSeg(ev).eventArtifactFlags = evFlags;
 
-        patientTag = trialInfo.patient(end-2:end);                   % e.g. 'ABC'
-        patientDir = fullfile(Deriv_Dir, patientTag);                % DerivDir/ABC
-        MAGIC.batch.EnsureDir(patientDir);                           
-
-        % usable counts (≥1 clean channel)
+        % Count usable events
         if ~all(evFlags)
-            switch evs(ev).name.name
+            switch evName
                 case 'FO'
                     usableFO = usableFO + 1; FOcounts(end+1) = nnz(~evFlags);
                 case 'FC'
@@ -130,159 +158,216 @@ for iSeg = 1:nSeg
             end
         end
 
-    % Plot (optional): loop over channels, unique figName
-        if todo.plot
-            for ch = 1:nCh
-                % DEBUG PART: unique filename for each event & channel
-                figName = sprintf('%s_%s_ch%d_trial%d', evName, patientTag, ch, trialInfo.nTrial);
-
-                fig = figure('Visible', plotVisible, 'Color', 'w');
-                tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
-
-                % ── 1st tile: raw data with artefact patches ───────────────
-                nexttile;
-                rawCh = raw(idxWin, ch);
-                plot(tSeg, rawCh, 'LineWidth',1);
-                hold on;
-                    maskCh = perChanMask(idxWin, ch);
-                    dMask  = diff([0; maskCh; 0]);
-                    starts = find(dMask==1);
-                    ends   = find(dMask==-1)-1;
-                    yl     = ylim;
-                    for iF = 1:numel(starts)
-                        x1 = tSeg(starts(iF)); x2 = tSeg(ends(iF));
-                        patch([x1 x2 x2 x1], [yl(1) yl(1) yl(2) yl(2)], 'r', 'FaceAlpha',.15, 'EdgeColor','none');
-                    end
-                hold off;
-                xlabel('Time (s)'); ylabel('\muV');
-                title([evName ' raw – ' chanNames{ch}]);
-
-                % ── 2nd tile: instantaneous slope with ±MAD threshold ───────
-                nexttile;
-                centralDiff   = deriv(idxWin, ch);
-                dMed          = median(centralDiff);
-                dMad          = mad(centralDiff,1);
-                thresholdHigh = dMed + derivFactor * dMad;
-                thresholdLow  = dMed - derivFactor * dMad;
-                plot(tSeg, centralDiff, 'LineWidth',1);
-                hold on; yline(thresholdHigh,'--','LineWidth',.8); yline(thresholdLow,'--','LineWidth',.8);
-                hold off;
-                xlabel('Time (s)'); ylabel('\muV/s');
-                title(sprintf('%s: slope ±%.1f×MAD – %s', evName, derivFactor, chanNames{ch}));
-
-                % ── 3rd tile: cleaned signal after interpolation ────────────
-                nexttile;
-                cleanCh = CleanedData(idxWin, ch);
-                plot(tSeg, cleanCh, 'LineWidth',1);
-                xlabel('Time (s)'); ylabel('\muV');
-                title(sprintf('%s: cleaned – %s', evName, chanNames{ch}));
-
-                % save figure
-                saveas(fig, fullfile(patientDir, [figName, '.png']));
-                close(fig);
-            end
-        end
-        if todo.plot_surrogate && strcmp(evName,'FO')
-            % snippet for channel-1 FO
-            s_real = raw(idxWin,1);          % real  µV snippet
-
-             % generate a perfect-power surrogate *of that snippet itself*
-             s_sur = FT_surrogate(s_real);    % now both share identical |FFT| bins
-    
-            % actual window length (number of samples in the FO window)
-             winLen = numel(s_real);
-        
-%             % choose FFT length = next pow2 of snippet length, but no larger than snippet
-%             nfft = 2^nextpow2(winLen);
-%             if nfft > winLen
-%                 nfft = winLen;
-%             end
-%         
-%             % construct taper window of length nfft
-%             win = hamming(nfft);
-
+        %% –– Method‐specific event‐level plotting
+        if doPlot
+             % Extract per‐event constants once:
+            patientCode = (trialInfo.patient(end-2:end));   % e.g. 'FRJ'
+            medication  = trialInfo.medication;                  % e.g. 'OFF'
+            nTrial      = trialInfo.nTrial;                      % e.g. 1
+            prefix      = sprintf('%s_%s_%d', patientCode, medication, nTrial);
             
-           
-%             % compute PSDs (Welch) with default 50% overlap
-%             [P_real, f] = pwelch( s_real, win, [], nfft, Fs );
-%             [P_sur ,    ] = pwelch( s_sur , win, [], nfft, Fs );
-%         
-%             % convert to dB/Hz
-%             P_real_dB = 10*log10(P_real);
-%             P_sur_dB  = 10*log10(P_sur);
+            switch method
+                case 'simple'
+                   deriv_s = [diff(raw); zeros(1,nCh)];
+                    for ch = 1:nCh
+                        d = deriv_s(idxWin,ch);
+                        m = median(d); sd = mad(d,1);
+                        hi = m + derivFactor*sd;
+                        lo = m - derivFactor*sd;
 
-                % —– compute **exact** periodogram PSDs (no windowing/overlap):
-            nfft = winLen;   % use full window length
+
+                        fig = figure('Visible',plotVisible,'Color','w');
+                        tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
+
+                        % raw
+                        nexttile;
+                        plot(tSeg, raw(idxWin,ch), 'LineWidth',1); hold on;
+                        maskCh = perChanMask(idxWin, ch);                        
+                        dMask  = diff([0; maskCh; 0]);
+                        starts = find(dMask==1);
+                        ends   = find(dMask==-1) - 1;
+                        yl     = ylim;
+                        for iF = 1:numel(starts)
+                            x1 = tSeg(starts(iF));
+                            x2 = tSeg(ends(iF));
+                            patch([x1 x2 x2 x1], [yl(1) yl(1) yl(2) yl(2)], ...
+                                  'r', 'FaceAlpha', .15, 'EdgeColor', 'none');
+                        end
+                        hold off;
+                        xlabel('Time (s)'); ylabel('\muV');
+                        title(sprintf('%s raw – %s', evName, chanNames{ch}));
+
+                        % simple derivative + threshold
+                        nexttile;
+                        hDeriv = plot(tSeg, d, 'LineWidth', 1.5); hold on;
+                        hHi    = yline(hi, '--', 'LineWidth', 1.5, 'Color', 'r');
+                        hLo    = yline(lo, '--', 'LineWidth', 1.5, 'Color', 'r');
+                        hold off;
+                        xlabel('Time (s)'); ylabel('\muV/s');
+                        title(sprintf('%s – simple forward‐difference (±%.2f×MAD) – %s', ...
+                              evName, derivFactor, chanNames{ch}));
+                        legend([hDeriv, hHi, hLo], ...
+                               {'Derivative', ...
+                                sprintf('Upper %.2f×MAD', derivFactor), ...
+                                sprintf('Lower %.2f×MAD', derivFactor)}, ...
+                               'Location','best');
+
+                        % cleaned
+                        nexttile; plot(tSeg, CleanedData(idxWin,ch),'LineWidth',1);
+                                  title(sprintf('%s cleaned – %s', evName, chanNames{ch}));
+                                  xlabel('Time (s)'); ylabel('\muV');
+
+                        % Use the true channel label (e.g. '23G') rather than its index
+                        chanLabel = chanNames{ch};  
+                        % Sanitize for filesystem: replace any non-alphanumeric with '_'
+                        chanSafe  = regexprep(chanLabel, '[^\w]', '_');  
+                    
+                        % Now include the rest (event, step, method, channel) as needed:
+                        figName = sprintf('%s_%s_step%02d_%s_%s', ...
+                            prefix, ...                    % FRJ_OFF_1
+                            evName, ...                    % 'FC' or 'FO'
+                            trialInfo.nStep, ...           % e.g. 1 → 'step01'
+                            method, ...                    % 'simple' or 'central'
+                            chanSafe);                     % sanitized channel label
+                                            set(gcf, 'Units', 'normalized', 'OuterPosition', [0 0 1 1]);
+
+
+
+                        saveas(fig, fullfile(patientDir, [figName, '.png']));
+
+                        close(fig);
+                    end
+
+                case 'central'
+                    for ch = 1:nCh
+                         % compute the same “fast” component you used for cleaning
+                        centralResid = residual(idxWin, ch);   
+                        rMed         = median(centralResid);      
+                        rMad         = mad(centralResid, 1);      
+                        threshHigh   = rMed + derivFactor * rMad; 
+                        threshLow    = rMed - derivFactor * rMad; 
+                        fig = figure('Visible',plotVisible,'Color','w');
+                        tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
+
+                        % raw with artefact patches
+                        nexttile;
+                        rawCh = raw(idxWin,ch);
+                        plot(tSeg, rawCh,'LineWidth',1); hold on;
+                            maskCh = perChanMask(idxWin,ch);
+                            dMask  = diff([0; maskCh; 0]);
+                            starts = find(dMask==1);
+                            ends   = find(dMask==-1)-1;
+                            yl = ylim;
+                            for iF = 1:numel(starts)
+                                x1 = tSeg(starts(iF)); x2 = tSeg(ends(iF));
+                                patch([x1 x2 x2 x1],[yl(1) yl(1) yl(2) yl(2)],...
+                                      'r','FaceAlpha',.15,'EdgeColor','none');
+                            end
+                        hold off;
+                        xlabel('Time (s)'); ylabel('\muV');
+                        title([evName ' raw – ' chanNames{ch}]);
+
+                       % ── 2nd tile: instantaneous slope with ±MAD threshold ───────
+                        nexttile;
+                        hSlope = plot(tSeg, centralResid,         'LineWidth', 1.5); hold on;
+                        hHi    = yline(threshHigh, '--', 'LineWidth', 1.5, 'Color', 'r');
+                        hLo    = yline(threshLow,  '--', 'LineWidth', 1.5, 'Color', 'r');
+                        hold off;
+                        xlabel('Time (s)'); ylabel('\muV/s');
+                        % more explicit title:
+                        title(sprintf('%s – central‐difference + moving‐mean residual (threshold ±%.2f×MAD) – %s', ...
+                              evName, derivFactor, chanNames{ch}));
+                        legend([hSlope, hHi, hLo], ...
+                               {'Residual slope', ...
+                                sprintf('Upper %.2f×MAD', derivFactor), ...
+                                sprintf('Lower %.2f×MAD', derivFactor)}, ...
+                               'Location','best');
+
+                        % cleaned signal
+                        nexttile;
+                        plot(tSeg, CleanedData(idxWin,ch),'LineWidth',1);
+                        xlabel('Time (s)'); ylabel('\muV');
+                        title(sprintf('%s: cleaned – %s', evName, chanNames{ch}));
+                        set(gcf, 'Units', 'normalized', 'OuterPosition', [0 0 1 1])
+                         % sanitize channel label
+                        chanLabel = chanNames{ch};  
+                        chanSafe  = regexprep(chanLabel, '[^\w]', '_');
+
+                       figName = sprintf('%s_%s_step%02d_%s_%s', ...
+                        prefix, ...                    % FRJ_OFF_1
+                        evName, ...                    % 'FC' or 'FO'
+                        trialInfo.nStep, ...           % e.g. 1 → 'step01'
+                        method, ...                    % 'simple' or 'central'
+                        chanSafe);                     % sanitized channel label
+
+
+                        saveas(fig, fullfile(patientDir, [figName, '.png']));
+                        close(fig);
+                    end
+            end
+        end  % doPlot
+
+        %% –– Surrogate analysis for FO events
+        if doSurrogate && strcmp(evName,'FO')
+            % real snippet
+            s_real = raw(idxWin,1);
+            s_sur  = FT_surrogate(s_real);
+            winLen = numel(s_real);
+
+            % periodograms
+            nfft = winLen;
             [P_real, f] = periodogram(s_real, [], nfft, Fs);
             [P_sur ,    ] = periodogram(s_sur , [], nfft, Fs);
-        
-            % convert to dB/Hz
             P_real_dB = 10*log10(P_real);
             P_sur_dB  = 10*log10(P_sur);
-    
-            % produce 2-row figure: waveform above, PSD below
-        figure('Visible',plotVisible,'Color','w');
-    
-        % ── Time-domain plot ───────────────────────────────────────────────
-        subplot(2,1,1);
-        plot(tSeg, s_real, 'b','LineWidth',1.2); hold on;
-        plot(tSeg, s_sur , 'g','LineWidth',1.2);
-        xlabel('Time (s)');
-        ylabel('Amplitude (\muV)');
-        title('Raw LFP from Foot Contact Event vs Surrogate LFP (time domain)');
-        legend('Raw LFP','Surrogate LFP');
-        box off; hold off;
-    
-        % ── PSD plot (0–100 Hz, display 0–10 dB) ───────────────────────────
-        subplot(2,1,2);
-        plot(f, P_real_dB, 'b','LineWidth',1.2); hold on;
-        plot(f, P_sur_dB , 'g','LineWidth',1.2);
-        xlabel('Frequency (Hz)');
-        ylabel('Power (dB)');       % display-only label
-        title('Raw LFP from Foot Contact Event vs Surrogate LFP (PSD)');
-        legend('Raw LFP','Surrogate LFP');
-        box off;
-        xlim([0 100]);                   % restrict to 0–100 Hz
-        %ylim([0 10]);                    % display range 0–10 dB
-        hold off;
-    
-        % save and close as before
-        saveas(gcf, fullfile(Deriv_Dir, sprintf('Surrogate_FC_ev%02d.png',ev)));
-        close(gcf);
 
-        figure('Visible',plotVisible,'Color','w');
-        scatter(P_real_dB, P_sur_dB, 12, 'filled'); hold on;
-        % unity line
-        mn = min([P_real_dB; P_sur_dB]);  
-        mx = max([P_real_dB; P_sur_dB]);
-        plot([mn mx],[mn mx],'k--','LineWidth',1);
-        legend({'Surrogate vs. Raw PSD bins','Unity line (y = x)'}, ...
-       'Location','best');
-        xlabel('Real PSD (dB)'); ylabel('Surrogate PSD (dB)');
-        title('PSD Overlap: Raw vs Surrogate');
-        axis equal; box off; grid on;
-        saveas(gcf, fullfile(Deriv_Dir, sprintf('Surrogate_FC_ev%02d_scatter.png',ev)));
-        close(gcf);
+            % time-domain & PSD figure
+            fig = figure('Visible',plotVisible,'Color','w');
+            subplot(2,1,1);
+            plot(tSeg,s_real,'b','LineWidth',1.2); hold on;
+            plot(tSeg,s_sur,'g','LineWidth',1.2);
+            xlabel('Time (s)'); ylabel('\muV');
+            title('Raw vs Surrogate LFP (time domain)');
+            legend('Raw','Surrogate'); box off; hold off;
 
+            subplot(2,1,2);
+            plot(f,P_real_dB,'b','LineWidth',1.2); hold on;
+            plot(f,P_sur_dB,'g','LineWidth',1.2);
+            xlabel('Freq (Hz)'); ylabel('Power (dB)');
+            title('Raw vs Surrogate PSD'); legend('Raw','Surrogate');
+            xlim([0 100]); box off; hold off;
+
+            saveas(fig, fullfile(Deriv_Dir, ...
+                sprintf('Surrogate_%s_ev%02d.png', evName, ev)));
+            close(fig);
+
+            % scatter PSD bins
+            fig = figure('Visible',plotVisible,'Color','w');
+            scatter(P_real_dB, P_sur_dB, 12,'filled'); hold on;
+            mn = min([P_real_dB; P_sur_dB]); mx = max([P_real_dB; P_sur_dB]);
+            plot([mn mx],[mn mx],'k--','LineWidth',1);
+            xlabel('Real PSD (dB)'); ylabel('Surrogate PSD (dB)');
+            title('PSD Overlap: Raw vs Surrogate'); axis equal; box off; grid on;
+            saveas(fig, fullfile(Deriv_Dir, ...
+                sprintf('Surrogate_%s_scatter_ev%02d.png', evName, ev)));
+            close(fig);
         end
 
-    end
-    
+    end  % for evs
+
     seg_clean(iSeg).info('derivEventInfo') = evInfoSeg;
     if ~isempty(evInfoSeg)
         allEventFlags = [allEventFlags; vertcat(evInfoSeg.eventArtifactFlags)]; %#ok<AGROW>
     end
-end % segment loop
 
-seg_clean = seg_clean;  % primary output
+end  % for segments
 
-%% ---------- Compile statistics ----------------------------------------
-stats                         = struct();
-stats.totalSegments           = nSeg;
-stats.rejectedSegmentsCountPerChannel  = sum(segmentFlags,1);
+%% ===== COMPILE STATISTICS =============================================
+stats = struct();
+stats.totalSegments          = nSeg;
+stats.rejectedSegmentsCountPerChannel   = sum(segmentFlags,1);
 stats.percentageSegmentsRejectedPerChannel = stats.rejectedSegmentsCountPerChannel / nSeg * 100;
-
-stats.numEventsChecked        = numEventsChecked;
+stats.numEventsChecked       = numEventsChecked;
 if ~isempty(allEventFlags)
     stats.eventRejectedCountPerChannel   = sum(allEventFlags,1);
     stats.eventRejectedPercentPerChannel = stats.eventRejectedCountPerChannel / size(allEventFlags,1) * 100;
@@ -290,57 +375,27 @@ else
     stats.eventRejectedCountPerChannel   = zeros(1,nCh);
     stats.eventRejectedPercentPerChannel = zeros(1,nCh);
 end
+stats.usableEvents.FO        = usableFO;
+stats.usableEvents.FC        = usableFC;
+stats.OKchannelsPerFO = struct('min',min(FOcounts),'mean',mean(FOcounts),'max',max(FOcounts));
+stats.OKchannelsPerFC = struct('min',min(FCcounts),'mean',mean(FCcounts),'max',max(FCcounts));
 
-stats.usableEvents.FO = usableFO;
-stats.usableEvents.FC = usableFC;
-if ~isempty(FOcounts)
-    stats.OKchannelsPerFO = struct('min', min(FOcounts), 'mean', mean(FOcounts), 'max', max(FOcounts));
-else
-    stats.OKchannelsPerFO = struct('min', NaN, 'mean', NaN, 'max', NaN);
-end
-if ~isempty(FCcounts)
-    stats.OKchannelsPerFC = struct( ...
-        'min',  min(FCcounts), ...
-        'mean', mean(FCcounts), ...
-        'max',  max(FCcounts)  ...
-    );
-else
-    stats.OKchannelsPerFC = struct( ...
-        'min',  NaN, ...
-        'mean', NaN, ...
-        'max',  NaN  ...
-    );
-end
+end  % function
 
-%% Helper Function
-   %% ─── Perfect‐power Fourier Surrogate ───────────────────────────────────
+%% ─── Helper: Perfect‐power Fourier Surrogate ───────────────────────────
 function s_sur = FT_surrogate(s)
     N = numel(s);
-    S = fft(s);   % original complex spectrum
-
-    % Identify positive‐frequency bins (excluding DC at 1 and Nyquist if even N)
+    S = fft(s);
     if mod(N,2)==0
-        posBins = 2 : (N/2);        % for even N, bins 2…N/2 are positive
-        nyqBin  = N/2 + 1;          % Nyquist
+        posBins = 2:(N/2);
+        nyqBin  = N/2+1;
     else
-        posBins = 2 : (N+1)/2;      % for odd N, bins 2…(N+1)/2 are positive
-        nyqBin  = [];               % no single Nyquist bin
+        posBins = 2:((N+1)/2);
+        nyqBin  = [];
     end
-
-    % corresponding negative‐frequency bins
     negBins = N - posBins + 2;
-
-    % generate one random phase per positive bin
-    phases = exp(1i * 2*pi * rand(numel(posBins),1));
-
-    % apply phase shuffling **in place** (preserves |S|)
-    S(posBins) = S(posBins) .* phases;
-    S(negBins) = S(negBins) .* conj(phases);
-
-    % leave S(1) (DC) and S(nyqBin) untouched
-
-    % invert back to time domain (will be purely real)
+    phases = exp(1i*2*pi*rand(numel(posBins),1));
+    S(posBins)   = S(posBins) .* phases;
+    S(negBins)   = S(negBins) .* conj(phases);
     s_sur = real(ifft(S));
-end
-
 end

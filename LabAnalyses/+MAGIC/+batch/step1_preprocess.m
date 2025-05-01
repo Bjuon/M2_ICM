@@ -550,7 +550,7 @@ if todo.Deriv
     disp('Starting Derivative-Based Cleaning & Stats');
 
     % call the function
-    [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative(seg_clean);
+   [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative(seg_clean, 'simple', 1, 0);
 
     % --- DISPLAY SUMMARY STATISTICS ---
     fprintf('\n=== Derivative-Based Artifact Detection Summary ===\n');
