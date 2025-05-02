@@ -160,160 +160,101 @@ for iSeg = 1:nSeg
             end
         end
 
-        %% –– Method‐specific event‐level plotting
-        if doPlot
-             % Extract per‐event constants once:
-            patientCode = (trialInfo.patient(end-2:end));   % e.g. 'FRJ'
-            medication  = trialInfo.medication;                  % e.g. 'OFF'
-            nTrial      = trialInfo.nTrial;                      % e.g. 1
-            prefix      = sprintf('%s_%s_%d', patientCode, medication, nTrial);
+   %% --- EVENT‐LEVEL ARTEFACT FLAGGING & PLOTTING --------------------
+    evs = seg_clean(iSeg).eventProcess.find( ...
+        'func', @(x) ismember(x.name.name, stepEventNames), ...
+        'policy','all');
+    if iscell(evs), evs = [evs{:}]; end
+
+    trialInfo = seg_clean(iSeg).info('trial');
+    patientTag = trialInfo.patient(end-2:end);
+    medication = trialInfo.medication;
+    nTrial     = trialInfo.nTrial;
+    prefix     = sprintf('%s_%s_%d', patientTag, medication, nTrial);
+    patientDir = fullfile(Deriv_Dir, patientTag);
+    if ~exist(patientDir,'dir'), mkdir(patientDir); end
+
+    if doPlot && ~isempty(evs)
+        % 1) Precompute channel stats once per segment
+        switch method
+          case 'simple'
+            m_ch   = median(   deriv_s,        1, 'omitnan');
+            mad_ch = median(abs(deriv_s - m_ch), 1, 'omitnan');
+            comp   = deriv_s;
+          case 'central'
+            m_ch   = median(residual,    1);
+            mad_ch = mad(     residual, 1);
+            comp   = residual;
+        end
+
+        % 2) Loop over events
+        for evIdx = 1:numel(evs)
+            evT    = evs(evIdx).tStart;
+            evName = evs(evIdx).name.name;
+            idxWin = timeVec >= evT+eventWindowSec(1) & timeVec <= evT+eventWindowSec(2);
+            if ~any(idxWin), continue; end
+            tSeg   = timeVec(idxWin) - evT;
             
-            switch method
-                case 'simple'
-                   deriv_s = [diff(raw); NaN(1,nCh)];
-                    for ch = 1:nCh
-                        % Use the true channel label (e.g. '23G') rather than its index
-                        chanLabel = chanNames{ch};  
-                        % Sanitize for filesystem: replace any non-alphanumeric with '_'
-                        chanSafe  = regexprep(chanLabel, '[^\w]', '_');  
-                    
-                        % Now include the rest (event, step, method, channel) as needed:
-                        figName = sprintf('%s_%s_step%02d_%s_%s', ...
-                            prefix, ...                    % FRJ_OFF_1
-                            evName, ...                    % 'FC' or 'FO'
-                            trialInfo.nStep, ...           % e.g. 1 → 'step01'
-                            method, ...                    % 'simple' or 'central'
-                            chanSafe);                     % sanitized channel label
+            % 3) Loop over channels
+            for ch = 1:nCh
+                % channel data
+                rawCh   = raw(idxWin,   ch);
+                cleanCh = CleanedData(idxWin,ch);
+                maskCh  = perChanMask(idxWin,ch);
+                compCh  = comp(idxWin,ch);
+                hi      = m_ch(ch) + derivFactor * mad_ch(ch);
+                lo      = m_ch(ch) - derivFactor * mad_ch(ch);
 
+                % assemble figName
+                chanSafe = regexprep(chanNames{ch}, '[^\w]', '_');
+                figName  = sprintf('%s_%s_step%02d_%s_%s', ...
+                             prefix, evName, trialInfo.nStep, method, chanSafe);
 
-                        d       = deriv_s(idxWin,ch);
-                        m       = median(d,         'omitnan');
-                        mad_val = median(abs(d - m),'omitnan');
-                        hi = m + derivFactor*mad_val;
-                        lo = m - derivFactor*mad_val;
+                % create fullscreen figure
+                fig = figure('Visible',plotVisible,'Color','w');
+                set(fig,'Units','normalized','OuterPosition',[0 0 1 1]);
+                tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
 
+                % a) Raw + patches
+                nexttile;
+                plot(tSeg, rawCh, 'LineWidth',1); hold on;
+                dMask  = diff([0; maskCh; 0]);
+                starts = find(dMask==1); ends = find(dMask==-1)-1;
+                yl     = ylim;
+                for iF = 1:numel(starts)
+                    patch([tSeg(starts(iF)) tSeg(ends(iF)) tSeg(ends(iF)) tSeg(starts(iF))], ...
+                          [yl(1) yl(1) yl(2) yl(2)], 'r', 'FaceAlpha',.15, 'EdgeColor','none');
+                end
+                hold off;
+                xlabel('Time (s)'); ylabel('\muV');
+                title(sprintf('%s – raw data', figName), 'Interpreter','none');
 
-                        fig = figure('Visible',plotVisible,'Color','w');
-                        set(fig, 'Units','normalized', 'OuterPosition', [0 0 1 1]);   % NEW ── fullscreen
+                % b) Derivative/Residual + ±MAD lines
+                nexttile;
+                hComp = plot(tSeg, compCh, 'LineWidth',1.5); hold on;
+                hHi   = yline(hi, '--','LineWidth',1.5,'Color','r');
+                hLo   = yline(lo, '--','LineWidth',1.5,'Color','r');
+                hold off;
+                xlabel('Time (s)'); ylabel('\muV/s');
+                title(sprintf('%s – %s (%+.2f×MAD)', figName, method, derivFactor), ...
+                      'Interpreter','none');
+                legend([hComp,hHi,hLo], {'Signal', ...
+                       sprintf('Upper %.2f×MAD', derivFactor), ...
+                       sprintf('Lower %.2f×MAD', derivFactor)}, ...
+                       'Location','best');
 
-                        tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
+                % c) Cleaned
+                nexttile;
+                plot(tSeg, cleanCh, 'LineWidth',1);
+                xlabel('Time (s)'); ylabel('\muV');
+                title(sprintf('%s – cleaned', figName), 'Interpreter','none');
 
-                        % raw
-                        nexttile;
-                        plot(tSeg, raw(idxWin,ch), 'LineWidth',1); hold on;
-                        maskCh = abs(d - m) > derivFactor * mad_val                    
-                        dMask  = diff([0; maskCh; 0]);
-                        starts = find(dMask==1);
-                        ends   = find(dMask==-1) - 1;
-                        yl     = ylim;
-                        for iF = 1:numel(starts)
-                            x1 = tSeg(starts(iF));
-                            x2 = tSeg(ends(iF));
-                            patch([x1 x2 x2 x1], [yl(1) yl(1) yl(2) yl(2)], ...
-                                  'r', 'FaceAlpha', .15, 'EdgeColor', 'none');
-                        end
-                        hold off;
-                        xlabel('Time (s)'); ylabel('\muV');
-                        title( sprintf('%s – raw data ', figName) , 'Interpreter', 'none' );
-
-
-                        % simple derivative + threshold
-                        nexttile;
-                        hDeriv = plot(tSeg, d, 'LineWidth', 1.5); hold on;
-                        hHi    = yline(hi, '--', 'LineWidth', 1.5, 'Color', 'r');
-                        hLo    = yline(lo, '--', 'LineWidth', 1.5, 'Color', 'r');
-                        hold off;
-                        xlabel('Time (s)'); ylabel('\muV/s');
-                        title(sprintf('%s – simple forward‐difference (±%.2f×MAD)', ...
-                              figName, derivFactor), 'Interpreter','none');
-
-                        legend([hDeriv, hHi, hLo], ...
-                               {'Derivative', ...
-                                sprintf('Upper %.2f×MAD', derivFactor), ...
-                                sprintf('Lower %.2f×MAD', derivFactor)}, ...
-                               'Location','best');
-
-                        % cleaned
-                        nexttile; plot(tSeg, CleanedData(idxWin,ch),'LineWidth',1);
-                                  title(sprintf('%s cleaned', figName), 'Interpreter','none');
-                                  xlabel('Time (s)'); ylabel('\muV');
-
-                        saveas(fig, fullfile(patientDir, [figName, '.png']));
-
-                        close(fig);
-                    end
-
-                case 'central'
-                    for ch = 1:nCh
-                               % sanitize channel label
-                        chanLabel = chanNames{ch};  
-                        chanSafe  = regexprep(chanLabel, '[^\w]', '_');
-
-                       figName = sprintf('%s_%s_step%02d_%s_%s', ...
-                        prefix, ...                    % FRJ_OFF_1
-                        evName, ...                    % 'FC' or 'FO'
-                        trialInfo.nStep, ...           % e.g. 1 → 'step01'
-                        method, ...                    % 'simple' or 'central'
-                        chanSafe);                     % sanitized channel label
-
-                         % compute the same “fast” component you used for cleaning
-                        centralResid = residual(idxWin, ch);   
-                        rMed         = median(centralResid);      
-                        rMad         = mad(centralResid, 1);      
-                        threshHigh   = rMed + derivFactor * rMad; 
-                        threshLow    = rMed - derivFactor * rMad; 
-                        fig = figure('Visible',plotVisible,'Color','w');
-                        set(fig, 'Units','normalized', 'OuterPosition', [0 0 1 1]);   % NEW ── fullscreen
-
-                        tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
-
-                        % raw with artefact patches
-                        nexttile;
-                        rawCh = raw(idxWin,ch);
-                        plot(tSeg, rawCh,'LineWidth',1); hold on;
-                            maskCh = perChanMask(idxWin,ch);
-                            dMask  = diff([0; maskCh; 0]);
-                            starts = find(dMask==1);
-                            ends   = find(dMask==-1)-1;
-                            yl = ylim;
-                            for iF = 1:numel(starts)
-                                x1 = tSeg(starts(iF)); x2 = tSeg(ends(iF));
-                                patch([x1 x2 x2 x1],[yl(1) yl(1) yl(2) yl(2)],...
-                                      'r','FaceAlpha',.15,'EdgeColor','none');
-                            end
-                        hold off;
-                        xlabel('Time (s)'); ylabel('\muV');
-                        title( sprintf('%s: raw data', figName), 'Interpreter', 'none' );
-
-
-                       % ── 2nd tile: instantaneous slope with ±MAD threshold ───────
-                        nexttile;
-                        hSlope = plot(tSeg, centralResid,         'LineWidth', 1.5); hold on;
-                        hHi    = yline(threshHigh, '--', 'LineWidth', 1.5, 'Color', 'r');
-                        hLo    = yline(threshLow,  '--', 'LineWidth', 1.5, 'Color', 'r');
-                        hold off;
-                        xlabel('Time (s)'); ylabel('\muV/s');
-                        % more explicit title:
-                        title(sprintf('%s: central‐difference - slow frequencies (threshold ±%.2f×MAD)', ...
-                              figName, derivFactor), 'Interpreter','none');
-                        legend([hSlope, hHi, hLo], ...
-                               {'Residual slope', ...
-                                sprintf('Upper %.2f×MAD', derivFactor), ...
-                                sprintf('Lower %.2f×MAD', derivFactor)}, ...
-                               'Location','best');
-
-                        % cleaned signal
-                        nexttile;
-                        plot(tSeg, CleanedData(idxWin,ch),'LineWidth',1);
-                        xlabel('Time (s)'); ylabel('\muV');
-                        title(sprintf('%s: cleaned', figName), 'Interpreter','none');
-                        set(gcf, 'Units', 'normalized', 'OuterPosition', [0 0 1 1]);
-
-                        saveas(fig, fullfile(patientDir, [figName, '.png']));
-                        close(fig);
-                    end
-            end
-        end  % doPlot
+                % save + close
+                saveas(fig, fullfile(patientDir, [figName,'.png']));
+                close(fig);
+            end  % ch
+        end      % evIdx
+    end          % doPlot
 
         %% –– Surrogate analysis for FC events
         if doSurrogate && strcmp(evName,'FC')
