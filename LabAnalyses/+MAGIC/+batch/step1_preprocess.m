@@ -27,7 +27,7 @@ global ChannelMontage
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
-todo.thenaisie =1; 
+todo.thenaisie =0; 
 todo.Deriv = 1;
 baselineStruct = struct('trialKey', {}, 'window', {}, 'signal', {});  % This will gather baseline info for each trial
 
@@ -550,7 +550,7 @@ if todo.Deriv
     disp('Starting Derivative-Based Cleaning & Stats');
 
     % call the function
-   [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative(seg_clean, 'simple', 1, 0);
+   [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative(seg_clean, 'simple', 1,0);
 
     % --- DISPLAY SUMMARY STATISTICS ---
     fprintf('\n=== Derivative-Based Artifact Detection Summary ===\n');
