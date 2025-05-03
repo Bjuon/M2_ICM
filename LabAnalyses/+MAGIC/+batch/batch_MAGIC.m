@@ -56,7 +56,7 @@ todo.PE              = 0;
 todo.statsTF         = 0;
 todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
-todo.plot_raw_TF = 0; %plot the TF from the raw data
+todo.plot_raw_TF = 1; %plot the TF from the raw data
 
 todo.plot_clean_TF = 1; %plot the TF from the clean data
 
@@ -103,7 +103,7 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-localMode = false;  
+localMode = true;  
 if localMode
     startpath = "F:\Programing\M2\Data_ICM";
 else
@@ -117,7 +117,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_test_Deriv_window1_simple');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_Deriv_Simple_window0.1_MADFactor3');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
