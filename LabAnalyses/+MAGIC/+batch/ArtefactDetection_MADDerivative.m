@@ -29,11 +29,13 @@ function [seg_clean, stats] = ArtefactDetection_MADDerivative( ...
 
 %% ===== USER‑TUNABLE CONSTANTS ==========================================
 derivFactor   = 1.5;   % k × MAD for simple & central
-rampFactor    = 2.5;   % k × MAD for ramp detection
-minDurMs      = 15;    % minimum ramp length (ms)
-growMs        = 10;    % dilate mask for simple & central (ms each side)
+rampFactor    = 1.5;   % k × MAD for ramp detection
+minDurMs      = 10;    % minimum ramp length (ms)
+growMs        = 0;    % dilate mask for simple & central (ms each side)
 smoothWinFrac = 0.10;  % detrend window (× Fs) for central derivative
 maxPsdHz      = 100;   % x‑axis limit on surrogate PSD plot
+
+seg_toplot = 2;
 
 %% ===== ARGUMENT PARSING ===============================================
 if nargin < 2 || isempty(method),      method      = 'central'; end
@@ -53,8 +55,11 @@ end
 nSeg     = numel(seg_clean);
 [~, nCh] = size(seg_clean(1).sampledProcess.values{1});
 segmentFlags = false(nSeg,nCh);
+flaggedPoints = zeros(nSeg, nCh);
+totalPoints   = zeros(nSeg, 1);
 
 %% ===== MAIN LOOP =======================================================
+stepPlotCount = 0;                      
 for iSeg = 1:nSeg
     sp        = seg_clean(iSeg).sampledProcess;
     raw       = sp.values{1};            % [samples × channels]
@@ -132,11 +137,24 @@ for iSeg = 1:nSeg
         end
     end
 
+    flaggedPoints(iSeg, :) = sum(mask, 1);
+    totalPoints(iSeg)       = size(mask, 1);
+
+
     seg_clean(iSeg).sampledProcess.values{1} = cleaned;
     seg_clean(iSeg).info('derivFlags')       = any(mask,1);
 
     %% ---------- PLOTTING ---------------------------------------------
-    if (doPlot || doSurrogate) && strcmpi(info.condition,'step')
+    if (doPlot || doSurrogate) && strcmpi(info.condition,'step') && stepPlotCount < seg_toplot
+        % ── Inform once before generating any figures ─────────────────
+        if doPlot && iSeg==1
+            disp('Generating diagnostic figures for all segments and channels...');
+        end
+        if doSurrogate && iSeg==1
+            disp('Generating surrogate figures for all segments and channels...');
+        end
+
+       
         patientTag = info.patient(end-2:end);
         baseDir    = fullfile(Deriv_Dir,patientTag);
         diagDir    = fullfile(baseDir,'segment',  method);
@@ -145,8 +163,10 @@ for iSeg = 1:nSeg
         if doSurrogate && ~exist(surDir,'dir'), mkdir(surDir);  end
 
         chanNames = cellfun(@(l)l.name,num2cell(sp.labels),'uni',0);
-        prefix = sprintf('%s_%s_%d_segment_%s', ...
-                 patientTag,info.medication,info.nTrial,method);
+         % ── helper strings that will become the *base* of every PNG ──
+        prefix = sprintf('%s_%s_%d_%s', ...
+                 patientTag, info.medication, info.nTrial, method);
+
 
         % surrogate derivative helper (only if needed)
         if doSurrogate
@@ -212,7 +232,10 @@ for iSeg = 1:nSeg
                 title(sprintf('%s – cleaned',figName),'Interpreter','none');
                 xlabel('Time (s)'); ylabel('\muV');
 
-                exportgraphics(fig,fullfile(diagDir,[figName '.png']),'Resolution',150);
+                drawnow;                                % <-- ensure final render
+                exportgraphics(fig, ...                 % <-- more reliable than saveas
+                    fullfile(diagDir,[figName '.png']), ...
+                    'Resolution',150);                  % overwrites silently                % fprintf('Saved diagnostic PNG: %s\n', fullfile(diagDir,[figName '.png']));
                 close(fig);
             end
 
@@ -250,6 +273,7 @@ for iSeg = 1:nSeg
                 close(figS);
             end
         end % channel loop
+        stepPlotCount = stepPlotCount + 1;
     end     % plotting branch
 end         % segment loop
 
@@ -258,6 +282,8 @@ stats.totalSegments                       = nSeg;
 stats.rejectedSegmentsCountPerChannel     = sum(segmentFlags,1);
 stats.percentageSegmentsRejectedPerChannel= ...
     stats.rejectedSegmentsCountPerChannel / nSeg * 100;
+stats.meanPercentFlaggedPointsPerChannel   = ...
+    mean(flaggedPoints ./ totalPoints, 1) * 100;
 end  % main function
 % =======================================================================
 

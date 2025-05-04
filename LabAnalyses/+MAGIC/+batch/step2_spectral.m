@@ -4,6 +4,7 @@ global fqStart
 global segType
 global rest_cond
 global n_pad
+global thenaisie
 
 % Set default version to 'cleaned' if not provided.
 if nargin < 5
@@ -82,7 +83,7 @@ else
       % ---------------------------------------------------------------
     % ---  ZERO-out bad & empty channels *for the current event only* -     ---
     % ---------------------------------------------------------------
-    if strcmpi(version,'clean')
+    if strcmpi(version,'clean') && thenaisie
 
         skipTrials          = false(1,numel(temp));
         keptCnt   = 0;   droppedCnt = 0;

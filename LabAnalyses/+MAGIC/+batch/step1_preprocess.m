@@ -24,10 +24,11 @@ global max_dur
 global med run
 global rawLFPDir cleanLFPDir
 global ChannelMontage
+global thenaisie
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
-todo.thenaisie =0; 
+thenaisie =1; 
 todo.Deriv = 1;
 baselineStruct = struct('trialKey', {}, 'window', {}, 'signal', {});  % This will gather baseline info for each trial
 
@@ -217,12 +218,12 @@ for f = 1 : numel(files)
 %                         baselineStart = LFPtrial_start + (PreStart - 0.8);
 %                         baselineEnd   = LFPtrial_start + (PreStart - 0.1);
 
-
+% 
 %                       baseline de - 2 min 
                         baselineStart = max(0, LFPtrial_start - 120);
                         baselineEnd   = LFPtrial_start;
 
-                        % baseline 1.2 secondes avant la BSL classique 
+%                         %baseline 1.2 secondes avant la BSL classique 
 %                         baselineStart = LFPtrial_start + (PreStart - 1.2);
 %                         baselineEnd   = LFPtrial_start + (PreStart - 0.1);
 
@@ -549,41 +550,79 @@ end
 if todo.Deriv
     disp('Starting Derivative-Based Cleaning & Stats');
 
+     method = 'central';   % choose 'simple', 'central' or 'ramp'
+
     % call the function
-   [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative( ...
-                          seg_clean, 'ramp', true, false);     
+    [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative( ...
+                          seg_clean, method, false, false);
 
     % --- DISPLAY SUMMARY STATISTICS ---
-    fprintf('\n=== Derivative-Based Artifact Detection Summary ===\n');
-    fprintf('\n%% Segments flagged per channel:\n');
-    for ch = 1:numel(stats.percentageSegmentsRejectedPerChannel)
-        lbl = seg_clean(1).sampledProcess.labels(ch).name;
-        pct = stats.percentageSegmentsRejectedPerChannel(ch);
-        fprintf('  %s: %.1f%%\n', lbl, pct);
+    % Include the method name in the header
+    fprintf('\n=== Derivative-Based Artifact Detection (%s) Summary ===\n', upper(method));
+
+    % Total number of segments processed
+    fprintf('Total segments processed: %d\n\n', stats.totalSegments);
+
+    % Build and display a table of per-channel rejection counts & percentages
+    chanLabels    = {seg_clean(1).sampledProcess.labels.name};
+    rejectedCount = stats.rejectedSegmentsCountPerChannel;
+    rejectedPct   = stats.percentageSegmentsRejectedPerChannel;
+    T = table( ...
+        chanLabels(:), ...
+        rejectedCount(:), ...
+        rejectedPct(:), ...
+        'VariableNames', {'Channel','RejectedCount','RejectedPct'} ...
+    );
+    disp(T);
+
+
+
+    % Identify and print channel with highest rejection rate
+    [maxPct, idxMax] = max(rejectedPct);
+    fprintf('\nChannel with highest rejection rate: %s (%.1f%%)\n', ...
+            chanLabels{idxMax}, maxPct);
+
+    % Print overall average rejection rate across all channels
+    avgPct = mean(rejectedPct);
+    fprintf('Average channel rejection rate: %.1f%%\n\n', avgPct);
+
+    % --- NEW: Segment-centric statistics ---
+    % Compute, for each segment, the percentage of channels flagged
+    nCh   = numel(chanLabels);
+    nSeg  = stats.totalSegments;
+    segFlags = false(nSeg, nCh);
+    for iSeg = 1:nSeg
+        % Each segment stores a per-channel flag vector under 'derivFlags'
+        segFlags(iSeg,:) = seg_clean(iSeg).info('derivFlags');
     end
+    pctChFlaggedPerSeg = mean(segFlags, 2) * 100;    % % of channels flagged per segment
 
-    fprintf('\nTotal FO/FC events checked: %d\n', stats.numEventsChecked);
+    % Summary metrics across segments
+    meanPctSeg   = mean(pctChFlaggedPerSeg);
+    medianPctSeg = median(pctChFlaggedPerSeg);
+    stdPctSeg    = std(pctChFlaggedPerSeg);
+    iqrSeg       = prctile(pctChFlaggedPerSeg, [25 75]);
 
-    fprintf('\n%% Events flagged per channel:\n');
-    for ch = 1:numel(stats.eventRejectedPercentPerChannel)
-        lbl = seg_clean(1).sampledProcess.labels(ch).name;
-        pct = stats.eventRejectedPercentPerChannel(ch);
-        fprintf('  %s: %.1f%%\n', lbl, pct);
-    end
+    % ─── NEW: show mean % of flagged SAMPLES per channel ──────────────
+    chanLabels      = {seg_clean(1).sampledProcess.labels.name};
+    meanPctPoints   = stats.meanPercentFlaggedPointsPerChannel;  % from your updated function
+    T_pts = table( ...
+        chanLabels(:), ...
+        meanPctPoints(:), ...
+        'VariableNames', {'Channel','MeanPctFlaggedPts'} ...
+    );
+    disp(T_pts);
 
-    fprintf('\nUsable FO events: %d (OK channels – min %d, mean %.1f, max %d)\n', ...
-        stats.usableEvents.FO, ...
-        stats.OKchannelsPerFO.min, stats.OKchannelsPerFO.mean, stats.OKchannelsPerFO.max);
-
-    fprintf('Usable FC events: %d (OK channels – min %d, mean %.1f, max %d)\n', ...
-        stats.usableEvents.FC, ...
-        stats.OKchannelsPerFC.min, stats.OKchannelsPerFC.mean, stats.OKchannelsPerFC.max);
+    fprintf('Mean channels flagged per segment:   %.1f%%\n', meanPctSeg);
+    fprintf('Median channels flagged per segment: %.1f%%\n', medianPctSeg);
+    fprintf('Std dev of channels flagged/segment: %.1f%%\n', stdPctSeg);
+    fprintf('Interquartile range: [%.1f%%, %.1f%%]\n\n', iqrSeg(1), iqrSeg(2));
 
     fprintf('===============================================\n\n');
-end 
+end
 
 %% --- Apply Spectrogram-Based Artifact Rejection ---
-if todo.thenaisie == 1 % Using the flag as provided
+if thenaisie == 1 % Using the flag as provided
     disp('--- Starting Thenaisie-Based Steps Rejection ---');
        
         % Call the modified AR function. It modifies seg_clean.
@@ -628,7 +667,9 @@ if todo.thenaisie == 1 % Using the flag as provided
         seg = {seg_raw, seg_clean};
         
         disp('--- Spectrogram-Based Artifact Rejection Finished ---');
- end
+end
+seg = {seg_raw, seg_clean};
+
 
 clear f files;
 end
