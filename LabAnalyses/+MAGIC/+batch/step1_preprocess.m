@@ -554,7 +554,7 @@ if todo.Deriv
 
     % call the function
     [seg_clean, stats] = MAGIC.batch.ArtefactDetection_MADDerivative( ...
-                          seg_clean, method, false, false);
+                          seg_clean, method, true, false);
 
     % --- DISPLAY SUMMARY STATISTICS ---
     % Include the method name in the header

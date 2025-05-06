@@ -35,7 +35,7 @@ growMs        = 0;    % dilate mask for simple & central (ms each side)
 smoothWinFrac = 0.10;  % detrend window (× Fs) for central derivative
 maxPsdHz      = 100;   % x‑axis limit on surrogate PSD plot
 
-seg_toplot = 2;
+seg_toplot = 70;
 
 %% ===== ARGUMENT PARSING ===============================================
 if nargin < 2 || isempty(method),      method      = 'central'; end

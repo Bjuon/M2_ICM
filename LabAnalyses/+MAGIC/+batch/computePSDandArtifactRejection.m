@@ -4,7 +4,7 @@ function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejec
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
 todo.plot = 1;
-plotVisible = 'on'; % set off or on figure visibility 
+plotVisible = 'off'; % set off or on figure visibility 
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
 RMSEThreshold           = 0.5;              % >50 % increase
