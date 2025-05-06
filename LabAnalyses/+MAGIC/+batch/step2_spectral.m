@@ -5,7 +5,7 @@ global segType
 global rest_cond
 global n_pad
 global thenaisie
-
+combinedplot =1;
 % Set default version to 'cleaned' if not provided.
 if nargin < 5
     version = 'clean';
@@ -32,8 +32,10 @@ if ~isempty(e)
    if strcmp(segType, 'step')
         if strcmp(e, 'FOG_S') || strcmp(e, 'TURN_S')
             SyncWin = [-2.5 2];
+        elseif combinedplot ==1;
+            SyncWin = [-1 +1]; %
         else
-            SyncWin = [-1.5 2];
+            SyncWin = [-1.5 2]; %
         end
     elseif strcmp(segType, 'trial')
         bsl_start = cell2mat(d.select(@(x) x.eventProcess.find('func', @(x) strcmp(x.name.name, 'BSL')).tStart).toList)';

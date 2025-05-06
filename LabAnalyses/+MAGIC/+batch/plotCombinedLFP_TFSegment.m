@@ -1,45 +1,38 @@
-function plotCombinedLFP_TFSegment(segment, LFP_data, dataTF, outputDir, timeWindow, plotType, trialName, eventName)
+function plotCombinedLFP_TFSegment(LFP_data, dataTF, outputDir, plotType, trialName, eventName)
 
-    global segType
+    global segType  
+    eventWindowSec= [-1 1];
+    trialInfo = LFP_data.info('trial');
+    sp = LFP_data.sampledProcess;          
+    rawMatrix = sp.values{1};                % [samples × channels]
+    Fs        = sp.Fs;
+    lbls      = sp.labels;
+    nb_ch        = size(rawMatrix,2);
+    tVec         = sp.times{1,1};
+   
+    % Axis for TF 
+    t_TF   = dataTF.spectralProcess.times{1} + dataTF.spectralProcess.tBlock/2;
+    f_axis = dataTF.spectralProcess.f;
 
-    % === Infos générales ===
-    Fs     = segment.process{1}.Fs;
-    med    = segment.info('trial').medication;
-    cond   = segment.info('trial').condition;
-
-    % Nettoyage noms
+       % Nettoyage noms
     plotTypeClean = upper(plotType);  % 'Raw' → 'RAW'
     medClean      = upper(med);       % 'on' → 'ON'
     trialName     = strrep(trialName, ' ', '_');  % on évite les espaces
 
-    % Axe temporel LFP
-    t_axis = linspace(timeWindow(1), timeWindow(2), size(LFP_data, 1));
-    
-    % Axe TF
-    t_TF   = dataTF.spectralProcess.times{1} + dataTF.spectralProcess.tBlock / 2;
-    f_axis = dataTF.spectralProcess.f;
-
-    % 📁 Dossier de sauvegarde
+     % 📁 Dossier de sauvegarde
     segmentDir = fullfile('Segments', plotTypeClean, medClean, trialName);
     targetDir  = fullfile(outputDir, segmentDir);
     if ~exist(targetDir, 'dir')
         mkdir(targetDir);
     end
-
-    % Determine number of channels to plot, limited by available labels and TF data
-    nb_ch_data   = size(LFP_data, 2);
-    nb_ch_tf     = size(dataTF.spectralProcess.values{1}, 3);
-    nb_ch_labels = numel(segment.process{1}.labels);
-    nb_ch        = min([nb_ch_data, nb_ch_tf, nb_ch_labels]);
-    if nb_ch < nb_ch_data
-        warning('Truncating channels: LFP channels (%d) > available channels (%d).', nb_ch_data, nb_ch);
-    end
+   % i need to plot only the segment that contains step, the evnt is within
+   % the loop 
 
     % 📉 Plot pour chaque canal
     for ch = 1:nb_ch
         % LFP
-        signal = LFP_data(:, ch);
-        label  = segment.process{1}.labels(ch).name;
+         signal = rawMatrix(:,ch);
+         label  = lbls(ch).name;
 
         % TF
         tf_vals = dataTF.spectralProcess.values{1}(:,:,ch)';

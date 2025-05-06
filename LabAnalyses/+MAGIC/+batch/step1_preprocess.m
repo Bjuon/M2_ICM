@@ -141,7 +141,7 @@ for f = 1 : numel(files)
                 
      % --- Artefact Detection and Removal ---
     if todo.detectArtifacts
-       disp(['Removing Outliers in raw LFP data ', med, ' state ', run]);
+       disp(['Removing Outliers in raw LFP data ', med, ' state ']);
 
         [Artefacts, Cleaned_Data] = MAGIC.batch.Artefact_detection_Mad_Filter(data);  % 6X MAD Outlier filter 
       % [Artefacts, Cleaned_Data] =  MAGIC.batch.Artefact_detection_mathys_ica(data);
