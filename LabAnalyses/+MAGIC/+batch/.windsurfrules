@@ -1,0 +1,322 @@
+# MAGIC Batch Processing Workspace Rules
+
+## Core Data Structures
+
+### Segment Class
+A container class for managing multiple processes (SampledProcess, SpectralProcess, EventProcess):
+
+```matlab
+classdef(CaseInsensitiveProperties, TruncatedProperties) Segment < hgsetget & matlab.mixin.Copyable
+    properties
+        info@containers.Map     % Information about segment
+        processes               % Cell array of processes
+        sampledProcess          % Access to SampledProcess
+        pointProcess            % Access to PointProcess
+        eventProcess            % Access to EventProcess
+        spectralProcess         % Access to SpectralProcess
+        type                    % Process type
+        labels                  % Process labels
+        tStart                  % Start time
+        tEnd                    % End time
+        window                  % Time window
+        offset                  % Time offset
+        coordinateProcesses     % Coordinate processes flag
+        block                   % Block reference
+        rawData                 % Raw data storage
+        cleanedData             % Cleaned data storage
+    end
+    
+    methods
+        % Constructor
+        function self = Segment(varargin)
+            % Initialize with processes, labels, and other properties
+        end
+        
+        % Process access methods
+        function proc = get.sampledProcess(self)
+            % Get SampledProcess
+        end
+        
+        function proc = get.eventProcess(self)
+            % Get EventProcess
+        end
+        
+        % Synchronization methods
+        function self = sync(self, event, varargin)
+            % Synchronize processes
+        end
+        
+        % Data extraction
+        function proc = extract(self, request, flag)
+            % Extract data based on request
+        end
+        
+        % Process restriction
+        function obj = restrictByInfo(self, key, prop, value, varargin)
+            % Restrict processes based on info
+        end
+        
+        % Reset segment
+        function self = reset(self)
+            % Reset segment properties
+        end
+        
+        % Cleanup
+        function delete(self)
+            % Clean up resources
+        end
+    end
+end
+```
+
+### EventProcess Class
+A specialized process for handling events and triggers:
+
+```matlab
+classdef(CaseInsensitiveProperties) EventProcess < PointProcess
+    properties
+        null                  % Null event
+        duration              % Event duration
+        isValidEvent         % Event validity flag
+        events               % Event data
+        times                % Event times
+    end
+    
+    methods
+        % Constructor
+        function self = EventProcess(varargin)
+            % Initialize with events and times
+        end
+        
+        % Event properties
+        function duration = get.duration(self)
+            % Get event duration
+        end
+        
+        function bool = get.isValidEvent(self)
+            % Check event validity
+        end
+        
+        % Event manipulation
+        function self = insert(self, ev, labels)
+            % Insert new events
+        end
+        
+        function self = remove(self, times, labels)
+            % Remove events
+        end
+        
+        % Window operations
+        function window = getWindow(self, varargin)
+            % Get window information
+        end
+        
+        % Event finding
+        function [ev, selection] = find(self, varargin)
+            % Find events
+        end
+        
+        % Visualization
+        function h = plot(self, varargin)
+            % Plot events
+        end
+        
+        % Display
+        function print(self)
+            % Print event information
+        end
+    end
+end
+```
+
+### SampledProcess Class
+A class for handling regularly sampled data (e.g., LFP signals):
+
+```matlab
+classdef(CaseInsensitiveProperties) SampledProcess < Process
+    properties
+        tStart              % Start time of process
+        tEnd                % End time of process
+        Fs                  % Sampling frequency
+        values              % Data values
+        labels              % Channel labels
+        quality             % Data quality metrics
+    end
+    
+    methods
+        % Constructor
+        function self = SampledProcess(varargin)
+            % Initialize with sampling frequency, values, labels, etc.
+        end
+        
+        % Signal processing methods
+        function self = filter(self, f, varargin)
+            % Apply filter to data
+        end
+        
+        function self = resample(self, newFs, varargin)
+            % Resample data to new frequency
+        end
+        
+        function [s, labels] = extract(self, reqLabels)
+            % Extract data for specific channels
+        end
+    end
+end
+```
+
+### SpectralProcess Class
+A class for handling time-frequency data (e.g., spectrograms):
+
+```matlab
+classdef(CaseInsensitiveProperties) SpectralProcess < Process
+    properties
+        tStart              % Start time of process
+        tEnd                % End time of process
+        Fs                  % Sampling frequency
+        tBlock              % Duration of each spectral estimate
+        tStep               % Duration of step taken for each spectral estimate
+        f                   % Frequencies
+        params              % Spectral analysis parameters
+        values              % Spectrogram data
+        labels              % Channel labels
+    end
+    
+    methods
+        % Constructor
+        function self = SpectralProcess(varargin)
+            % Initialize with frequency parameters, values, labels, etc.
+        end
+        
+        % Spectral analysis methods
+        function obj = psd(self, varargin)
+            % Compute power spectral density
+        end
+        
+        function obj = tfr(self, varargin)
+            % Compute time-frequency representation
+        end
+        
+        % Visualization
+        function h = plot(self, varargin)
+            % Plot spectrogram
+        end
+    end
+end
+```
+
+## Code Organization
+
+The MAGIC batch processing codebase is organized into several key components:
+
+### Main Processing Pipeline
+- `batch_MAGIC.m`: Main entry point for processing MAGIC data
+- `step1_preprocess.m`: Preprocessing of LFP data including artifact detection and cleaning
+- `step2_spectral.m`: Spectral analysis of processed LFP data
+- `step3_R.m`: R-based analysis (likely statistical)
+
+### Artifact Detection Methods
+- Various artifact detection implementations:
+  - `ArtefactDetection_MADDerivative.m`: MAD derivative-based detection
+  - `Artefact_detection_Mad_Filter.m`: MAD filter-based detection
+  - `Artefact_detection_mathys_*`: Multiple implementations by Mathys
+  - `Artefact_detection_mathys_ica_*`: ICA-based methods
+  - `Artefact_detection_hybrid.m`: Hybrid approach
+
+### Visualization
+- `plot_TF.m`: Time-frequency visualization
+- `plotLFP.m`: LFP data visualization
+- `plotLFPSegment.m`: Segment-based LFP visualization
+- `plotTFSegment.m`: Time-frequency segment visualization
+
+### CNN Components
+- `trainFoG_CNN.m`: Freezing of Gait (FoG) prediction using CNN
+- `assembleFoGInput.m`: Prepares input data for CNN training
+- `getKinematics.m`: Retrieves kinematic data for CNN input
+
+### Supporting Functions
+- `fieldtrip.m`: FieldTrip integration
+- `fooof*.m`: FOOOF (Fitting Oscillations and One-Over-f) related functions
+- `triggers_check.m`: Trigger synchronization verification
+- `par_load.m` and `par_save.m`: Parallel processing utilities
+
+## Key Data Processing Flow
+
+1. **Preprocessing** (`step1_preprocess.m`)
+   - Loads and filters raw LFP data
+   - Detects and removes artifacts
+   - Segments data into trials and steps
+   - Creates baseline information for each trial
+
+2. **Spectral Analysis** (`step2_spectral.m`)
+   - Performs time-frequency analysis
+   - Generates spectrograms for each segment
+
+3. **CNN Training** (`trainFoG_CNN.m`)
+   - Uses cleaned LFP data and kinematics
+   - Predicts FoG events from segmented data
+
+## Important Notes
+
+1. **Artifact Detection**
+   - Multiple methods are available (MAD, ICA, EMD)
+   - Choose method based on data characteristics
+   - Each method has its own parameters and strengths
+
+2. **Segmentation**
+   - Data is segmented into trials and steps
+   - Each segment maintains trial context through `baselineStruct`
+   - Segments are processed independently but maintain trial relationships
+
+3. **CNN Input Preparation**
+   - Combines LFP spectrograms and kinematics
+   - Uses trial information to map steps to correct C3D files
+   - Maintains temporal relationships between data types
+
+## Best Practices
+
+1. **Data Validation**
+   - Always check trigger synchronization using `triggers_check.m`
+   - Verify artifact detection results visually
+   - Validate CNN predictions against labeled events
+
+2. **Processing Order**
+   - Follow the standard pipeline: preprocess → spectral → CNN
+   - Each step builds on the output of the previous step
+   - Maintain consistent sampling rates throughout processing
+
+3. **Error Handling**
+   - Check for missing files before processing
+   - Verify data dimensions at each processing step
+   - Log important processing parameters for reproducibility
+
+## Common Issues and Solutions
+
+                                                               
+2. **Artifact Detection Failures**
+   - Solution: Try different detection methods
+   - Check: Visual inspection of raw vs cleaned data
+   - Adjust: Detection parameters based on data characteristics
+
+3. **CNN Training Issues**
+   - Solution: Verify input data dimensions
+   - Check: Proper mapping of segments to trials
+   - Validate: Kinematics data alignment with LFP segments
+
+## Future Development Areas
+
+1. **Artifact Detection**
+   - Implement adaptive thresholding
+   - Add more sophisticated ICA-based methods
+   - Improve EMD-based detection
+
+2. **CNN Architecture**
+   - Explore different network architectures
+   - Implement transfer learning options
+   - Add data augmentation techniques
+
+3. **Visualization**
+   - Add interactive visualization tools
+   - Implement real-time processing visualization
+   - Add comparison plots between methods
+

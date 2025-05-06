@@ -26,8 +26,16 @@ function plotCombinedLFP_TFSegment(segment, LFP_data, dataTF, outputDir, timeWin
         mkdir(targetDir);
     end
 
+    % Determine number of channels to plot, limited by available labels and TF data
+    nb_ch_data   = size(LFP_data, 2);
+    nb_ch_tf     = size(dataTF.spectralProcess.values{1}, 3);
+    nb_ch_labels = numel(segment.process{1}.labels);
+    nb_ch        = min([nb_ch_data, nb_ch_tf, nb_ch_labels]);
+    if nb_ch < nb_ch_data
+        warning('Truncating channels: LFP channels (%d) > available channels (%d).', nb_ch_data, nb_ch);
+    end
+
     % 📉 Plot pour chaque canal
-    nb_ch = size(LFP_data, 2);
     for ch = 1:nb_ch
         % LFP
         signal = LFP_data(:, ch);

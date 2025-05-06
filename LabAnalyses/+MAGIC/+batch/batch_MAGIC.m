@@ -49,6 +49,7 @@ todo.raw             = 0; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
+todo.FoG_CNN         = 0; % train FoG detection CNN
 todo.seg             = 1; % segment data per step
 todo.TF              = 1; % 1 create TF and export to Parquet for R; if = 2 : do only CSV; if = 3 : do only create TF; 4 (old 1) as 1 but in CSV
 todo.meanTF          = 0;
@@ -59,9 +60,9 @@ todo.extractLFP      = 1; % 1 event / 2 trial : Extract LFP before making TF
 
 todo.plot_raw_TF = 0; %plot the TF from the raw data
 
-todo.plot_clean_TF = 1; %plot the TF from the clean data
+todo.plot_clean_TF = 0; %plot the TF from the clean data
 
-todo.plot_indiv_seg_raw = 0; % plot indiv_segment (cass) from raw data 
+todo.plot_indiv_seg_raw = 1; % plot indiv_segment (cass) from raw data 
 
 todo.plot_indiv_seg_clean = 0; % plot indiv_segment (cass) from cleaned data 
 
@@ -118,7 +119,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_Deriv_t_central_window0.1_MADFactor1.5');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_FoGtest');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -149,7 +150,7 @@ if ~argin
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FC','FO'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -309,8 +310,9 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 AlsoIncludeWrongEvent = false ;
             end
 
-            seg = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent); %protocol, subject{s});
+            [seg, baselineStruct] = MAGIC.batch.step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent); %protocol, subject{s});
             %save preprocess data
+            % Save both segments and baseline information
             save([OutputFileName '_LFP' suff1  '_' ChannelMontage '.mat'], 'seg')
             disp('seg done')
 
@@ -453,6 +455,7 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                 if todo.plotTF && existTF == true
 
                     load([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
+
                     if todo.plot_indiv_seg_raw 
                         for t = 1:numel(dataTF)
                             disp(['Plotting TF & LFP segments for trial ', num2str(t)]);
@@ -518,6 +521,22 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
           
             
     end
+        if todo.FoG_CNN
+            
+            % Prepare input data using baselineStruct to find correct C3D files
+            % Use the cleaned data (seg{2}) for CNN input
+            [inputData, labels] = MAGIC.batch.assembleFoGInput(dataTF, baselineStruct, files);
+            
+            % Train and evaluate CNN
+            [net, metrics] = MAGIC.batch.trainFoG_CNN(inputData, labels, patientDir);
+            
+            % Display metrics
+            fprintf('FoG CNN - Accuracy: %.2f%%\n', metrics.Accuracy*100);
+            fprintf('Precision: %.2f%%\n', metrics.Precision*100);
+            fprintf('Recall: %.2f%%\n', metrics.Recall*100);
+                        
+         end
+
     if todo.plotTF || todo.TF
         disp([ 'End of patient : ' subject{s} ' (' e{1} ')'])
     end

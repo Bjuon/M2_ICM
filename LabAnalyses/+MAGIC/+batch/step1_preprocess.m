@@ -10,7 +10,7 @@
                         % What is max_dur for magic ?
 
 
-function seg = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent)
+function [seg, baselineStruct] = step1_preprocess(files, OutputPath, RecID, LogDir, AlsoIncludeWrongEvent)
 
 clear seg
 load 'shared/FIR_highpassMAGIC.mat'
@@ -28,8 +28,8 @@ global thenaisie
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
 todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
-thenaisie =1; 
-todo.Deriv = 1;
+thenaisie =0; 
+todo.Deriv = 0;
 baselineStruct = struct('trialKey', {}, 'window', {}, 'signal', {});  % This will gather baseline info for each trial
 
 
