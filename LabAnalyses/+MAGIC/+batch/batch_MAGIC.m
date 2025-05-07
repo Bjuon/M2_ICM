@@ -43,6 +43,7 @@ global run
 global ChannelMontage
 global med subject event s 
 
+QCstats = table();   % gather QC results across all Patients / Events
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
 todo.raw             = 0; % create raw data
@@ -62,9 +63,9 @@ todo.plot_raw_TF = 0; %plot the TF from the raw data
 
 todo.plot_clean_TF = 0; %plot the TF from the clean data
 
-todo.plot_indiv_seg_raw = 1; % plot indiv_segment (cass) from raw data 
+todo.plot_indiv_seg_raw = 0; % plot indiv_segment (cass) from raw data 
 
-todo.plot_indiv_seg_clean = 0; % plot indiv_segment (cass) from cleaned data 
+todo.plot_indiv_seg_clean = 1; % plot indiv_segment (cass) from cleaned data 
 
 %normalization
 % change script to add type of normalization in output name
@@ -105,7 +106,7 @@ end
 warning('off','MATLAB:ui:javacomponent:FunctionToBeRemoved')
 warning('off','MATLAB:class:PropUsingAtSyntax')
 
-localMode = true;  
+localMode = false;  
 if localMode
     startpath = "F:\Programing\M2\Data_ICM";
 else
@@ -119,7 +120,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_test_combined');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_test_composite');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -458,11 +459,11 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 
                     if todo.plot_indiv_seg_raw 
                         for t = 1:numel(dataTF)
-                            disp(['Plotting TF & LFP segments for trial ', num2str(t)]);
+                            disp(['Plotting TF & LFP segments for segment ', num2str(t)]);
                              MAGIC.batch.plotCombinedLFP_TFSegment( ...
                             seg{1}(t),          ... % ⬅ raw segment for the same trial
                             dataTF(t),          ... % (unchanged) – for event overlay
-                            rawTFDir, 'Raw', ['Trial_' num2str(t)], e{1});
+                            rawTFDir, 'Raw', e{1});
                          end
                     end
                     if todo.plot_raw_TF == 1
@@ -481,15 +482,23 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 
                          if todo.plot_indiv_seg_clean 
                             for t = 1:numel(dataTF)
-                            disp(['Plotting TF for trial ', num2str(t)]);
+                            
+                            % NEW ▸ quality score & channel flagging ︙︙︙︙︙︙︙︙︙︙︙
+                            [~, badCh, segStats] = MAGIC.batch.computeChannelCompositeScore( ...
+                                                 seg{2}(t),       ... % clean segment
+                                                 cleanTF(t),       ... % matching TF
+                                                 e{1});                 % current event name
+                            if numel(seg) >= 2
+                                seg{2}(t).info('trial').wrongChannels     = badCh;
+                                seg{2}(t).info('trial').channelScoreStats = segStats;
+                            end
+                            QCstats = [QCstats ; struct2table(segStats)];   % accumulate line
+                            disp(['Plotting TF for segment ', num2str(t)]);
                              MAGIC.batch.plotCombinedLFP_TFSegment( ...
-                                dataTF(t), ...
-                                dataTF(t).process{1}.values{1}, ...
-                                dataTF(t), ...
+                                seg{2}(t), ...
+                                cleanTF(t), ...
                                 cleanTFDir, ...
-                                timeWindow, ...
                                 'clean', ...
-                                ['Trial_' num2str(t)], ...
                                 e{1}); % <== ici on passe 'FO1', 'FC1', etc.
                             end
                         end
@@ -539,6 +548,12 @@ end
 if todo.extractInfos
     save(fullfile(ProjectPath, ['MAGIC_AllPat_infos_' segType]), 'infos')
     writetable(infos, fullfile(ProjectPath, ['MAGIC_AllPat_infos_' segType '.csv']), 'Delimiter', ';')
+end
+
+if ~isempty(QCstats)
+    outCSV = fullfile(FigDir,'QC_ChannelScores.csv');
+    writetable(QCstats,outCSV);
+    fprintf('QC summary written to %s\n', outCSV);
 end
 
 if nargin == 0

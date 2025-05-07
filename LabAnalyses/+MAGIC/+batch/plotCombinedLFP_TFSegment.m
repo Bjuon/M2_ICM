@@ -1,12 +1,11 @@
 function plotCombinedLFP_TFSegment(LFP_data, dataTF, outputDir, ...
-                                   plotType, trialName, eventName)
+                                   plotType, eventName)
 % plotCombinedLFP_TFSegment – event‑centred QC panel
 %
 %   LFP_data   : raw Segment  (seg{1}(t))
 %   dataTF     : matching TF  (dataTF(t))
 %   outputDir  : root folder for PNG / FIG outputs
 %   plotType   : 'Raw' | 'dNOR' | …
-%   trialName  : sub‑folder tag (e.g. 'Trial_07')
 %   eventName  : 'FO' | 'FC' | …
 %
 %   For every ⟨event,channel⟩:
@@ -21,6 +20,8 @@ freqRangeHz = [10 55];    % PSD range sent to FOOOF
 winLenFrac  = 0.5;        % 0.5 s spectrogram window
 overlapFrac = 0.5;        % 50 % overlap
 nfft        = 1024;
+winsmooth = 0.1; % window for the movmean 
+derivFactor = 1.5;     % NEW ▸ k × MAD lines drawn on residual plot
 fooofSettings = struct('peak_width_limits',[1 12], ...
                        'max_n_peaks',5, ...
                        'min_peak_height',0, ...
@@ -45,6 +46,10 @@ Fs        = sp.Fs;
 nbCh      = size(rawMatrix,2);
 chanLbl   = {sp.labels.name};
 med       = LFP_data.info('trial').medication;
+condTrial = LFP_data.info('trial').condition;        % NEW
+if isempty(condTrial) || ~strcmpi(condTrial,'step')  % NEW
+    return                                           % NEW
+end                                                  % NEW
 
 % ─── TF cube -----------------------------------------------------------
 t_TF   = dataTF.spectralProcess.times{1} + dataTF.spectralProcess.tBlock/2;
@@ -52,7 +57,7 @@ f_axis = dataTF.spectralProcess.f;
 
 % ─── output path -------------------------------------------------------
 segmentDir = fullfile(outputDir, 'Segments', upper(plotType), ...
-                      upper(med), trialName);
+                      upper(med));
 if ~exist(segmentDir,'dir'), mkdir(segmentDir); end
 
 % ─── loop : event → channel → figure ----------------------------------
@@ -68,6 +73,10 @@ for ev = 1:numel(eventsFound)
     tRelTF  = t_TF(idxTF)  - evTime;
 
     for ch = 1:nbCh
+        if isfield(LFP_data.info('trial'),'wrongChannels') && ...
+            LFP_data.info('trial').wrongChannels(ch)
+            continue
+        end
 
         signal = rawMatrix(idxLFP,ch);
         if all(isnan(signal) | signal==0), continue; end
@@ -83,7 +92,11 @@ for ev = 1:numel(eventsFound)
         deriv(1)       =  signal(2)-signal(1);
         deriv(2:end-1) = (signal(3:end)-signal(1:end-2))/2;
         deriv(end)     =  signal(end)-signal(end-1);
-        resid_cent     = deriv - movmean(deriv,round(0.10*Fs));
+        resid_cent     = deriv - movmean(deriv,round(winsmooth*Fs));
+
+        med_res = median(resid_cent,'omitnan');
+        mad_res = mad(resid_cent,1);          % raw (un‑scaled) MAD
+        thr_res = derivFactor * mad_res;
 
         % PSD + 1/f on the same window
         wLen   = round(winLenFrac*Fs);
@@ -97,9 +110,19 @@ for ev = 1:numel(eventsFound)
         fit1f   = 10.^(fooofRes.aperiodic_params(1) - ...
                        fooofRes.aperiodic_params(2).*log10(F(fIdx)));
 
+
+        safeChan = regexprep(chanLbl{ch},'[^\w]','_');
+        baseName = sprintf('%s_%s_%02d_%s_%02d_%s', ...
+                   LFP_data.info('trial').patient(end-2:end), ... % PatientTag
+                   med, ...                                      % medication
+                   LFP_data.info('trial').nTrial, ...            % nRun
+                   eventName, ...                                % evName
+                   LFP_data.info('trial').nStep, ...             % nStep
+                   safeChan);                                    % channel label
+
         % ── figure with 4 stacked tiles ────────────────────────────────
         fig = figure('Visible','off','Color','w', ...
-                     'Units','centimeters','Position',[5 5 14 18]);
+                     'Units','normalized','OuterPosition',[0 0 1 1]);   % NEW ▸ full‑screen
         tl  = tiledlayout(fig,4,1,'TileSpacing','compact','Padding','compact');
 
         % ① raw LFP
@@ -107,7 +130,8 @@ for ev = 1:numel(eventsFound)
         plot(tRelLFP, signal,'k','LineWidth',1);
         yline(0,':');
         xlabel('Time (s)'); ylabel('\muV');
-        title(sprintf('%s – raw LFP', chanLbl{ch}), 'Interpreter','none');
+        title(baseName, 'Interpreter','none');                           % NEW ▸ full filename
+
 
         % ② spectrogram (pre‑computed) + event markers
         nexttile(tl);
@@ -118,12 +142,24 @@ for ev = 1:numel(eventsFound)
         xlabel('Time (s)'); ylabel('Frequency (Hz)');
         title('Spectrogram (dB)');
         caxis([-10 10]); set(gca,'FontSize',12);
+        cb = colorbar;                      % grab the colorbar handle
+        cb.Label.String            = 'Power (dB)';    % specify the unit
+        cb.Label.FontSize          = 12;              % match axis font size
+        cb.Label.Rotation          = 270;             % rotate for vertical bar
+        cb.Label.VerticalAlignment = 'bottom';        % position label nicely
+        cb.LabelInterpreter        = 'none';          % literal text
 
         % ③ central residual
-        nexttile(tl);
-        plot(tRelLFP, resid_cent,'b');
+         nexttile(tl);
+        plot(tRelLFP, resid_cent,'b'); hold on
+        yline(med_res,'--k','Median','LineWidth',0.8);                 % NEW
+        yline(med_res+thr_res,'--r',sprintf('+%.1f×MAD',derivFactor),... 
+              'LineWidth',1.2);                                        % NEW
+        yline(med_res-thr_res,'--r',sprintf('-%.1f×MAD',derivFactor),...
+              'LineWidth',1.2);                                        % NEW
         xlabel('Time (s)'); ylabel('\Delta\muV');
-        title('Central‑diff residual');
+        title('Central‑diff residual (+MAD thresholds)');
+        legend({'Residual','Median','±k×MAD'},'Location','best');      % NEW
 
         % ④ PSD + 1/f
         nexttile(tl); hold on
@@ -132,18 +168,18 @@ for ev = 1:numel(eventsFound)
         xlabel('Frequency (Hz)'); ylabel('Power (dB)'); box off
         title(sprintf('PSD & 1/f (offset %.2f)', ...
               fooofRes.aperiodic_params(1)));
-
-        % ── save figure ────────────────────────────────────────────────
+% ── save figure ────────────────────────────────────────────────
         safeChan = regexprep(chanLbl{ch},'[^\w]','_');
-        baseName = sprintf('%s_T%02d_S%02d_%s_ev%02d_%s', ...
-                   LFP_data.info('trial').patient(end-2:end), ...
-                   LFP_data.info('trial').nTrial, ...
-                   LFP_data.info('trial').nStep, ...
-                   eventName, ev, safeChan);
-        pngFile = fullfile(segmentDir,[baseName '.png']);
+        baseName = sprintf('%s_%s_%02d_%s_%02d_%s', ...
+                   LFP_data.info('trial').patient(end-2:end), ... % PatientTag
+                   med, ...                                      % medication
+                   LFP_data.info('trial').nTrial, ...            % nRun
+                   eventName, ...                                % evName
+                   LFP_data.info('trial').nStep, ...             % nStep
+                   safeChan);                                    % channel label
+        pngFile  = fullfile(segmentDir,[baseName '.png']);
         exportgraphics(fig,pngFile,'Resolution',150);
         savefig(fig,strrep(pngFile,'.png','.fig'));
-        close(fig);
     end
 end
 end
