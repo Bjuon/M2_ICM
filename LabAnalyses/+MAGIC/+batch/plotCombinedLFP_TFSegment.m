@@ -15,7 +15,7 @@ function plotCombinedLFP_TFSegment(LFP_data, dataTF, outputDir, ...
 %      4⃣  PSD + FOOOF 1/f fit (same params as artefact routine)
 
 % ─── user‑tunable constants ────────────────────────────────────────────
-winSec      = 1;          % ±1 s window
+winSec      = 0.5;          % ±1 s window
 freqRangeHz = [10 55];    % PSD range sent to FOOOF
 winLenFrac  = 0.5;        % 0.5 s spectrogram window
 overlapFrac = 0.5;        % 50 % overlap
@@ -51,6 +51,15 @@ if isempty(condTrial) || ~strcmpi(condTrial,'step')  % NEW
     return                                           % NEW
 end                                                  % NEW
 
+% ─── determine good channels up front ─────────────────────────────────
+if isKey(LFP_data.info,'wrongChannels')
+    wrongFlags = LFP_data.info('wrongChannels');   % 1×nCh logical
+else
+    wrongFlags = false(1,nbCh);
+end
+goodChIdx = find(~wrongFlags);                    % only these get plotted
+
+
 % ─── TF cube -----------------------------------------------------------
 t_TF   = dataTF.spectralProcess.times{1} + dataTF.spectralProcess.tBlock/2;
 f_axis = dataTF.spectralProcess.f;
@@ -72,12 +81,21 @@ for ev = 1:numel(eventsFound)
     tRelLFP = tVec(idxLFP) - evTime;
     tRelTF  = t_TF(idxTF)  - evTime;
 
-    for ch = 1:nbCh
-        if isfield(LFP_data.info('trial'),'wrongChannels') && ...
-            LFP_data.info('trial').wrongChannels(ch)
+     % if *no* good channels, skip this segment entirely
+    if isempty(goodChIdx)
+        warning('Segment has no good channels—skipping.');
+        continue
+    end
+
+    for ch = 1:goodChIdx
+        % skip channels flagged as wrong
+        wrongFlags = [];
+        if isKey(LFP_data.info,'wrongChannels')
+            wrongFlags = LFP_data.info('wrongChannels');   % ① map → variable
+        end
+        if ~isempty(wrongFlags) && wrongFlags(ch)          % ② index
             continue
         end
-
         signal = rawMatrix(idxLFP,ch);
         if all(isnan(signal) | signal==0), continue; end
 
@@ -131,7 +149,19 @@ for ev = 1:numel(eventsFound)
         yline(0,':');
         xlabel('Time (s)'); ylabel('\muV');
         title(baseName, 'Interpreter','none');                           % NEW ▸ full filename
-
+        % ── dynamic title with QC statistics ───────────────────────────
+%         stats = [];
+%         if isKey(LFP_data.info,'channelScoreStats')
+%             stats = LFP_data.info('channelScoreStats');
+%         end
+%         if ~isempty(stats)
+%             ttl = sprintf('%s | %s | μ=%.2f  min=%.2f  max=%.2f  bad=%.0f%%', ...
+%                   baseName, eventName, stats.meanScore, stats.minScore, ...
+%                   stats.maxScore, stats.pctFlagged);
+%         else
+%             ttl = sprintf('%s | %s', baseName, eventName);
+%         end
+%         title(ttl,'Interpreter','none');
 
         % ② spectrogram (pre‑computed) + event markers
         nexttile(tl);
@@ -147,8 +177,7 @@ for ev = 1:numel(eventsFound)
         cb.Label.FontSize          = 12;              % match axis font size
         cb.Label.Rotation          = 270;             % rotate for vertical bar
         cb.Label.VerticalAlignment = 'bottom';        % position label nicely
-        cb.LabelInterpreter        = 'none';          % literal text
-
+        cb.Label.Interpreter       = 'none';          % literal text
         % ③ central residual
          nexttile(tl);
         plot(tRelLFP, resid_cent,'b'); hold on
