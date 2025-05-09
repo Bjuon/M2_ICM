@@ -87,7 +87,8 @@ for ev = 1:numel(eventsFound)
         continue
     end
 
-    for ch = 1:goodChIdx
+    for k = 1:numel(goodChIdx)
+        ch = goodChIdx(k);
         % skip channels flagged as wrong
         wrongFlags = [];
         if isKey(LFP_data.info,'wrongChannels')

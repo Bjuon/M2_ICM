@@ -35,7 +35,6 @@ Fs     = sp.Fs;
 tVec   = sp.times{1};
 idxWin = tVec >= t0-winSec & tVec <= t0+winSec;
 xWin   = sp.values{1}(idxWin,:);                  % samples × nCh
-nCh    = size(xWin,2);
 
 %% ─── 1️⃣  peak amplitude (µV) -----------------------------------------
 c1 = (max(abs(xWin),[],1) - 25) ./ 100;
@@ -65,8 +64,7 @@ c3(c3 < 0) = 0;
 
 %% ─── composite & flags --------------------------------------------------
 score    = c1 + c2 + c3;
-rejected = score > 1;
-
+rejected = (score > 1) | isnan(score);
 %% ─── stats struct -------------------------------------------------------
 patientStr = string(segEvt.info('trial').patient);     % string scalar
 eventStr   = string(evName);                           % string scalar
@@ -92,12 +90,6 @@ stats = struct( ...
 segEvt.info('wrongChannels')     = rejected;   % new keys
 segEvt.info('channelScoreStats') = stats;
 
-% keep the _wrong suffix on the trial condition
-if all(rejected)
-    trInfo = segEvt.info('trial');
-    if ~contains(trInfo.condition,'_wrong')
-        trInfo.condition = [trInfo.condition '_wrong'];
-        segEvt.info('trial') = trInfo;         % push back modified object
-    end
-end
+tfEvt.info('wrongChannels')      = rejected;         
+tfEvt.info('channelScoreStats')  = stats;
 end

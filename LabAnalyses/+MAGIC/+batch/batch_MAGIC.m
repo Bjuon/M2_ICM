@@ -43,10 +43,13 @@ global run
 global ChannelMontage
 global med subject event s 
 
-QCstats = table();   % gather QC results across all Patients / Events
+QCstats_raw   = table();
+QCstats_clean = table();
+totalRawAccepted   = 0;
+totalCleanAccepted = 0;
 
 % ArtefactType  = 'rawArt'; %'rawArt' ; 'remove', 'ICArem','EMDBSS', 'CCArem', 
-todo.raw             = 0; % create raw data
+todo.raw             = 1; % create raw data
 todo.LabelRegion     = 0; % temporary section to add region to label on raw data
 todo.extractInfos    = 0; % extract segment infos
 todo.trig            = 0; % check triggers
@@ -63,7 +66,7 @@ todo.plot_raw_TF = 0; %plot the TF from the raw data
 
 todo.plot_clean_TF = 0; %plot the TF from the clean data
 
-todo.plot_indiv_seg_raw = 0; % plot indiv_segment (cass) from raw data 
+todo.plot_indiv_seg_raw = 1; % plot indiv_segment (cass) from raw data 
 
 todo.plot_indiv_seg_clean = 1; % plot indiv_segment (cass) from cleaned data 
 
@@ -120,7 +123,7 @@ DataDir        = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','
 InputDir       = fullfile(DataDir, 'patients');
 OutputDir      = fullfile(DataDir, 'analyses'); 
 ProjectPath    = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','TMP'); 
-FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_test_composite');
+FigDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT','Figures', 'Mathys_composite_Score');
 % rejection_file=fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','00_Notes','MAGIC_GOGAIT_LFP_trial_rejection.xlsx');
 PFOutputFile   = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','04_Traitement','01_POSTOP_Gait_data_MAGIC-GOGAIT', 'DATA','OutputFileTimeline.xlsx');
 LogDir         = fullfile(startpath, '02_protocoles_data','02_Protocoles_Data','MAGIC','03_LOGS','LOGS_POSTOP');
@@ -146,12 +149,12 @@ if ~argin
 %     subject   = {'SAs_000a','BEm_000a','REa_0526'};
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
-%    subject   = complet(1:end-1)
-    subject = {'FRj_0610','FEp_0536', 'FRa_000a', 'BEm_000a'}
+    subject   = complet(1:end-1)
+    %subject = {'FRJ_0610'};
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
-event    = {'FC','FO'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
+event    = {'FO','FC'}%{'FIX', 'CUE', 'T0', 'T0_EMG', 'FO1', 'FC1', 'FO', 'FC', 'TURN_S', 'TURN_E', 'FOG_S', 'FOG_E'};
 % 'FO1', 'TURN_E', 'FOG_S', 'FOG_E',  'FO', 'FC', 'TURN_S', 'FC1'
 %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])
 
@@ -457,14 +460,102 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
 
                     load([OutputFileName suff1 '_TF_' suff '_' e{1} '.mat'], 'dataTF')
 
-                    if todo.plot_indiv_seg_raw 
-                        for t = 1:numel(dataTF)
-                            disp(['Plotting TF & LFP segments for segment ', num2str(t)]);
-                             MAGIC.batch.plotCombinedLFP_TFSegment( ...
-                            seg{1}(t),          ... % ⬅ raw segment for the same trial
-                            dataTF(t),          ... % (unchanged) – for event overlay
-                            rawTFDir, 'Raw', e{1});
-                         end
+                    if todo.plot_indiv_seg_raw
+
+                        % --- ①  keep only the STEP segments, exactly like the clean path
+                        isStepRaw     = arrayfun(@(s) strcmp(s.info('trial').condition,'step'), seg{1});
+                        segStepRaw    = seg{1}(isStepRaw);      % RAW segments, gait‑step only
+                        nSegStep_raw = numel(segStepRaw);
+                        nSegTF_raw   = numel(dataTF); 
+                                    
+                        % --- ②  loop over the filtered list --------------------------------
+                        for t = 1:numel(segStepRaw)
+                            % ── composite‑score on RAW data ────────────────────────────────
+                            [score, badCh, segStats] = MAGIC.batch.computeChannelCompositeScore( ...
+                                                   segStepRaw(t), ...
+                                                   dataTF(t), ...
+                                                   e{1});
+            
+                            % ── build / append one‑row QC table entry (unchanged logic) ────
+                            segmentID = sprintf('%s_RAW_%s_%02d_step%02d_%s', ...
+                                        subject{s}, ...
+                                        segStepRaw(t).info('trial').medication, ...
+                                        segStepRaw(t).info('trial').nTrial, ...
+                                        segStepRaw(t).info('trial').nStep, ...
+                                        e{1});
+                             % ── ★ NEW: print exactly as in clean branch
+                            chanLabels = { segStepRaw(t).sampledProcess.labels.name };
+                            goodChIdx  = find(~badCh);
+                            goodPairs  = arrayfun(@(idx) sprintf('%s(%.2f)', ...
+                                                chanLabels{idx}, score(idx)), ...
+                                                goodChIdx, 'UniformOutput', false);
+                            fprintf('   Good channels for segment %d/%d (%s): %d / %d ⇒ %s\n', ...
+                                    t, nSegStep_raw, e{1}, ...
+                                    numel(goodChIdx), numel(chanLabels), ...
+                                    strjoin(goodPairs, ', '));
+                            row = table(string(segmentID), 'VariableNames', {'segmentID'});
+                            for k = 1:numel(score)
+                                row.(['score' num2str(k)]) = score(k);
+                            end
+                            chanLabels = { segStepRaw(t).sampledProcess.labels.name };
+                            goodChIdx  = find(~badCh);
+                            row.accepted_channels = { strjoin(chanLabels(goodChIdx), ', ') };
+
+                            row.total_kept_channels = numel(goodChIdx);
+
+                            % ── harmonise columns with the master QC table ───────────────────────
+                            if isempty(QCstats_raw)
+                                QCstats_raw = row;
+                            else
+                                newCols  = setdiff(row.Properties.VariableNames,  QCstats_raw.Properties.VariableNames);
+                                missCols = setdiff(QCstats_raw.Properties.VariableNames, row.Properties.VariableNames);
+                        
+                                % FIXED: for each new column, assign NaN if it's a score, or '' otherwise
+                                for c = newCols
+                                    col = c{1};
+                                    if startsWith(col,'score')
+                                        QCstats_raw.(col) = nan(height(QCstats_raw),1);
+                                    else
+                                        QCstats_raw.(col) = repmat({''}, height(QCstats_raw),1);
+                                    end
+                                end
+                        
+                                % FIXED: for each missing column in ‘row’, assign NaN for scores, '' otherwise
+                                for c = missCols
+                                    col = c{1};
+                                    if startsWith(col,'score')
+                                        row.(col) = NaN;
+                                    else
+                                        row.(col) = {''};
+                                    end
+                                end
+                        
+                                row = row(:, QCstats_raw.Properties.VariableNames);
+                                QCstats_raw = [QCstats_raw; row];
+                            end
+                            totalRawAccepted = totalRawAccepted + numel(goodChIdx);
+            
+                            % ── combined RAW LFP + TF figure ───────────────────────────────
+                            MAGIC.batch.plotCombinedLFP_TFSegment( ...
+                                    segStepRaw(t), ...
+                                    dataTF(t), ...
+                                    rawTFDir, ...
+                                    'raw', ...
+                                    e{1});
+                        end
+
+                        if existTF && strcmp(segType,'step')
+                            % Define the CSV path explicitly
+                            csvFile = [ OutputFileName suff1 '_TF_' suff '_raw_'  e{1} '.csv' ];
+                            
+                            % Print it so you know exactly where it’s going
+                            fprintf('Writing step3 RAW CSV to: %s\n', csvFile);
+                            MAGIC.batch.step3_R( ...
+                                [OutputFileName suff1 '_TF_' suff '_raw_' e{1} '.csv'], ...
+                                dataTF, e, protocol, Artefact_Rejection_Method, ...
+                                'TF', Size_around_event, ...
+                                Acceptable_Artefacted_Sample_In_Window, todo.TF);
+                        end
                     end
                     if todo.plot_raw_TF == 1
                         disp('Plotting Raw TF')
@@ -485,10 +576,11 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                         
                         isStep = arrayfun(@(s) strcmp(s.info('trial').condition,'step'), seg{2});
                         segStep = seg{2}(isStep);    % now contains only the step segments
+                        nSegStep = numel(segStep);
+                        nSegTF   = numel(cleanTF);                         
 
                          if todo.plot_indiv_seg_clean 
-                            for t = 1:numel(dataTF)
-                            
+                           for t = 1:numel(dataTF)
                             % quality score & channel flagging 
                             [score, badCh, segStats] = MAGIC.batch.computeChannelCompositeScore( ...
                                                  segStep(t),       ... % clean segment
@@ -499,28 +591,77 @@ for s = 1:numel(subject) %[10 11 13] %13%:numel(subject) %1:6
                             % get labels and pick only the good channels
                             chanLabels = { segStep(t).sampledProcess.labels.name };
                             goodChIdx  = find(~badCh);
-                    
-                            fprintf('   Good channels for segment %d (%s): %d / %d ⇒ %s\n', ...
-                                    t, e{1}, ...
-                                    numel(goodChIdx), sum(isStep), ...
-                                    strjoin(chanLabels(goodChIdx), ', '));
-                    
-                            % store flags & stats back into the aligned segment
-                            trialInfo = segStep(t).info('trial');
-                            segStep(t).info('wrongChannels')     = badCh;
-                            segStep(t).info('channelScoreStats') = segStats;
-                            segStep(t).info('trial')             = trialInfo;
-                    
-                            QCstats = [QCstats ; struct2table(segStats,'AsArray',true)];
+                        % ── 1️⃣  console read‑out with scores ──────────────────────────────
+                            goodPairs = arrayfun(@(idx) sprintf('%s(%.2f)', ...
+                                             chanLabels{idx}, score(idx)), goodChIdx, ...
+                                             'UniformOutput', false);
+                            fprintf('   Good channels for segment %d/%d (%s): %d / %d ⇒ %s\n', ...
+                            t, nSegStep,              ...   % current segment / total segments
+                            e{1},                     ...   % event label  (FO, FC, …)
+                            numel(goodChIdx),         ...   % accepted channels
+                            numel(chanLabels),        ...   % total channels in this segment
+                            strjoin(goodPairs, ', '));      % list “Chan(score)”
 
-                           
-                            disp(['Plotting TF for segment ', num2str(t)]);
+                            % ── 2️⃣  build one‑row table for this trial ────────────────────────
+                            segmentID = sprintf('%s_%s_%02d_step%02d_%s', ...
+                                                    subject{s}, ...
+                                                    segStep(t).info('trial').medication, ...
+                                                    segStep(t).info('trial').nTrial, ...
+                                                    segStep(t).info('trial').nStep, ...
+                                                    e{1});
+                        
+                            % variable list grows as many scores as there are channels
+                            row = table(string(segmentID), ...
+                                        'VariableNames', {'segmentID'});
+                            for k = 1:numel(score)
+                                row.(['score' num2str(k)]) = score(k);
+                            end
+                            row.accepted_channels = { strjoin(chanLabels(goodChIdx), ', ') };
+                        
+                            % ── 3️⃣  harmonise columns with the master QC table ────────────────
+                            if isempty(QCstats_clean)              % first row → initialise master table
+                                QCstats_clean = row;
+                            else
+                                % (a) add new columns to QCstats if row has more scoreN than before
+                                newCols = setdiff(row.Properties.VariableNames, ...
+                                                  QCstats_clean.Properties.VariableNames);
+                                for c = newCols
+                                    if startsWith(c{1},'score')
+                                        QCstats_clean.(c{1}) = nan(height(QCstats_clean),1);
+                                    else
+                                        QCstats_clean.(c{1}) = {''};
+                                    end
+                                end
+                                % (b) add missing columns to row if QCstats already has them
+                                missCols = setdiff(QCstats_clean.Properties.VariableNames, ...
+                                                   row.Properties.VariableNames);
+                                for c = missCols
+                                    if startsWith(c{1},'score')
+                                        row.(c{1}) = NaN;
+                                    else
+                                        row.(c{1}) = {''};
+                                    end
+                                end
+                                % (c) reorder row to match QCstats then concatenate
+                                row = row(:, QCstats_clean.Properties.VariableNames);
+                                QCstats_clean = [QCstats_clean ; row];
+                            end
+                        
+                            % ── 4️⃣  update global counter of accepted channels ────────────────
+                             totalCleanAccepted =  totalCleanAccepted + numel(goodChIdx);
                              MAGIC.batch.plotCombinedLFP_TFSegment( ...
-                                seg{2}(t), ...
+                                segStep(t), ...
                                 cleanTF(t), ...
                                 cleanTFDir, ...
                                 'clean', ...
                                 e{1}); % <== ici on passe 'FO1', 'FC1', etc.
+                           end
+                           if existTF_clean && strcmp(segType,'step')
+                                MAGIC.batch.step3_R( ...
+                                    [OutputFileName suff1 '_TF_' suff '_clean_' e{1} '.csv'], ...
+                                    cleanTF, e, protocol, Artefact_Rejection_Method, ...
+                                    'TF', Size_around_event, ...
+                                    Acceptable_Artefacted_Sample_In_Window, todo.TF);
                             end
                         end
                         
@@ -571,10 +712,17 @@ if todo.extractInfos
     writetable(infos, fullfile(ProjectPath, ['MAGIC_AllPat_infos_' segType '.csv']), 'Delimiter', ';')
 end
 
-if ~isempty(QCstats)
-    outCSV = fullfile(FigDir,'QC_ChannelScores.csv');
-    writetable(QCstats,outCSV);
-    fprintf('QC summary written to %s\n', outCSV);
+ if ~isempty(QCstats_raw)
+    writetable(QCstats_raw, fullfile(FigDir,'QC_raw_ChannelScores.csv'));
+    fprintf('Raw QC summary written to %s\n', ...
+            fullfile(FigDir,'QC_raw_ChannelScores.csv'));
+    fprintf('TOTAL accepted raw channels: %d\n', totalRawAccepted);
+ end
+if ~isempty(QCstats_clean)
+    writetable(QCstats_clean, fullfile(FigDir,'QC_clean_ChannelScores.csv'));
+    fprintf('Clean QC summary written to %s\n', ...
+            fullfile(FigDir,'QC_clean_ChannelScores.csv'));
+    fprintf('TOTAL accepted clean channels: %d\n', totalCleanAccepted);
 end
 
 if nargin == 0

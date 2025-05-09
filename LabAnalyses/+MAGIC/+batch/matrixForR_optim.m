@@ -112,13 +112,35 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
         Chan          = linq(trials.extract(exType)).select(@(x) {x.labels.name}).toList;
         ChRegion      = linq(trials.extract(exType)).select(@(x) {x.labels.description}).toList;
         ChGp          = linq(trials.extract(exType)).select(@(x) {x.labels.grouping}).toList;
+
+        if strcmp(type,'TF') || strcmp(type,'meanTF')          % NEW 
+            F = trials(1).extract('TF').f;                     % NEW 
+        end                                                    % NEW 
+
+        % NEW determine, for *this* event call (FO or FC), how many channels
+%      survive the QC mask stored in each TF segment
+        GoodChCounts = zeros(1, Ntrial);
+        for trChk = 1:Ntrial
+            if isKey(trials(trChk).info,'wrongChannels')
+                wFlags = trials(trChk).info('wrongChannels');
+            else
+                wFlags = false(1, numel(Chan{trChk}));
+            end
+            GoodChCounts(trChk) = sum(~wFlags);
+        end
         
         if strcmp(type,'TF') || strcmp(type,'meanTF')
-            F = trials(1).extract('TF').f;
-            NLine_patient = sum(cell2mat(Nchannels))*numel(F);
+            NLine_patient = sum(GoodChCounts) * numel(F);
         else
-            NLine_patient = sum(cell2mat(Nchannels));
+            NLine_patient = sum(GoodChCounts);
         end
+                    
+%         if strcmp(type,'TF') || strcmp(type,'meanTF')
+%             F = trials(1).extract('TF').f;
+%             NLine_patient = sum(cell2mat(Nchannels))*numel(F);
+%         else
+%             NLine_patient = sum(cell2mat(Nchannels));
+%         end
         MForR(index+1:index+NLine_patient ,2)  = Patients(pat);
     %     if ~isempty(data(1).info('trial').trial)
     %         MForR(index+1:index+NLine_patient ,1)  = {data(1).info('trial').trial(1:5)};
@@ -127,10 +149,15 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
         index_tr = index;
         for tr = 1:Ntrial
             if strcmp(type,'TF') || strcmp(type,'meanTF')
-                NLine_trial = Nchannels{tr}*numel(F);
+                NLine_trial = GoodChCounts(tr) * numel(F);
             else
-                NLine_trial = Nchannels{tr};
+                NLine_trial = GoodChCounts(tr);
             end
+%             if strcmp(type,'TF') || strcmp(type,'meanTF')
+%                 NLine_trial = Nchannels{tr}*numel(F);
+%             else
+%                 NLine_trial = Nchannels{tr};
+%             end
             
             if isempty(trials(tr).info('trial').isFOG)
                 FoGValue = NaN;
@@ -168,7 +195,7 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
             
             if strcmp(type,'TF') || strcmp(type,'meanTF')
                 
-                NLine_trial= Nchannels{tr}*numel(F);
+               % NLine_trial= Nchannels{tr}*numel(F);
                 flag_event_for_artefact = false;
                 
                 if ~strcmp(win_name,'bsl')
@@ -184,7 +211,19 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
                     Artefact_Score_By_Channel_For_Event = MAGIC.batch.Artefact_in_this_event_per_channel(0, 0, 'decode', 0, Encrypted_String, Size_around_event, Acceptable_Artefacted_Sample_In_Window) ;
                 end
                 
-                for ch=1:numel(Chan{1,tr})
+%                 for ch=1:numel(Chan{1,tr})
+                          % NEW ✨ pick only channels that survived QC for this event
+                    if isKey(trials(tr).info,'wrongChannels')
+                        wFlags = trials(tr).info('wrongChannels');
+                    else
+                        wFlags = false(1, numel(Chan{tr}));
+                    end
+                    goodCh = find(~wFlags);
+            
+                    for gc = 1:numel(goodCh)
+                        ch = goodCh(gc);                 % real channel index
+                        rowOffset = (gc-1) * numel(F);   % NOT (ch-1)!
+
                     idx_quality = {} ;
     
                     if ~isempty(localrejecttabl)
@@ -216,24 +255,24 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
     
                     if ~isempty(idx_quality)
                             %reject_table(idx_quality,:)
-                            MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),6)    = {0};
+                            MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),6)    = {0};
                             ch_artefacte = ch_artefacte + 1 ;
                             flag_event_for_artefact = true;
                     end
                     
-                    MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),10)    = {Chan{1,tr}(ch)};
-                    MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),11)    = {ChRegion{1,tr}(ch)};
-                    MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),12)    = {ChGp{1,tr}(ch)};
-                    MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),13)    = num2cell(trials(tr).extract(exType).f);
+                    MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),10)    = {Chan{1,tr}(ch)};
+                    MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),11)    = {ChRegion{1,tr}(ch)};
+                    MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),12)    = {ChGp{1,tr}(ch)};
+                    MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),13)    = num2cell(trials(tr).extract(exType).f);
                     if strcmp(type,'TF') || strcmp(type,'PE')
-                        MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),nbRows+1:nbRows+numel(TForR)) = num2cell(squeeze(trials(tr).extract(exType).values{1}(:,:,ch)))';
+                        MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),nbRows+1:nbRows+numel(TForR)) = num2cell(squeeze(trials(tr).extract(exType).values{1}(:,:,ch)))';
                     elseif strcmp(type,'meanTF')
-                        MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),nbRows+1:nbRows+numel(TForR)) = num2cell(squeeze(nanmean(trials(tr).extract(exType).values{1}(idx_time,:,ch))))'; %#ok<NANMEAN> 
+                        MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),nbRows+1:nbRows+numel(TForR)) = num2cell(squeeze(nanmean(trials(tr).extract(exType).values{1}(idx_time,:,ch))))'; %#ok<NANMEAN> 
                     end
                     % change quality to 0 if artifacts on channel
                     if strcmp(Type_Rejet_Artefact,'Old_with_Metadata') && strcmp(Art_events(tr).type, 'metadata.event.Artifact')
                         if contains(Chan{1,tr}(ch), {Art_events(tr).labels.name})
-                            MForR(index_tr+1+(ch-1)*numel(F):index_tr+ch*numel(F),6) = {0};
+                            MForR(index_tr+1+rowOffset : index_tr+rowOffset+numel(F),6) = {0};
                         end
                     end
     
@@ -274,6 +313,8 @@ function matrixForR_optim(csvFile, data, e, type, protocol, Type_Rejet_Artefact,
         export(cell2dataset(MForR),'File',csvFile); %#ok<CELLDTSET> 
         warning('on','stats:dataset:ModifiedVarnames')
     else
+        fprintf(2,"export en CSV ET Parquet \n")
+        export(cell2dataset(MForR),'File',csvFile); %#ok<CELLDTSET> 
         csvFile = strrep(csvFile, '.csv', '.parquet');
         % Ensure all variable names start with a letter, replace invalid characters
         validVarNames = cellfun(@(x) regexprep(x, '^-', 'x_'), MForR(1,:), 'UniformOutput', false); % Replace leading '-' with 'x_'
