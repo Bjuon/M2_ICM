@@ -248,37 +248,39 @@ end
 
  
 %%
-% ___D�finition des �venements du pas___________________________________________________________
-
-% Suppression du demi-tour et des pas suivants
 if isfield(Ev,'General_Start_Turn')
-Ev2.Right_Foot_Strike = abs(bsxfun(@minus,Ev.Right_Foot_Strike',Ev.General_Start_Turn));
-[~,Ev2.Right_Foot_Strike] = min(Ev2.Right_Foot_Strike (:,1:size(Ev2.Right_Foot_Strike ,2)));
-Ev2.Right_Foot_Strike = Ev.Right_Foot_Strike(1:Ev2.Right_Foot_Strike);
-    Ev2.Right_Foot_Off = abs(bsxfun(@minus,Ev.Right_Foot_Off',Ev.General_Start_Turn));
-    [~,Ev2.Right_Foot_Off] = min(Ev2.Right_Foot_Off (:,1:size(Ev2.Right_Foot_Off ,2)));
-    Ev2.Right_Foot_Off = Ev.Right_Foot_Off(1:Ev2.Right_Foot_Off);
-Ev2.Left_Foot_Strike = abs(bsxfun(@minus,Ev.Left_Foot_Strike',Ev.General_Start_Turn));
-[~,Ev2.Left_Foot_Strike] = min(Ev2.Left_Foot_Strike (:,1:size(Ev2.Left_Foot_Strike ,2)));
-Ev2.Left_Foot_Strike = Ev.Left_Foot_Strike(1:Ev2.Left_Foot_Strike);
-    Ev2.Left_Foot_Off = abs(bsxfun(@minus,Ev.Left_Foot_Off',Ev.General_Start_Turn));
-    [~,Ev2.Left_Foot_Off] = min(Ev2.Left_Foot_Off (:,1:size(Ev2.Left_Foot_Off ,2)));
-    Ev2.Left_Foot_Off = Ev.Left_Foot_Off(1:Ev2.Left_Foot_Off);
+
+    % -------- 1) STRIKE events  (♦  proximité : inchangé) --------------------
+    % Conserve les Foot-Strikes jusqu’au dernier avant le début du demi-tour
+    Ev2.Right_Foot_Strike = abs(bsxfun(@minus, Ev.Right_Foot_Strike', Ev.General_Start_Turn));
+    [~, Ev2.Right_Foot_Strike] = min(Ev2.Right_Foot_Strike(:,1:size(Ev2.Right_Foot_Strike,2)));
+    Ev2.Right_Foot_Strike = Ev.Right_Foot_Strike(1:Ev2.Right_Foot_Strike);
+
+    Ev2.Left_Foot_Strike  = abs(bsxfun(@minus, Ev.Left_Foot_Strike',  Ev.General_Start_Turn));
+    [~, Ev2.Left_Foot_Strike] = min(Ev2.Left_Foot_Strike(:,1:size(Ev2.Left_Foot_Strike,2)));
+    Ev2.Left_Foot_Strike  = Ev.Left_Foot_Strike(1:Ev2.Left_Foot_Strike);
+
+    % -------- 2) OFF events  (♦  NOUVEAU : < Start_Turn) ---------------------
+    % Écarte systématiquement tout OFF horodaté après le demi-tour.
+    Ev2.Right_Foot_Off = Ev.Right_Foot_Off(Ev.Right_Foot_Off < Ev.General_Start_Turn);
+    Ev2.Left_Foot_Off  = Ev.Left_Foot_Off (Ev.Left_Foot_Off  < Ev.General_Start_Turn);
 end
 
-% Suppression du 1er pas � droite et � gauche
-if length(Ev2.Right_Foot_Strike) > 1
+
+% Supprime toujours le premier pas (pied d’appui au démarrage)
+% --------------------------------------------------------------------------
+if numel(Ev2.Right_Foot_Strike) > 1
     Ev2.Right_Foot_Strike = Ev2.Right_Foot_Strike(2:end);
-    Ev2.Right_Foot_Off = Ev2.Right_Foot_Off(2:end);
-else 
-    fprintf(2,['Not enough Right step : '  filename '\n'])
+    Ev2.Right_Foot_Off    = Ev2.Right_Foot_Off(2:end);
+else
+    fprintf(2, ['Not enough Right step : ' filename '\n'])
 end
 
-if length(Ev2.Left_Foot_Strike) > 1
+if numel(Ev2.Left_Foot_Strike) > 1
     Ev2.Left_Foot_Strike = Ev2.Left_Foot_Strike(2:end);
-    Ev2.Left_Foot_Off = Ev2.Left_Foot_Off(2:end);
-else 
-    fprintf(2,['Not enough Left step : '  filename '\n'])
+    Ev2.Left_Foot_Off    = Ev2.Left_Foot_Off(2:end);
+else
+    fprintf(2, ['Not enough Left step : ' filename '\n'])
 end
 
 
@@ -291,6 +293,68 @@ Ev_Frames.Right_Foot_Off = find(Ev_Frames.Right_Foot_Off); % On recherche l'indi
 Ev_Frames.Left_Foot_Strike = find(Ev_Frames.Left_Foot_Strike);
     Ev_Frames.Left_Foot_Off = ismember(round(Times,4), round(Ev2.Left_Foot_Off,2));
 Ev_Frames.Left_Foot_Off = find(Ev_Frames.Left_Foot_Off);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% NEW: Swing‑phase metrics  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% 1.  Per‑step swing‑time arrays (Off  →  next Strike)
+if numel(Ev2.Right_Foot_Off) >= 1 && numel(Ev2.Right_Foot_Strike) >= 2
+    DATA.Swing_R = Ev2.Right_Foot_Strike(2:end) - Ev2.Right_Foot_Off(1:end-1);
+else                 % not enough events ➜ flag as NaN
+    DATA.Swing_R = NaN;
+end
+
+if numel(Ev2.Left_Foot_Off)  >= 1 && numel(Ev2.Left_Foot_Strike)  >= 2
+    DATA.Swing_L = Ev2.Left_Foot_Strike(2:end)  - Ev2.Left_Foot_Off(1:end-1);
+else
+    DATA.Swing_L = NaN;
+end
+
+% 2.  Mean swing time  (Rhythm domain, variable #5)
+DATA.SwingTime_mean = mean([DATA.Swing_R DATA.Swing_L], 'omitnan');
+
+DATA.SwingTime_sd   = std ([DATA.Swing_R DATA.Swing_L],'omitnan');   % mm / s
+
+
+% % 3.  Swing‑time variability  (coefficient of variation %, variable #3)
+% DATA.SwingTime_var  = 100 * std([DATA.Swing_R DATA.Swing_L], 'omitnan') ...
+%                             / DATA.SwingTime_mean;
+
+% 4.  Swing‑time asymmetry  (log‑ratio ×100, variable #11)
+if ~isempty(DATA.Swing_R) && ~isempty(DATA.Swing_L)
+    DATA.SwingTime_asym = abs(100 * log(nanmean(DATA.Swing_R) ...
+                                        / nanmean(DATA.Swing_L)));
+else
+    DATA.SwingTime_asym = NaN;
+end
+
+% fprintf('  [DEBUG] SwingTime: mean=%.3f  sd=%.3f  asym=%.3f\n', ...
+%         DATA.SwingTime_mean, DATA.SwingTime_sd, DATA.SwingTime_asym)
+
+% ---------- NEW : STEP‑TIME METRICS (Lord #4 #9 #12) ----------
+if numel(Ev2.Right_Foot_Strike) >= 2
+    DATA.StepTime_R = diff(Ev2.Right_Foot_Strike);
+else
+    DATA.StepTime_R = NaN;
+end
+if numel(Ev2.Left_Foot_Strike)  >= 2
+    DATA.StepTime_L = diff(Ev2.Left_Foot_Strike);
+else
+    DATA.StepTime_L = NaN;
+end
+
+DATA.StepTime_mean = mean([DATA.StepTime_R DATA.StepTime_L], 'omitnan');
+% DATA.StepTime_var  = 100*std([DATA.StepTime_R DATA.StepTime_L], 'omitnan') ...
+%                           / DATA.StepTime_mean;
+DATA.StepTime_sd  = std([DATA.StepTime_R DATA.StepTime_L],'omitnan');  %%% NEW
+if ~isempty(DATA.StepTime_R) && ~isempty(DATA.StepTime_L)
+    DATA.StepTime_asym = abs(100 * log(nanmean(DATA.StepTime_R) ...
+                                        / nanmean(DATA.StepTime_L)));
+else
+    DATA.StepTime_asym = NaN;
+end
+
 
 
 %%
@@ -356,35 +420,40 @@ end
 % ___Largeur Pas___________________________________________________________
 % Defining spatial parameters for non-linear walking, Huxham et al., 2006
 
-if isequal(DATA.Cote ,'Left')
-    for i = 1 : DATA.num_cycle-1 % Pied Gauche devant donc width du pied droit
-        FO_L = Ev_Frames.Left_Foot_Off(i);
-        FO_R = Ev_Frames.Right_Foot_Off(i);
-            DATA.Width_R(i) = abs(LHEE_Lab(1,FO_R) - RHEE_Lab(1,FO_L));
-        clearvars FO_L FS_L FO_R FS_R
-    end
-    for i = 1 : DATA.num_cycle-1 % Pied Droit devant donc width du pied gauche
-        FO_L = Ev_Frames.Left_Foot_Off(i+1);
-        FO_R = Ev_Frames.Right_Foot_Off(i);
-            DATA.Width_L(i) = abs(RHEE_Lab(1,FO_L) - LHEE_Lab(1,FO_R));
-        clearvars FO_L FS_L FO_R FS_R
-    end
-    
-elseif isequal(DATA.Cote ,'Right')
-    for i = 1 :DATA.num_cycle-1
-        FO_L = Ev_Frames.Left_Foot_Off(i);
-        FO_R = Ev_Frames.Right_Foot_Off(i);
-            DATA.Width_L(i) = abs(RHEE_Lab(1,FO_L) - LHEE_Lab(1,FO_R));
-        clearvars FO_L FS_L FO_R FS_R
-    end
-    for i = 1 :DATA.num_cycle-1
-        FO_R = Ev_Frames.Right_Foot_Off(i+1);
-        FO_L = Ev_Frames.Left_Foot_Off(i);
-            DATA.Width_R(i) = abs(LHEE_Lab(1,FO_R) - RHEE_Lab(1,FO_L));
-        clearvars FO_L FS_L FO_R FS_R
-    end
-    
+% vectorized step‐width calculation at each foot‐off
+if isfield(All_mks,'RHEE') && isfield(All_mks,'LHEE') && ...
+   ~isempty(Ev_Frames.Right_Foot_Off) && ~isempty(Ev_Frames.Left_Foot_Off)
+
+    % widths at right‐off and left‐off (mediolateral distance)
+    DATA.Width_R = abs( ...
+        All_mks.RHEE(Ev_Frames.Right_Foot_Off,1) ...
+      - All_mks.LHEE(Ev_Frames.Right_Foot_Off,1) )';
+
+    DATA.Width_L = abs( ...
+        All_mks.RHEE(Ev_Frames.Left_Foot_Off,1) ...
+      - All_mks.LHEE(Ev_Frames.Left_Foot_Off,1) )';
+
+else
+    % not enough data → force NaN arrays
+    DATA.Width_R = NaN;
+    DATA.Width_L = NaN;
 end
+
+% now assign the summary metrics unconditionally
+DATA.StepWidth_mean = mean([DATA.Width_R, DATA.Width_L], 'omitnan');
+DATA.StepWidth_sd   = std ([DATA.Width_R, DATA.Width_L], 'omitnan');
+if ~all(isnan(DATA.Width_R)) && ~all(isnan(DATA.Width_L))
+    DATA.StepWidth_asym = abs(100 * log( ...
+        nanmean(DATA.Width_R) ./ nanmean(DATA.Width_L) ));
+else
+    DATA.StepWidth_asym = NaN;
+end
+
+% fprintf('*** %s — StepWidth debug ***\n', filename);
+% fprintf('  Width_R: %s\n', mat2str(DATA.Width_R));
+% fprintf('  Width_L: %s\n', mat2str(DATA.Width_L));
+% fprintf('  StepWidth_mean = %.3f, sd = %.3f, asym = %.3f\n\n', ...
+%         DATA.StepWidth_mean, DATA.StepWidth_sd, DATA.StepWidth_asym);
 
 redflagCycles = 0 ; 
 if DATA.num_cycle <= 1
@@ -399,6 +468,23 @@ if redflagCycles == 1
     DATA.Width_L = NaN ;
 end
 
+% ---------- NEW : STEP‑WIDTH METRICS (Lord #15 #16) ----------
+DATA.StepWidth_mean = mean([DATA.Width_R DATA.Width_L], 'omitnan');
+% DATA.StepWidth_var  = 100*std( [DATA.Width_R DATA.Width_L], 'omitnan') ...
+%                             / DATA.StepWidth_mean;
+
+DATA.StepWidth_sd  = std( [DATA.Width_R DATA.Width_L],'omitnan');  %%% NEW
+
+if ~isempty(DATA.Width_R) && ~isempty(DATA.Width_L)
+    DATA.StepWidth_asym = abs(100 * log(nanmean(DATA.Width_R) ...
+                                         / nanmean(DATA.Width_L)));
+else
+    DATA.StepWidth_asym = NaN;
+end
+% 
+% fprintf('  [DEBUG] StepWidth: mean=%.3f  sd=%.3f  asym=%.3f\n', ...
+%         DATA.StepWidth_mean, DATA.StepWidth_sd, DATA.StepWidth_asym);
+
 %%
 % ___Duree Pas___________________________________________________________
 
@@ -407,6 +493,19 @@ for i = 1 : min(length(Ev2.Right_Foot_Strike), length(Ev2.Right_Foot_Off))
 end
 for i = 1 : min(length(Ev2.Left_Foot_Strike), length(Ev2.Left_Foot_Off))
     DATA.Duree_L (i) = Ev2.Left_Foot_Strike(i)- Ev2.Left_Foot_Off(i);
+end
+
+% ---------- NEW : STANCE‑TIME METRICS (Lord #6 #10 #13) ----------
+DATA.StanceTime_mean = mean([DATA.Duree_R DATA.Duree_L], 'omitnan');
+% DATA.StanceTime_var  = 100*std([DATA.Duree_R DATA.Duree_L], 'omitnan') ...
+%                              / DATA.StanceTime_mean;
+DATA.StanceTime_sd = std([DATA.Duree_R DATA.Duree_L],'omitnan');       %%% NEW
+% Stance-time asymmetry: log-ratio ×100
+if ~isempty(DATA.Duree_R) && ~isempty(DATA.Duree_L)
+    DATA.StanceTime_asym = abs(100 * log(nanmean(DATA.Duree_R) ...
+                                          / nanmean(DATA.Duree_L)));
+else
+    DATA.StanceTime_asym = NaN;
 end
 
 
@@ -428,6 +527,26 @@ for i = 1 : min(length(Ev2.Left_Foot_Strike), length(Ev2.Left_Foot_Off))
             if DATA.Vitesse_L (i) < 0
             fprintf(2, ['Pbm Vitesse L n�g : ' filename ' pas ' num2str(i) '\n'])
             end
+end
+%% New add mean step velocity for both feet 
+% ----------  STEP-LENGTH summary & variability  -------------------------
+DATA.StepLen_mean = mean([DATA.Length_R DATA.Length_L],'omitnan');   % mean step length (mm)
+DATA.StepLen_sd   = std ([DATA.Length_R DATA.Length_L],'omitnan');   % SD variability  (mm)
+if ~isempty(DATA.Length_R) && ~isempty(DATA.Length_L)
+    DATA.StepLen_asym = abs(100 * log(nanmean(DATA.Length_R) ...
+                                       / nanmean(DATA.Length_L)));
+else
+    DATA.StepLen_asym = NaN;
+end
+% ----------  VELOCITY summary & variability  ----------------------------
+DATA.StepVel_mean = mean([DATA.Vitesse_R DATA.Vitesse_L],'omitnan'); % mean step speed (mm·s-1)
+DATA.StepVel_sd   = std ([DATA.Vitesse_R DATA.Vitesse_L],'omitnan'); % SD variability  (mm·s-1)
+
+if ~isempty(DATA.Vitesse_R) && ~isempty(DATA.Vitesse_L)
+    DATA.StepVel_asym = abs(100 * log(nanmean(DATA.Vitesse_R) ...
+                                       / nanmean(DATA.Vitesse_L)));
+else
+    DATA.StepVel_asym = NaN;
 end
 
 
@@ -507,8 +626,9 @@ if redflagCycles == 0
 % SA : voir calcul duree pas (DATA.Duree_R et DARA.Duree_L)   /   On garde
 % que les donn�es des cycles de marche entier et on inverse car dur�e du
 % pas � droite == temps de simple appui gauche
-DATA.SA_R = DATA.Duree_L(1:DATA.num_cycle);
-DATA.SA_L = DATA.Duree_R(1:DATA.num_cycle);
+nGood   = min(DATA.num_cycle , min(numel(DATA.Duree_R), numel(DATA.Duree_L)));
+DATA.SA_R = DATA.Duree_L(1:nGood);   % simple support right  = stance of left
+DATA.SA_L = DATA.Duree_R(1:nGood);   % simple support left   = stance of right
 
 % Calcul DA et SA en % de cycle
 for i = 1: DATA.num_cycle-1
@@ -527,9 +647,12 @@ end
 DATA.StrideTime_mean = mean([DATA.Duree_R, DATA.Duree_L]);
 DATA.StrideTime_sd = std([DATA.Duree_R, DATA.Duree_L]);
 
-% Stride Time Variability
-DATA.StrideTime_variability = (DATA.StrideTime_sd / DATA.StrideTime_mean) * 100;
-
+% Stride Time Variability (coefficient of variation %)
+if DATA.StrideTime_mean ~= 0
+    DATA.StrideTime_variability = (DATA.StrideTime_sd / DATA.StrideTime_mean) * 100;
+else
+    DATA.StrideTime_variability = NaN;
+end
 
 %%
 % ___Gait Asymetry___________________________________________________________
@@ -828,8 +951,24 @@ end
 
 %% Concatenation des informations de tous les essais
 cpt = cpt+1;
-MARCHE.DATA(cpt) = DATA;
+if cpt == 1                       % first trial → initialise
+    MARCHE.DATA = DATA;
+else
+    % -- 1. add any *new* fields that appeared after patching
+    newF = setdiff(fieldnames(DATA), fieldnames(MARCHE.DATA));
+    for f = 1:numel(newF)
+        [MARCHE.DATA.(newF{f})] = deal([]);   % placeholder in older rows
+    end
 
+    % -- 2. add any *legacy* fields that might be missing this pass
+    missF = setdiff(fieldnames(MARCHE.DATA), fieldnames(DATA));
+    for f = 1:numel(missF)
+        DATA.(missF{f}) = [];                 % placeholder in current row
+    end
+
+    % -- 3. now the two structures are identical → append safely
+    MARCHE.DATA(cpt) = DATA;
+end
 %% CLEAR
 clearvars -except cpt Folder Session session_i MARCHE num_trial cnt nt Date Type Patients Patient p condonoff Cond CondMed Liste_Essais_Trop_Court
 end
@@ -837,8 +976,6 @@ end
 
 end
 end
-
-
 
 
 
@@ -863,80 +1000,202 @@ if any(nom_fich ~= 0)
     eval([nom_fich(1:end-4) '= MARCHE;'])
     eval(['save(nom_fich(1:end-4), nom_fich(1:end-4));'])
     disp('.MAT sauvegard�');
-
-%   Export Excel
-    button = questdlg('Exporter sur Excel?','Sauvegarde r�sultats','Oui','Non','Oui');
-    if strcmp(button,'Oui')
-        fichier = strrep(nom_fich,'MARCHE_rlmDV_FEP.mat','MARCHE_rlmDV_FEP.xlsx'); % ??
-        champs = fieldnames(MARCHE.DATA(end));
-        
-            Tab_fin(1,:) = champs(1:end); 
-                    for i = 1 : length(MARCHE.DATA)
-i_R = MARCHE.DATA(i).num_step_R;
-i_L = MARCHE.DATA(i).num_step_L;
-maxi = max(i_R,i_L);
-
-            Tab(1:maxi,1) = {MARCHE.DATA(i).TrialName};
-            Tab(1:maxi,2) = {MARCHE.DATA(i).Patient};
-            Tab(1:maxi,3) = {MARCHE.DATA(i).Session};
-            Tab(1:maxi,4) = {MARCHE.DATA(i).Cond};
-            Tab(1:maxi,5) = {MARCHE.DATA(i).TrialNum};
-            Tab(1,6) = {MARCHE.DATA(i).Tps_DemiTour};
-            Tab(1,7) = {MARCHE.DATA(i).num_FOG};
-            Tab(1,8) = {sum(MARCHE.DATA(i).tps_FOG)};           
-            Tab(1,9) = {MARCHE.DATA(i).Cote};
-            Tab(1,10) = {MARCHE.DATA(i).num_cycle};
-            Tab(1,11) = {MARCHE.DATA(i).num_step_R};          
-            Tab(1,12) = {MARCHE.DATA(i).num_step_L};
-            Tab(1,13) = {MARCHE.DATA(i).Cadence_R};        
-            Tab(1,14) = {MARCHE.DATA(i).Cadence_L}; 
-            Tab(1:length(MARCHE.DATA(i).Length_R),15) = num2cell(MARCHE.DATA(i).Length_R.');
-            Tab(1:length(MARCHE.DATA(i).Length_L),16) =  num2cell(MARCHE.DATA(i).Length_L.');
-            Tab(1:length(MARCHE.DATA(i).Width_R),17) = num2cell(MARCHE.DATA(i).Width_R.'); 
-            Tab(1:length(MARCHE.DATA(i).Width_L),18) =  num2cell(MARCHE.DATA(i).Width_L.');
-            Tab(1:length(MARCHE.DATA(i).Duree_R),19) =  num2cell(MARCHE.DATA(i).Duree_R.');
-            Tab(1:length(MARCHE.DATA(i).Duree_L),20) =  num2cell(MARCHE.DATA(i).Duree_L.');
-            Tab(1:length(MARCHE.DATA(i).Vitesse_R),21) =  num2cell(MARCHE.DATA(i).Vitesse_R.');
-            Tab(1:length(MARCHE.DATA(i).Vitesse_L),22) =  num2cell(MARCHE.DATA(i).Vitesse_L.');
-%             Tab(1:length(MARCHE.DATA(i).MHC_R),23) =  num2cell(MARCHE.DATA(i).MHC_R.');
-%             Tab(1:length(MARCHE.DATA(i).MTC_R),24) =  num2cell(MARCHE.DATA(i).MTC_R.');
-%             Tab(1:length(MARCHE.DATA(i).MHC_L),25) =  num2cell(MARCHE.DATA(i).MHC_L.');
-%             Tab(1:length(MARCHE.DATA(i).MTC_L),26) =  num2cell(MARCHE.DATA(i).MTC_L.');
-            Tab(1:length(MARCHE.DATA(i).Cycle_Time),23) = num2cell(MARCHE.DATA(i).Cycle_Time.'); 
-            Tab(1:length(MARCHE.DATA(i).DA_R),24) =  num2cell(MARCHE.DATA(i).DA_R.');
-            Tab(1:length(MARCHE.DATA(i).DA_L),25) =  num2cell(MARCHE.DATA(i).DA_L.'); % 
-            Tab(1:length(MARCHE.DATA(i).SA_R),26) =  num2cell(MARCHE.DATA(i).SA_R.');
-            Tab(1:length(MARCHE.DATA(i).SA_L),27) =  num2cell(MARCHE.DATA(i).SA_L.'); % 
-            Tab(1:length(MARCHE.DATA(i).DApourcent_R),28) =  num2cell(MARCHE.DATA(i).DApourcent_R.'); %
-            Tab(1:length(MARCHE.DATA(i).DApourcent_L),29) =  num2cell(MARCHE.DATA(i).DApourcent_L.'); %
-            Tab(1:length(MARCHE.DATA(i).SApourcent_R),30) =  num2cell(MARCHE.DATA(i).SApourcent_R.'); %
-            Tab(1:length(MARCHE.DATA(i).SApourcent_L),31) =  num2cell(MARCHE.DATA(i).SApourcent_L.'); %
-            Tab(1,32) = {MARCHE.DATA(i).StrideTime_mean};
-            Tab(1,33) = {MARCHE.DATA(i).StrideTime_sd};
-            Tab(1,34) = {MARCHE.DATA(i).StrideTime_variability};
-            Tab(1,35) = {MARCHE.DATA(i).GA};
-            Tab(1,36) = {MARCHE.DATA(i).Length_mean};
-            Tab(1,37) = {MARCHE.DATA(i).Length_med};
-            Tab(1,38) = {MARCHE.DATA(i).DA_mean};
-            Tab(1,39) = {MARCHE.DATA(i).DA_med};
-            Tab(1,40) = {MARCHE.DATA(i).Length_RHEE };
-            Tab(1,41) = {MARCHE.DATA(i).Length_LHEE};
-            Tab(1,42) = {MARCHE.DATA(i).Length_mean_DemiTour};
-            Tab(1,43) = {MARCHE.DATA(i).Length_med_DemiTour};
-            Tab(1,44) = {MARCHE.DATA(i).Area_mean};
-            Tab(1,45) = {MARCHE.DATA(i).Area_med};
-            Tab(1:maxi,46) = {MARCHE.DATA(i).GONOGO};
-
-
-           
-            Tab_fin = vertcat(Tab_fin,Tab);
-            clear Tab
-                   end
-        xlswrite(fullfile(chemin,fichier(1:end-4)),Tab_fin,1,'A1')
-        writecell(Tab_fin,fullfile(chemin,[fichier(1:end-4), '.csv']),'Delimiter','semi') 
-        disp('Fichier Excel enregistr�')
-
-    end
 end
 
-disp('Verifier la Liste_Essais_Trop_Court')
+%% — Export to Excel (complete rewrite) — 
+
+baseName = nom_fich(1:end-4);
+xlsxFile = fullfile(chemin, [baseName, '.xlsx']);
+csvFile  = fullfile(chemin, [baseName, '.csv']);
+
+% ask user whether to export
+button = questdlg('Exporter sur Excel?','Sauvegarde résultats','Oui','Non','Oui');
+if ~strcmp(button,'Oui')
+    return
+end
+
+% build one big table by concatenating per-trial tables
+tblAll = table();
+
+
+for i = 1:numel(MARCHE.DATA)
+    D = MARCHE.DATA(i);
+
+    scalarFields = { ...
+      'Tps_DemiTour','num_FOG','num_cycle', ...
+      'num_step_R','num_step_L','Cadence_R','Cadence_L', ...
+      'StrideTime_mean','StrideTime_sd','StrideTime_variability', ...
+      'GA','Length_mean','Length_med','DA_mean','DA_med', ...
+      'Length_RHEE','Length_LHEE','Length_mean_DemiTour','Length_med_DemiTour', ...
+      'Area_mean','Area_med', ...
+      'StepVel_mean','StepVel_sd','StepVel_asym', ...
+      'StepLen_mean','StepLen_sd','StepLen_asym', ...
+      'StepTime_mean','StepTime_sd','StepTime_asym', ...
+      'StanceTime_mean','StanceTime_sd','StanceTime_asym', ...
+      'SwingTime_mean','SwingTime_sd','SwingTime_asym', ...
+      'StepWidth_mean','StepWidth_sd','StepWidth_asym' ...
+    };
+    for sf = scalarFields
+        f = sf{1};
+        if ~isfield(D,f)
+            % missing → fill with NaN scalar
+            D.(f) = NaN;
+        elseif isnumeric(D.(f)) && numel(D.(f))>1
+            % accidentally a vector → collapse to one number
+            D.(f) = mean(D.(f), 'omitnan');
+        end
+    end
+
+    % 1) figure out how many rows we need: the max length of any per-step vector
+    lens = [ ...
+      numel(D.Length_R), numel(D.Length_L), ...
+      numel(D.Width_R),  numel(D.Width_L),  ...
+      numel(D.Duree_R),  numel(D.Duree_L),  ...
+      numel(D.Vitesse_R),numel(D.Vitesse_L), ...
+      numel(D.Cycle_Time),numel(D.DA_R),     ...
+      numel(D.DA_L),     numel(D.SA_R),     ...
+      numel(D.SA_L),     numel(D.DApourcent_R), ...
+      numel(D.DApourcent_L),numel(D.SApourcent_R), ...
+      numel(D.SApourcent_L) ...
+    ];
+    rowCount = max([lens, 1]);   % at least one row
+
+    % 2) helper to pad any numeric vector to length rowCount with NaN
+    pad = @(v) [v(:); nan(rowCount - numel(v),1)];
+
+    % 3) create every column as a vector of length rowCount
+    TrialName         = repmat({D.TrialName},   rowCount,1);
+    Patient           = repmat({D.Patient},     rowCount,1);
+    Session           = repmat({D.Session},     rowCount,1);
+    Cond              = repmat({D.Cond},        rowCount,1);
+    TrialNum          = repmat({D.TrialNum},    rowCount,1);
+
+    Tps_DemiTour      = repmat(D.Tps_DemiTour,  rowCount,1);
+    num_FOG           = repmat(D.num_FOG,       rowCount,1);
+    sum_tps_FOG       = repmat(sum(D.tps_FOG),  rowCount,1);
+    Cote              = repmat({D.Cote},        rowCount,1);
+    num_cycle         = repmat(D.num_cycle,     rowCount,1);
+
+    num_step_R        = repmat(D.num_step_R,    rowCount,1);
+    num_step_L        = repmat(D.num_step_L,    rowCount,1);
+    Cadence_R         = repmat(D.Cadence_R,     rowCount,1);
+    Cadence_L         = repmat(D.Cadence_L,     rowCount,1);
+
+    Length_R          = pad(D.Length_R);
+    Length_L          = pad(D.Length_L);
+    Width_R           = pad(D.Width_R);
+    Width_L           = pad(D.Width_L);
+
+    Duree_R           = pad(D.Duree_R);
+    Duree_L           = pad(D.Duree_L);
+    Vitesse_R         = pad(D.Vitesse_R);
+    Vitesse_L         = pad(D.Vitesse_L);
+
+    Cycle_Time        = pad(D.Cycle_Time);
+    DA_R              = pad(D.DA_R);
+    DA_L              = pad(D.DA_L);
+    SA_R              = pad(D.SA_R);
+    SA_L              = pad(D.SA_L);
+
+    DApourcent_R      = pad(D.DApourcent_R);
+    DApourcent_L      = pad(D.DApourcent_L);
+    SApourcent_R      = pad(D.SApourcent_R);
+    SApourcent_L      = pad(D.SApourcent_L);
+
+    StrideTime_mean        = repmat(D.StrideTime_mean,       rowCount,1);
+    StrideTime_sd          = repmat(D.StrideTime_sd,         rowCount,1);
+    StrideTime_variability = repmat(D.StrideTime_variability,rowCount,1);
+
+    GA               = repmat(D.GA,                    rowCount,1);
+    Length_mean      = repmat(D.Length_mean,           rowCount,1);
+    Length_med       = repmat(D.Length_med,            rowCount,1);
+    DA_mean          = repmat(D.DA_mean,               rowCount,1);
+    DA_med           = repmat(D.DA_med,                rowCount,1);
+
+    Length_RHEE      = repmat(D.Length_RHEE,           rowCount,1);
+    Length_LHEE      = repmat(D.Length_LHEE,           rowCount,1);
+    Length_mean_DemiTour = repmat(D.Length_mean_DemiTour, rowCount,1);
+    Length_med_DemiTour  = repmat(D.Length_med_DemiTour,  rowCount,1);
+
+    Area_mean        = repmat(D.Area_mean,             rowCount,1);
+    Area_med         = repmat(D.Area_med,              rowCount,1);
+    GONOGO           = repmat({D.GONOGO},              rowCount,1);
+
+    StepVel_mean     = repmat(D.StepVel_mean,          rowCount,1);
+    StepVel_sd       = repmat(D.StepVel_sd,            rowCount,1);
+    StepVel_asym     = repmat(D.StepVel_asym,          rowCount,1);
+
+    StepLen_mean     = repmat(D.StepLen_mean,          rowCount,1);
+    StepLen_sd       = repmat(D.StepLen_sd,            rowCount,1);
+    StepLen_asym     = repmat(D.StepLen_asym,          rowCount,1);
+
+    StepTime_mean    = repmat(D.StepTime_mean,         rowCount,1);
+    StepTime_sd      = repmat(D.StepTime_sd,           rowCount,1);
+    StepTime_asym    = repmat(D.StepTime_asym,         rowCount,1);
+
+    StanceTime_mean  = repmat(D.StanceTime_mean,       rowCount,1);
+    StanceTime_sd    = repmat(D.StanceTime_sd,         rowCount,1);
+    StanceTime_asym  = repmat(D.StanceTime_asym,       rowCount,1);
+
+    SwingTime_mean   = repmat(D.SwingTime_mean,        rowCount,1);
+    SwingTime_sd     = repmat(D.SwingTime_sd,          rowCount,1);
+    SwingTime_asym   = repmat(D.SwingTime_asym,        rowCount,1);
+
+    StepWidth_mean   = repmat(D.StepWidth_mean,        rowCount,1);
+    StepWidth_sd     = repmat(D.StepWidth_sd,          rowCount,1);
+    StepWidth_asym   = repmat(D.StepWidth_asym,        rowCount,1);
+
+    % 4) sanity‐check: every column must have exactly rowCount rows
+    cols = { ...
+      TrialName,Patient,Session,Cond,TrialNum, ...
+      Tps_DemiTour,num_FOG,sum_tps_FOG,Cote,num_cycle, ...
+      num_step_R,num_step_L,Cadence_R,Cadence_L, ...
+      Length_R,Length_L,Width_R,Width_L, ...
+      Duree_R,Duree_L,Vitesse_R,Vitesse_L, ...
+      Cycle_Time,DA_R,DA_L,SA_R,SA_L, ...
+      DApourcent_R,DApourcent_L,SApourcent_R,SApourcent_L, ...
+      StrideTime_mean,StrideTime_sd,StrideTime_variability, ...
+      GA,Length_mean,Length_med,DA_mean,DA_med, ...
+      Length_RHEE,Length_LHEE,Length_mean_DemiTour,Length_med_DemiTour, ...
+      Area_mean,Area_med,GONOGO, ...
+      StepVel_mean,StepVel_sd,StepVel_asym, ...
+      StepLen_mean,StepLen_sd,StepLen_asym, ...
+      StepTime_mean,StepTime_sd,StepTime_asym, ...
+      StanceTime_mean,StanceTime_sd,StanceTime_asym, ...
+      SwingTime_mean,SwingTime_sd,SwingTime_asym, ...
+      StepWidth_mean,StepWidth_sd,StepWidth_asym ...
+    };
+    for k = 1:numel(cols)
+        if size(cols{k},1) ~= rowCount
+            error('Column %d has %d rows (expected %d)', k, size(cols{k},1), rowCount);
+        end
+    end
+
+    % 5) build the per-trial table
+    T = table(TrialName,Patient,Session,Cond,TrialNum, ...
+              Tps_DemiTour,num_FOG,sum_tps_FOG,Cote,num_cycle, ...
+              num_step_R,num_step_L,Cadence_R,Cadence_L, ...
+              Length_R,Length_L,Width_R,Width_L, ...
+              Duree_R,Duree_L,Vitesse_R,Vitesse_L, ...
+              Cycle_Time,DA_R,DA_L,SA_R,SA_L, ...
+              DApourcent_R,DApourcent_L,SApourcent_R,SApourcent_L, ...
+              StrideTime_mean,StrideTime_sd,StrideTime_variability, ...
+              GA,Length_mean,Length_med,DA_mean,DA_med, ...
+              Length_RHEE,Length_LHEE,Length_mean_DemiTour,Length_med_DemiTour, ...
+              Area_mean,Area_med,GONOGO, ...
+              StepVel_mean,StepVel_sd,StepVel_asym, ...
+              StepLen_mean,StepLen_sd,StepLen_asym, ...
+              StepTime_mean,StepTime_sd,StepTime_asym, ...
+              StanceTime_mean,StanceTime_sd,StanceTime_asym, ...
+              SwingTime_mean,SwingTime_sd,SwingTime_asym, ...
+              StepWidth_mean,StepWidth_sd,StepWidth_asym );
+
+    % 6) append to master
+    tblAll = [tblAll; T];
+end
+
+% 7) write out both XLSX and CSV
+writetable(tblAll, xlsxFile);
+writetable(tblAll, csvFile, 'FileType','text','Delimiter',';');
+
+fprintf('→ Excel + CSV exported to:\n   %s\n   %s\n', xlsxFile, csvFile);

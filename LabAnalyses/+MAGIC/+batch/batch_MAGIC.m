@@ -149,8 +149,8 @@ if ~argin
 %     subject   = {'SAs_000a','BEm_000a','REa_0526'};
 %     subject   = complet(1:end-1)
 %     subject   = {'BEm_000a','SAs_000a','REa_0526','GIs_0550'}
-    subject   = complet(1:end-1)
-    %subject = {'FRJ_0610'};
+    subject   = complet(4:end-1)
+   % subject = {'FRJ_0610'};
 
 
  %   fprintf(2, ['Bad event list ATTENTION ligne 129 \n'])

@@ -208,7 +208,7 @@ for ev = 1:numel(eventsFound)
                    LFP_data.info('trial').nStep, ...             % nStep
                    safeChan);                                    % channel label
         pngFile  = fullfile(segmentDir,[baseName '.png']);
-        exportgraphics(fig,pngFile,'Resolution',150);
+        exportgraphics(fig,pngFile,'Resolution',90);
         savefig(fig,strrep(pngFile,'.png','.fig'));
     end
 end

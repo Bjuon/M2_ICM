@@ -3,7 +3,7 @@ function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejec
 %  RMSE‑based 1/f validation (≥50 % increase in 10‑55 Hz band).
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
-todo.plot = 1;
+todo.plot = 0;
 plotVisible = 'off'; % set off or on figure visibility 
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
@@ -11,7 +11,7 @@ RMSEThreshold           = 0.5;              % >50 % increase
 freqRMSERangeHz         = [10 55];           % band used for RMSE
 fs            = cleanedSeg(1).sampledProcess.Fs;
 eventWindowSec= [-1 1];
-stepEventNames= {'FO','FC'};
+stepEventNames= {'FC','FO'};
 freqRangeHz   = [10 55];
 winLenSamples = round(fs*0.5);
 overlapSamples= round(winLenSamples*0.5);
@@ -34,6 +34,7 @@ nChannels          = size(cleanedSeg(1).sampledProcess.values{1,1},2);
 labels     = cleanedSeg(1).sampledProcess.labels;          % struct array
 chanNames  = cellfun(@(L) L.name, num2cell(labels), ...
                      'UniformOutput', false);
+
 
 sampleVals    = cleanedSeg(1).sampledProcess.values{1,1};  
 emptyChannels = all(isnan(sampleVals) | sampleVals==0, 1); 
