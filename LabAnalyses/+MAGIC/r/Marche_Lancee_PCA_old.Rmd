@@ -1,0 +1,1210 @@
+---
+title: 'Gait reduction: PCA'
+output: html_document
+date: "2023-10-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(here)
+
+library(kableExtra)
+library(tidyverse)
+library(magrittr)
+
+library(FactoMineR)
+library(factoextra)
+library(ggcorrplot)
+library(ggpubr)
+library(ggbeeswarm)
+library(patchwork)
+library(lmerTest)
+library(ggeffects)
+
+here::i_am("Analysis/Gait_Reduction_PCA.Rmd")
+
+filename = "Z:/DATA/MAGIC_DemiTour_17Pat_v3_FOG.xlsx"
+filename_control = "Z:/DATA/SAIN_DemiTour_10Controles.xlsx"
+
+filename = "C:/Users/mathieu.yeche/Downloads/MAGIC_DemiTour_17Pat_v3.xlsx"
+filename_control = "C:/Users/mathieu.yeche/Downloads/MAGIC_DemiTour_10Pat_v2.xlsx"
+filename = "C:/Users/mathieu.yeche/Downloads/MAGIC_DemiTour_17Pat_v6_FoG.xlsx"
+filename_control = "C:/Users/mathieu.yeche/Downloads/MAGIC_DemiTour_10Pat_v3.csv"
+source(here("Codes", "utils.R"))
+source(here("Codes", "utils_gait.R"))
+LoadLibraries()
+```
+
+
+```{r, echo = F}
+# df_varkey = tribble(
+#   ~renamed, ~original, ~units, ~description,
+#   "APA-time", "t_APA", "sec", "APA duration",
+# )
+
+
+```
+
+## Quick look
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+Imputation = T
+
+#df_ctl = readxl::read_excel(filename_control)
+df_long = readxl::read_excel(filename)
+df_ctl = vroom::vroom(filename_control)
+#df_long = vroom::vroom(filename)
+
+if ("GONOGO" %in% names(df_long)) df_long %<>% select(-GONOGO)
+if ("GONOGO" %in% names(df_ctl))  df_ctl %<>% select(-GONOGO)
+
+df_long %<>% 
+  mutate(across(c(num_cycle:StepLen_asym), ~as.numeric(.x))) %>%
+  mutate_if(is.numeric, ~ifelse(is.nan(.), NA, .)) %>%
+  mutate_if(is.complex, ~ifelse(is.nan(.), NA, .)) %>%
+  mutate_if(is.complex, ~as.numeric(.)) 
+
+df = df_long %>% 
+  group_by(TrialName, Patient, Cond, TrialNum, is_FoG, Pat_Fogg, Meta_FOG) %>%
+  summarise(across(c(num_cycle:StepLen_asym), ~mean(.x, na.rm = T)), .groups = "drop") %>%
+  rename(Subject = Patient, Condition = Cond, Pat_Foggeur = Pat_Fogg, is_FOG = is_FoG) %>%
+  select(-Area_med, -Length_med, -DA_med, -StrideTime_variability) %>%
+  mutate(across(c(num_cycle:StepLen_asym), ~as.numeric(.x))) %>%
+  mutate_if(is.numeric, ~ifelse(is.nan(.), NA, .)) %>%
+  mutate_if(is.complex, ~ifelse(is.nan(.), NA, .)) %>%
+  mutate_if(is.complex, ~as.numeric(.)) 
+df_ctl %<>% 
+  mutate(Pat_Fogg = "", is_FoG = "", Cond = "Sain",GoNogo = "Sain", Meta_FOG = 3) %>%
+  group_by(TrialName, Patient, Cond, TrialNum, is_FoG, Pat_Fogg, Meta_FOG) %>%
+  summarise(across(c(num_cycle:StepLen_asym), ~mean(.x, na.rm = T)), .groups = "drop") %>%
+  rename(Subject = Patient, Condition = Cond, Pat_Foggeur = Pat_Fogg, is_FOG = is_FoG) %>%
+  mutate(across(c(num_cycle:StepLen_asym), ~as.numeric(.x))) %>%
+  select(-Area_med, -Length_med, -DA_med, -StrideTime_variability)
+
+
+# Previously, longer subject Ids were reduced to three letters, keep this as a
+# separate variable, but note that this reduction confounds two patients into DEm
+df %<>% mutate(Subject2 = ifelse(nchar(Subject) == 3,
+                               paste0(substr(Subject,1,2), tolower(substr(Subject,3,3))),
+                               paste0(substr(Subject,1,2), tolower(substr(Subject,4,4)))),
+               .after = Subject) %>%
+  mutate(Pat_Foggeur = as.factor(ifelse(as.numeric(Pat_Foggeur)==0, "-", "+"))) %>%
+  mutate(is_FOG = as.factor(ifelse(as.numeric(is_FOG)==0, "-", "+")))
+df_ctl %<>% mutate(Subject2 = ifelse(nchar(Subject) == 3,
+                               paste0(substr(Subject,1,2), tolower(substr(Subject,3,3))),
+                               paste0(substr(Subject,1,2), tolower(substr(Subject,4,4)))),
+               .after = Subject) 
+
+  
+  df %<>% filter(!(is_FOG == "+" & Condition == "ON")) %>% filter (num_step_R + num_step_L >= 3)
+  df_ctl %<>% filter (num_step_R + num_step_L >= 3)
+  
+  
+  df %<>% mutate(Cadence = (Cadence_L+Cadence_R)/2, DApourcent = (DApourcent_R+DApourcent_L)/2, DApourcent_asym = (DApourcent_R-DApourcent_L)/(DApourcent_R+DApourcent_L)/2 ) %>% select(-Length_R, -Length_L, -Duree_R, -Duree_L, -SA_L, -SA_R, -DA_L, -DA_R, -Cadence_R, -Cadence_L, -Vitesse_L, -Vitesse_R, -num_step_R, -num_step_L, -GA, -StepLen_mean, -SApourcent_R, -SApourcent_L,-DApourcent_R, -DApourcent_L) 
+  df %<>% select(-Length_RHEE, -Length_LHEE, -Area_mean, -Length_mean_DemiTour, -Length_med_DemiTour)
+  
+  df_ctl %<>% mutate(Cadence = (Cadence_L+Cadence_R)/2, DApourcent = (DApourcent_R+DApourcent_L)/2, DApourcent_asym = (DApourcent_R-DApourcent_L)/(DApourcent_R+DApourcent_L)/2 ) %>% select(-Length_R, -Length_L, -Duree_R, -Duree_L, -SA_L, -SA_R, -DA_L, -DA_R, -Cadence_R, -Cadence_L, -Vitesse_L, -Vitesse_R, -num_step_R, -num_step_L, -GA, -StepLen_mean, -SApourcent_R, -SApourcent_L,-DApourcent_R, -DApourcent_L)
+  df_ctl %<>% select(-Length_RHEE, -Length_LHEE, -Area_mean, -Length_mean_DemiTour, -Length_med_DemiTour)
+
+# df %<>% mutate(Pat_Foggeur = ifelse(as.character(Pat_Foggeur)=="FALSE", "NF", "F")) %>%
+#   mutate(Group = forcats::as_factor(ifelse(GoNogo %in% c("C", "I"), "M", "A")), .before = Subject)
+# 
+# df %<>% mutate(
+#   across(c(Subject, Pat_Foggeur, Condition, GoNogo, Cote, TrialName), ~forcats::as_factor(.x))
+#   )
+# 
+# df %<>% dplyr::select(-Freq_InitiationPas) # same as cadence?
+# #df %<>% select(-TrialNum)
+
+qualvar_names = df %>% dplyr::select(TrialName:Meta_FOG) %>% names()
+quantvar_names = df %>% dplyr::select(-all_of(qualvar_names)) %>% names()
+
+#df %<>% filter(!(Subject == "FRa")) # No LFP data (Rouen patient with different recording)
+#df %<>% mutate(VML_absolue = log(VML_absolue))
+```
+
+
+```{r, echo = FALSE}
+df_cor = df %>% filter(is_FOG == "-") %>%
+  dplyr::select(-all_of(qualvar_names)) %>%
+  tidyr::drop_na() 
+cor.mat = round(cor(df_cor), 2)
+p = ggcorrplot(cor.mat, hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") +
+  theme_pubr(legend = "right") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+cowplot::ggsave2(here("Figures_MarcheLancee", "corrplot1.png"), plot = p, width = 35, height = 30, units = "cm")
+```
+
+Take a quick look at the correlation matrix of the gait variables we can consider (FOG trials dropped, complete cases only). We can immediately identify some variables we can eliminate due to near or perfect collinearity.
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "corrplot1.png"))
+```
+
+Take a quick look at the distribution of each gait variable, split by levodopa condition, freezer status, and FOG presence.
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp = rbind(df, df_ctl) %>% 
+  tidyr::drop_na() %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG))
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p = ggplot(df_temp, aes(Factor, value, fill = Condition)) +
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75))  +
+  facet_wrap(~name, scales = "free", ncol = 7) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(here("Figures_MarcheLancee", 'quantvar_violin1.png'), p, width = 35, height = 25, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "quantvar_violin1.png"))
+```
+
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp = df %>% 
+  tidyr::drop_na() %>%
+  group_by(Subject, Pat_Foggeur, Condition, is_FOG) %>%
+  mutate(n = n()) %>%
+  summarise(across(c(quantvar_names, "n"), ~mean(.x, na.rm = T))) %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG))
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p = ggplot(df_temp, aes(Factor, value, group = Subject)) +  
+  geom_beeswarm(aes(size = n), alpha = 0.7) +
+  geom_line() +
+  facet_wrap(~name, scales = "free", ncol = 7) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(here("Figures_MarcheLancee", 'quantvar_groupXsubject.png'), width = 35, height = 25, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "quantvar_groupXsubject.png"))
+```
+
+```{r}
+# df_ctl %<>% as_tibble() %>%
+#   mutate(Group = "C") %>%
+#   mutate(Pat_Foggeur = "SS") %>%
+#   mutate(is_FOG = FALSE) %>%
+#   mutate(Condition = "Sain") %>%
+#   mutate(GoNogo = "Sain") %>%
+#   mutate(Meta_FOG = 3) %>%
+#   mutate(Subject = as.character(ifelse(!grepl('GBMOV',TrialName),
+#                                        str_extract(TrialName, "(?<=GOGAIT_T[123]_)(.*?)(?=_O)"),
+#                                        str_extract(TrialName, "(?<=_20[012][0123456789]_[01][0123456789]_[0123][0123456789]_)(.*?)(?=_GBMOV_T)")))) %>%
+#   mutate(Subject2 = ifelse(nchar(Subject) == 3,
+#                            paste0(substr(Subject,1,2), tolower(substr(Subject,3,3))),
+#                            paste0(substr(Subject,1,2), tolower(substr(Subject,4,4))))) %>%
+#   select(Group, Subject, Subject2, Pat_Foggeur, Condition, TrialNum, GoNogo, Cote, is_FOG, Meta_FOG, TrialName, t_APA, APA_antpost, APA_lateral, StepWidth, t_swing1, t_DA, t_swing2, Longueur_pas, V_swing1, Vy_FO1, Vm, t_Vm, VML_absolue, Cadence, VZmin_APA, V2, Diff_V) %>%
+#   drop_na()
+ 
+```
+
+## Working variables
+Let's drop some of the problematic or highly correlated variables.
+```{r, echo=T}
+# Mathieu & Antoine selection
+#df %<>% dplyr::select(-Freinage, -t_chute, -t_freinage, -t_V1, -t_V2)
+
+# Brian selection
+#df %<>% dplyr::select(-Freinage, -t_chute, -t_freinage, -t_V1, -t_V2, -t_VyFO1, -t_cycle_marche, -V1)
+
+print("selectioner ici les variables a garder")
+# Update names
+# qualvar_names = df %>% dplyr::select(Group:TrialName) %>% names()
+# quantvar_names = df %>% dplyr::select(-all_of(qualvar_names)) %>% names()
+```
+
+## Missing data
+
+There is missing data, especially in turn and short trials.
+```{r, echo = F, out.width = '100%', message = FALSE, warning = FALSE}
+df_clean = df %>% tidyr::drop_na()
+df_missing = df %>% dplyr::anti_join(df_clean)
+
+dfmviz = visdat::vis_dat(df_missing)
+dfviz  = visdat::vis_dat(df)
+dfviz
+cowplot::ggsave2(here("Figures_MarcheLancee", 'viz_df.png'), plot = dfviz, width = 35, height = 25, units = "cm")
+cowplot::ggsave2(here("Figures_MarcheLancee", 'viz_dfmissing.png'), plot = dfmviz, width = 35, height = 25, units = "cm")
+```
+
+```{r, echo = F, out.width = '100%', message = FALSE, warning = FALSE}
+df_clean = df %>% filter(is_FOG == "+") %>% tidyr::drop_na()
+df_missing = df %>% filter(is_FOG == "+") %>% dplyr::anti_join(df_clean)
+dffviz = visdat::vis_dat(df %>% filter(is_FOG == "+"))
+cowplot::ggsave2(here("Figures_MarcheLancee", 'viz_dfFOG.png'), plot = dffviz, width = 35, height = 25, units = "cm")
+dffviz
+```
+
+```{r, echo = F, out.width = '100%', message = FALSE, warning = FALSE}
+df_clean = df_ctl %>% tidyr::drop_na()
+df_missing = df_ctl %>% dplyr::anti_join(df_clean)
+dfcviz = visdat::vis_dat(df_ctl)
+cowplot::ggsave2(here("Figures_MarcheLancee", 'viz_dfCtrl.png'), plot = dfcviz, width = 35, height = 25, units = "cm")
+dfcviz
+```
+
+The missing data comes from the following subjects. From the table, we can see that most of the subjects have a decent number of trials with complete measurements, and we don't lose too many FOG trials. Should eventually go back and fix these trials.
+
+```{r, echo = F, out.width = '100%', message = FALSE, warning = FALSE}
+df_temp = df_missing %>% 
+  group_by(Pat_Foggeur, Subject, Condition, is_FOG) %>% 
+  summarise(n_missing = n(), .groups = "drop")
+
+df_temp2 = df_clean %>% 
+  group_by(Pat_Foggeur, Subject, Condition, is_FOG) %>% 
+  summarise(n_complete = n(), .groups = "drop")
+
+df_temp %<>% left_join(df_temp2)
+
+df_temp %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                full_width = F, position = "center", font_size = 10) %>%
+  scroll_box(width = "100%", height = "200px")
+```
+
+## Imputation
+
+```{r, echo = T}
+print("Perform imputation here")
+df_full = df
+df_ctl_full = df_ctl
+
+if (Imputation) {
+
+  
+  methodImput = "missMDA"
+  if (methodImput == "missMDA") {
+    set.seed(1234)
+    df = missMDA::imputePCA(df, ncp = 9, scale = T, quali.sup = 1:8, max.iter = 150)$completeObs
+    df_ctl = missMDA::imputePCA(df_ctl, ncp = 9, scale = T, quali.sup = 1:8, max.iter = 1500)$completeObs
+    
+  } else if (methodImput == "mice") {
+    meth = mice::make.method(df)
+    mnar_cols <- c("Width_R", "Width_L", "Cycle_Time", 
+                   "DApourcent_R", "DApourcent_L", 
+                   "SApourcent_R", "SApourcent_L", 
+                   "Length_mean", "DA_mean", "Cadence")
+  
+    meth[mnar_cols] <- "mnar.norm"
+    pred <- mice::make.predictorMatrix(df)
+    diag(pred) <- 0 
+    pred[, c("Subject2", "Pat_Foggeur", "is_FOG")] = 0
+    delta_vec <- 0.1 * sapply(df[mnar_cols], sd, na.rm = TRUE)
+    blots <- mice::make.blots(df, meth)            # helper that builds the `blots` list
+    for (var in mnar_cols) {
+      if (var %in% c( "Width_R", "Width_L", "Cycle_Time", "SApourcent_R", "SApourcent_L", "Cadence")) {
+        blots[[var]] <- list(ums = -round(delta_vec[var], 5))
+      } else {
+        blots[[var]] <- list(ums =  round(delta_vec[var], 5))
+      }
+    }
+  
+    imp <- mice::mice(df,
+              m              = 20,         # 20 complete data sets
+              maxit          = 20,         # iterations in each chain
+              method         = meth,
+              predictorMatrix = pred,
+              blots          = blots,
+              seed           = 123)
+    
+    plot(imp)  
+    mice::complete(imp, action = "long", include = TRUE) 
+  }
+  
+} else {
+  df %<>% tidyr::drop_na()
+  df_ctl %<>% tidyr::drop_na()
+}
+```
+
+
+Have a look at the violin plots and subject-specific averages,
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp = rbind(df, df_ctl)
+df_temp %<>% 
+  tidyr::drop_na() %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG)) %>%
+  mutate(Factor = forcats::fct_relevel(Factor, c("Sain..", "OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-", "OFF.+.+", "ON.+.+")))
+
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p = ggplot(df_temp, aes(Factor, value, fill = Condition)) +
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75))  +
+  facet_wrap(~name, scales = "free", ncol = 7) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(here("Figures_MarcheLancee", 'quantvar_violin_clean.png'), p, width = 35, height = 25, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "quantvar_violin_clean.png"))
+```
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE}
+df_temp = rbind(df, df_ctl)
+df_temp %<>% 
+  group_by(Subject, Pat_Foggeur, Condition, is_FOG) %>%
+  mutate(n = n()) %>%
+  summarise(across(c(quantvar_names, "n"), ~mean(.x, na.rm = T))) %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG)) %>%
+  mutate(Factor = forcats::fct_relevel(Factor, c("Sain..", "OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-", "OFF.+.+", "ON.+.+")))
+df_temp %<>%
+  pivot_longer(cols = quantvar_names)
+p = ggplot(df_temp, aes(Factor, value, group = Subject, color = Pat_Foggeur)) +  
+  geom_beeswarm(aes(size = n), alpha = 0.7) +
+  geom_line() +
+  facet_wrap(~name, scales = "free", ncol = 7) +
+  ylab("") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+cowplot::ggsave2(here("Figures_MarcheLancee", 'quantvar_groupXsubject_clean.png'), width = 70, height = 50, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "quantvar_groupXsubject_clean.png"))
+```
+
+And take a look at the correlations for the reduced variable set
+
+```{r, echo = FALSE}
+df_cor = df %>% filter(is_FOG %in% c("-","")) %>%
+  tidyr::drop_na() %>%
+  dplyr::select(-all_of(qualvar_names))
+cor.mat = round(cor(df_cor), 2)
+p = ggcorrplot(cor.mat, hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") + 
+  theme_pubr(legend = "right") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+cowplot::ggsave2(here("Figures_MarcheLancee", "corrplot2.png"), plot = p, width = 50, height = 40, units = "cm")
+```
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "corrplot2.png"))
+```
+
+## PCA
+Parallel analysis indicates 5 components will work
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+IndActive = which(df$is_FOG %in% c("-",""))
+if (nrow(df_ctl) == 0)  IndSup = c(which(df$is_FOG == "+"))  else IndSup = c(which(df$is_FOG == "+"), nrow(df) + (1:nrow(df_ctl)))
+
+# Don't need to index active rows here since IndSup is passed to PCA
+df_pca = rbind(df, df_ctl) # %>% select()
+set.seed(1234)
+psych::fa.parallel(df_pca %>% dplyr::select(all_of(quantvar_names)), fa = "pc", error.bars = T, n.iter = 50)
+res.pca = FactoMineR::PCA(df_pca, graph = T, scale.unit = T, quali.sup = 1:8, ind.sup = IndSup)
+
+# Aggregate to subject-level and run PCA
+df_pca_mean = df[IndActive,] %>%
+  group_by(Condition, Subject) %>%
+  summarise(across(quantvar_names, ~mean(.x, na.rm = T)), .groups = "drop") 
+res.pca.mean = FactoMineR::PCA(df_pca_mean, graph = T, scale.unit = T, quali.sup = 1:2)
+```
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+varnames_sort_unrot = psych::fa.sort(res.pca$var$cor) %>% rownames()
+
+varcos2 = as_tibble(res.pca$var$cos2, rownames = "var") %>%
+    rename(PC.1 = Dim.1, PC.2 = Dim.2, PC.3 = Dim.3, PC.4 = Dim.4, PC.5 = Dim.5)
+varcos2 %<>% pivot_longer(cols = contains("PC.")) %>%
+  mutate(var = factor(var, levels = varnames_sort_unrot))
+
+e = ggplot(varcos2, aes(name, forcats::fct_rev(var), fill = value)) +
+  geom_tile() +
+  ylab("") + xlab("") + 
+  ggtitle("PCA cos2") + 
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "white",
+                       high = "#FF0000") +
+  theme_pubr(legend = "bottom")
+
+#loadings.pca = sweep(res.pca$var$coord,2,sqrt(res.pca$eig[1:ncol(res.pca$var$coord),1]),FUN="/")
+loadings.pca = res.pca$var$cor
+
+loadings = loadings.pca %>%
+  as_tibble(rownames = "var") %>%
+  rename(PC.1 = Dim.1, PC.2 = Dim.2, PC.3 = Dim.3, PC.4 = Dim.4, PC.5 = Dim.5) %>%
+  pivot_longer(cols = contains("PC.")) %>%
+  mutate(var = factor(var, levels = varnames_sort_unrot))
+
+f = ggplot(loadings, aes(name, forcats::fct_rev(var), fill = value)) +
+  geom_tile() +
+  ylab("") + xlab("") + 
+  ggtitle("PCA loadings") + 
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "white",
+                       high = "#FF0000") +
+  theme_pubr(legend = "bottom")
+
+l = varimax(loadings.pca)$loadings
+loadings.varimax = data.frame(
+  matrix(as.numeric(l), attributes(l)$dim, dimnames=attributes(l)$dimnames)
+  ) %>%
+  rename(RPC.1 = Dim.1, RPC.2 = Dim.2, RPC.3 = Dim.3, RPC.4 = Dim.4, RPC.5 = Dim.5)
+varnames_sort_rot = psych::fa.sort(loadings.varimax) %>% rownames()
+loadings = loadings.varimax %>%
+  as_tibble(rownames = "var") %>%
+  pivot_longer(cols = contains("PC.")) %>%
+  mutate(var = factor(var, levels = varnames_sort_rot))
+
+g = ggplot(loadings, aes(name, forcats::fct_rev(var), fill = value)) +
+  geom_tile() +
+  ylab("") + xlab("") + 
+  ggtitle("Varimax loadings") + 
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "white",
+                       high = "#FF0000") +
+  theme_pubr(legend = "bottom")
+
+p = e + f + g
+cowplot::ggsave2(here("Figures_MarcheLancee", "pca_loadings.png"), plot = p, width = 30, height = 25, units = "cm")
+```
+
+Let's look at the loadings to see if we can interpret anything.
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "pca_loadings.png"))
+```
+
+## RPC
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+# Rotated scores
+df_pat = df
+df     = df_pat
+df     = rbind(df, df_ctl)
+
+rawLoadings     = res.pca$var$cor
+rotatedLoadings = varimax(rawLoadings)$loadings
+invLoadings     = t(pracma::pinv(rotatedLoadings))
+
+# Extract Proportion of Variance
+print(rotatedLoadings)
+
+meanLocal = df[IndActive,] %>% select(quantvar_names) %>% summarise_all(mean, na.rm = T) 
+sd__Local = df[IndActive,] %>% select(quantvar_names) %>% summarise_all(sd, na.rm = T)
+for (var in quantvar_names) df[, var] = (df[, var] - as.numeric(meanLocal[var])) / as.numeric(sd__Local[var])
+scores           = df[IndActive,] %>% select(quantvar_names) %>% as.matrix() %*% invLoadings
+colnames(scores) = c("RPC.1", "RPC.2", "RPC.3", "RPC.4", "RPC.5")
+df1 = df[IndActive,] %>% bind_cols(as_tibble(scores))
+
+scores           = df[IndSup,] %>% select(quantvar_names) %>% as.matrix() %*% invLoadings
+colnames(scores) = c("RPC.1", "RPC.2", "RPC.3", "RPC.4", "RPC.5")
+df2 = df[IndSup,] %>% bind_cols(as_tibble(scores))
+
+df_ind = df1 %>% bind_rows(df2) %>%
+  mutate(Factor = interaction(Condition, Pat_Foggeur, is_FOG)) %>% 
+  mutate(Factor = forcats::fct_relevel(Factor, c("Sain..", "OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-", "OFF.+.+", "ON.+.+")))
+# df_ind$RPC.5 = - df_ind$RPC.5
+# print("RPC.5 is -RPC.5")
+
+
+# Unrotated scores
+df_ind2 = (df[IndActive,]  %>% bind_cols(res.pca$ind$coord     %>% as_tibble())) %>%
+  bind_rows(df[IndSup,]    %>% bind_cols(res.pca$ind.sup$coord %>% as_tibble())) %>%
+  select(TrialName, Dim.1:Dim.5) %>%
+  rename(PC.1 = Dim.1, PC.2 = Dim.2, PC.3 = Dim.3, PC.4 = Dim.4, PC.5 = Dim.5)
+
+df_scores = df_ind %>% left_join(df_ind2)
+# df_scores$RPC.5 = -df_scores$RPC.5
+# save(df_scores, file = here("Data", "df_scores.RData"))
+
+df_mean = df_scores %>%
+  select(Subject, Factor, contains("PC.")) %>%
+  group_by(Subject, Factor) %>%
+  summarise(across(contains("PC."), ~mean(.x, na.rm = T))) %>%
+  pivot_longer(cols = contains("PC."))
+
+df_mean_of_means = df_mean %>%
+  pivot_wider(names_from = name, values_from = value) %>%
+  group_by(Factor) %>%
+  summarise(across(contains("PC."), ~mean(.x, na.rm = T))) %>%
+  mutate(Subject = "Average", .before = Factor) %>%
+  pivot_longer(cols = contains("PC."))
+
+colors = c(pals::alphabet(27), "black")
+names(colors) = unique(df$Subject)
+p = ggplot(df_mean, aes(Factor, value, group = Subject, color = Subject)) +
+  geom_hline(yintercept = 0, size = .5) +
+  geom_hline(data = df_mean_of_means %>% filter(Factor == "Sain.."),  aes(yintercept = value), color = "#AADAFF", size = 3, alpha = 0.5) +
+  geom_beeswarm() +
+  geom_line() +
+  geom_point(data = df_mean_of_means, aes(Factor, value), color = "Red", size = 5, alpha = 0.5) +
+  geom_line(data = df_mean_of_means %>% 
+              filter(Factor %in% c("OFF.-.-", "ON.-.-")), 
+            aes(Factor, value), color = "Red", size = 3, alpha = 0.25) +
+  geom_line(data = df_mean_of_means%>% 
+              filter(!Factor %in% c("Sain..", "OFF.-.-", "ON.-.-")), 
+            aes(Factor, value), color = "Red", size = 3, alpha = 0.25)  +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  scale_color_manual(values = colors) +
+  ylab("") + xlab("") + 
+  theme_pubr(legend = "bottom") +
+  scale_x_discrete(guide = guide_axis(angle = 90))
+
+# cowplot::ggsave2(here("Figures_MarcheLancee", "scores_varimax.png"), plot = p, width = 35, height = 26, units = "cm")
+cowplot::ggsave2(here("Figures_MarcheLancee", "scores_varimax.png"), plot = p, width = 35, height = 55, units = "cm")
+```
+
+Let's look at subject-level mean scores (unrotated [PC] and varimax rotated [RPC]),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "scores_varimax.png"))
+```
+
+### Repres. Mean +/-SD 
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+
+TodoPatBefore = FALSE
+if (TodoPatBefore) df_scores_local = df_scores %>% group_by(Factor, Subject) %>%
+  summarise(across(contains("RPC."), ~mean(.x, na.rm = T))) else df_scores_local = df_scores
+
+df_scores_local %<>% filter(Factor != "ON.+.+")
+df_mean_ballon = df_scores_local %>% select(Factor, contains("RPC.")) %>% group_by(Factor) %>%
+  summarise(across(contains("RPC."), ~mean(.x, na.rm = T)) ) 
+df_sd_bal = df_scores_local %>% select(Factor, contains("RPC.")) %>% group_by(Factor) %>%
+  summarise(across(contains("RPC."), ~sd(.x, na.rm = T)) ) %>%
+  rename_with(~str_replace(., "RPC.", "sd_RPC."), contains("RPC."))
+df_mean_ballon = df_mean_ballon %>% left_join(df_sd_bal)
+
+# RPC 1 to 2 
+ggplot(df_mean_ballon, aes(x = RPC.1, y = RPC.2, color = Factor)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = RPC.2 - sd_RPC.2, ymax = RPC.2 + sd_RPC.2), width = 0.1) +
+  geom_errorbarh(aes(xmin = RPC.1 - sd_RPC.1, xmax = RPC.1 + sd_RPC.1), height = 0.1) +
+  geom_point(size = 5, shape = 21, fill = "white") +
+  theme_minimal() +
+  labs(x = "RPC1 (xx%)", y = "RPC2 (xx%)") +
+  theme(legend.position = "none") +
+  annotate("text", x = df_mean_ballon$RPC.1, y = df_mean_ballon$RPC.2, label = df_mean_ballon$Factor, hjust = 1.5, vjust = 1.5)
+
+# RPC 1 to 5
+ggplot(df_mean_ballon, aes(x = RPC.1, y = RPC.5, color = Factor)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = RPC.5 - sd_RPC.5, ymax = RPC.5 + sd_RPC.5), width = 0.1) +
+  geom_errorbarh(aes(xmin = RPC.1 - sd_RPC.1, xmax = RPC.1 + sd_RPC.1), height = 0.1) +
+  geom_point(size = 5, shape = 21, fill = "white") +
+  theme_minimal() +
+  labs(x = "RPC1 (xx%)", y = "RPC5 (xx%)") +
+  theme(legend.position = "none") +
+  annotate("text", x = df_mean_ballon$RPC.1, y = df_mean_ballon$RPC.5, label = df_mean_ballon$Factor, hjust = 1.5, vjust = 1.5)
+
+# RPC 2 to 5
+ggplot(df_mean_ballon, aes(x = RPC.2, y = RPC.5, color = Factor)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = RPC.5 - sd_RPC.5, ymax = RPC.5 + sd_RPC.5), width = 0.1) +
+  geom_errorbarh(aes(xmin = RPC.2 - sd_RPC.2, xmax = RPC.2 + sd_RPC.2), height = 0.1) +
+  geom_point(size = 5, shape = 21, fill = "white") +
+  theme_minimal() +
+  labs(x = "RPC2 (xx%)", y = "RPC5 (xx%)") +
+  theme(legend.position = "none") +
+  annotate("text", x = df_mean_ballon$RPC.2, y = df_mean_ballon$RPC.5, label = df_mean_ballon$Factor, hjust = 1.5, vjust = 1.5)
+
+```
+
+### Repres. Ellipse confiance
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+Todo_FigSup = T
+df_scores_local = df_scores %>% filter(Factor != "ON.+.+")
+if(!Todo_FigSup) df_scores_local %<>% filter(Factor != "OFF.+.+")
+colors = c("OFF.-.-" = "#a9569570", "ON.-.-" = "#00808070", "OFF.+.-" = "#a95695", "ON.+.-" = "#008080", "Sain.." = "black")
+
+if(Todo_FigSup) colors = c(colors, "OFF.+.+" = "#ec5a0070") 
+
+# RPC 1 to 2
+p = ggplot(df_scores_local, aes(x = RPC.1, y = RPC.2, color = NULL, fill = Factor)) +
+  stat_conf_ellipse(level = 0.95, geom = "polygon") +
+  theme_Publication() +
+  scale_fill_manual(values = colors) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  coord_fixed(ratio = 1) +
+  labs(x = "RPC1", y = "RPC2") +
+  theme(legend.position = "none")
+cowplot::ggsave2(here("Figures_MarcheLancee", "ellipse_conf_RPC12.svg"), plot = p, width = 40, height = 40, units = "cm")
+print(p)
+
+# RPC 1 to 5
+p = ggplot(df_scores_local, aes(x = RPC.1, y = RPC.5, color = NULL, fill = Factor)) +
+  stat_conf_ellipse(level = 0.95, geom = "polygon") +
+  theme_Publication() +
+  scale_fill_manual(values = colors) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  coord_fixed(ratio = 1) +
+  labs(x = "RPC1", y = "RPC5") +
+  theme(legend.position = "none")
+cowplot::ggsave2(here("Figures_MarcheLancee", "ellipse_conf_RPC15.svg"), plot = p, width = 40, height = 40, units = "cm")
+print(p)
+
+# RPC 2 to 5
+p = ggplot(df_scores_local, aes(x = RPC.2, y = RPC.5, color = NULL, fill = Factor)) +
+  stat_conf_ellipse(level = 0.95, geom = "polygon") +
+  theme_Publication() +
+  scale_fill_manual(values = colors) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  coord_fixed(ratio = 1) +
+  labs(x = "RPC2", y = "RPC5") +
+  theme(legend.position = "none")
+cowplot::ggsave2(here("Figures_MarcheLancee", "ellipse_conf_RPC25.svg"), plot = p, width = 40, height = 40, units = "cm")
+print(p)
+```
+
+### Repres. points
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+
+# RPC 1 to 2
+df_scores_local = df_scores %>% filter(Factor != "ON.+.+")
+ggplot(df_scores_local, aes(x = RPC.1, y = RPC.2, color = Factor)) +
+  geom_point(size = 5, alpha = 0.1) +
+  coord_fixed(ratio = 1) +
+  theme_Publication() +
+  labs(x = "RPC1", y = "RPC2") 
+
+
+# RPCs Only Freezers
+df_scores_local = df_scores %>% filter(Factor %in% c("OFF.+.-", "ON.+.-", "OFF.+.+"))
+ggplot(df_scores_local, aes(x = RPC.1, y = RPC.2, color = Factor)) +
+  geom_point(size = 2, alpha = 0.3) +
+  coord_fixed(ratio = 1) +
+  theme_Publication() 
+ggplot(df_scores_local, aes(x = RPC.1, y = RPC.5, color = Factor)) +
+  geom_point(size = 2, alpha = 0.3) +
+  coord_fixed(ratio = 1) +
+  theme_Publication() 
+ggplot(df_scores_local, aes(x = RPC.2, y = RPC.5, color = Factor)) +
+  geom_point(size = 2, alpha = 0.3) +
+  coord_fixed(ratio = 1) +
+  theme_Publication() 
+
+# RPCs Only Freezers
+df_scores_local = df_scores %>% filter(Factor %in% c("OFF.-.-", "ON.-.-"))
+ggplot(df_scores_local, aes(x = RPC.1, y = RPC.2, color = Factor)) +
+  geom_point(size = 2, alpha = 0.3) +
+  coord_fixed(ratio = 1) +
+  theme_Publication() 
+ggplot(df_scores_local, aes(x = RPC.1, y = RPC.5, color = Factor)) +
+  geom_point(size = 2, alpha = 0.3) +
+  coord_fixed(ratio = 1) +
+  theme_Publication() 
+ggplot(df_scores_local, aes(x = RPC.2, y = RPC.5, color = Factor)) +
+  geom_point(size = 2, alpha = 0.3) +
+  coord_fixed(ratio = 1) +
+  theme_Publication() 
+
+
+```
+
+### Planned comparisons
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+TodoComparisons = "FNF" # "FOG" or "FNF"
+  
+if (TodoComparisons == "FOG") {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.+.+", "OFF.+.-", "ON.+.-")) %>% # , "OFF.+.+", "ON.+.+", "Sain.."
+    mutate(Pat_Foggeur = factor(is_FOG, levels = c("-", "+")))
+} else {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-")) %>% 
+    mutate(Pat_Foggeur = factor(Pat_Foggeur, levels = c("-", "+")))
+}
+
+  
+control = lmerControl(
+  calc.derivs = T,
+  optimizer="nloptwrap", 
+  optCtrl = list(algorithm = "NLOPT_LN_BOBYQA"))
+  
+superdf = data.frame()
+
+P = list()
+vars = c(paste(rep("RPC",5), 1:5, sep = "."))
+for (i in vars) {
+  f = as.formula(paste0(i,"~ 1 + Pat_Foggeur*Condition + (1+Condition||Subject)"))
+  m = lmerTest::lmer(f, data = df_mod, control = control)
+  # m = afex::lmer_alt(f, data = df_mod, control = control, expand_re = T)
+  # Standard repeated-measures anova, will automatically aggregate over trials
+  # m = aov_ez("Subject", i,
+  #          df_mod,
+  #          within = c("Factor"),
+  #          print.formula = T, include_aov = T)
+  # Equivalent lmer model for aggregated data
+  #f = as.formula(paste0(i,"~ 1 + Factor + (1|Subject) + (1|Subject:Factor)"))
+  #m = lmer(f, data = df_mod, control = control)
+  
+  emm = emmeans::emmeans(m, ~Pat_Foggeur*Condition)
+  emmpairs = summary(emm %>% pairs(), infer = c(T,T), adjust = "fdr") %>% 
+    as_tibble()
+  emm = summary(emm, infer = c(T,T))  %>%
+    mutate(Factor = paste0(Pat_Foggeur, " ", Condition))%>% 
+    as_tibble()
+  emsuperC = emmeans::emmeans(m, ~Condition)   %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15) 
+  emsuperF = emmeans::emmeans(m, ~Pat_Foggeur) %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15)
+  
+  print(i)
+  print(emsuperC)
+  tooutput = rbind(emmpairs, emsuperC, emsuperF, emm %>% mutate(contrast = paste0(Factor, " seul"), estimate = emmean) %>% select(contrast, estimate, SE, df, lower.CL, upper.CL, t.ratio, p.value)) %>% select(contrast, estimate, SE, df, p.value)
+  tooutput$df = i
+  tooutput$p.value = p.adjust(tooutput$p.value, method = "fdr")
+  
+  superdf = rbind(superdf, tooutput)
+  
+  print(emmpairs %>% select(contrast, estimate, SE, p.value))
+  emmpairs %<>% filter(p.value < 0.15) 
+  comparisons = stringr::str_split(emmpairs$contrast, pattern = " - ")
+  p = sprintf("p = %.4f", emmpairs$p.value)
+  
+  ctl_mean = df_scores %>% filter(Factor %in% c("Sain..")) %>% select(!!sym(i)) %>% pull() %>% mean()
+  
+  P[[i]] = ggplot(emm, aes(Factor, emmean)) + 
+    geom_hline(yintercept = 0) + 
+    geom_hline(yintercept = ctl_mean, color = "#1ACAEF") + 
+    geom_linerange(aes(ymin = lower.CL, ymax = upper.CL), linewidth = 1.5) +
+    geom_point(size = 4)
+  # P[[i]] = ggplot(emm, aes(Factor, emmean)) + 
+  #   geom_hline(yintercept = 0) + 
+  #   geom_linerange(aes(ymin = lower.CL, ymax = upper.CL), linewidth = 1.5) +
+  #   geom_point(size = 4)
+  
+  if (nrow(emmpairs)>0) {
+    P[[i]] = P[[i]] + geom_signif(
+      comparisons = comparisons,
+      step_increase = 0.2,
+      annotations = p,
+      color = "black",
+    )
+  }
+  
+  ymax = max(max(emm$upper.CL), ctl_mean) + 0.03 * (max(emm$upper.CL) - min(emm$lower.CL))
+  if (nrow(emsuperC)>0) {
+    P[[i]] = P[[i]] + geom_text(data = emsuperC, aes(x = length(emm$Factor)/2-1, y = ymax, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax2 = ymax + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax2 = ymax
+  }
+  if (nrow(emsuperF)>0) {
+    P[[i]] = P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2-1, y = ymax2, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax3 = ymax2 + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax3 = ymax2
+  }
+  P[[i]] = P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2, y = ymax3, label = " "), hjust = 0, vjust = 0)
+  
+  P[[i]] = P[[i]] +
+    ylab("") + xlab("") + 
+    ggtitle(i) +
+    theme_pubr(legend = "bottom") +
+    theme(panel.grid.major.x = element_line(color = "grey",
+                                            size = 0.25)) + 
+    # theme_Publication()+
+    scale_x_discrete(guide = guide_axis(angle = 90)) 
+}
+if ("FNF" %in% TodoComparisons) ptitle = "Non-Freezers vs. Freezers" else ptitle = "Freezers: noFOG vs.FOG"
+
+p = wrap_plots(P, nrow = 1) + plot_layout(guides = "collect") + plot_annotation(title = ptitle)
+cowplot::ggsave2(here("Figures_MarcheLancee", "lmer_varimax_red_FNF.png"), plot = p, width = 45, height = 20, units = "cm")
+```
+
+Marginal means, CIs, p-values for varimax rotated (RPC), for FOG*/-
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "lmer_varimax_red_FNF.png"))
+```
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+TodoComparisons = "FOG" # "FOG" or "FNF"
+  
+if (TodoComparisons == "FOG") {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.+.+", "OFF.+.-", "ON.+.-")) %>% # , "OFF.+.+", "ON.+.+", "Sain.."
+    mutate(Pat_Foggeur = factor(is_FOG, levels = c("-", "+")))
+} else {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-")) %>% 
+    mutate(Pat_Foggeur = factor(Pat_Foggeur, levels = c("-", "+")))
+}
+
+  
+control = lmerControl(
+  calc.derivs = T,
+  optimizer="nloptwrap", 
+  optCtrl = list(algorithm = "NLOPT_LN_BOBYQA"))
+  
+superdf = data.frame()
+
+P = list()
+vars = c(paste(rep("RPC",5), 1:5, sep = "."))
+for (i in vars) {
+  f = as.formula(paste0(i,"~ 1 + Pat_Foggeur*Condition + (1+Condition||Subject)"))
+  m = lmerTest::lmer(f, data = df_mod, control = control)
+  emm = emmeans::emmeans(m, ~Pat_Foggeur*Condition)
+  emmpairs = summary(emm %>% pairs(), infer = c(T,T), adjust = "fdr") %>% 
+    as_tibble()
+  emm = summary(emm, infer = c(T,T))  %>%
+    mutate(Factor = paste0(Pat_Foggeur, " ", Condition))%>% 
+    as_tibble()
+  emsuperC = emmeans::emmeans(m, ~Condition)   %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15) 
+  emsuperF = emmeans::emmeans(m, ~Pat_Foggeur) %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15)
+  
+  tooutput = rbind(emmpairs, emsuperC, emsuperF, emm %>% mutate(contrast = paste0(Factor, " seul"), estimate = emmean) %>% select(contrast, estimate, SE, df, lower.CL, upper.CL, t.ratio, p.value)) %>% select(contrast, estimate, SE, df, p.value)
+  tooutput$df = i
+  tooutput$p.value = p.adjust(tooutput$p.value, method = "fdr")
+  
+  superdf = rbind(superdf, tooutput)
+  print(rbind(emsuperC, emsuperF) %>% select(contrast, estimate, SE, p.value))
+  
+  print(emmpairs %>% select(contrast, estimate, SE, p.value))
+  emmpairs %<>% filter(p.value < 0.15) 
+  comparisons = stringr::str_split(emmpairs$contrast, pattern = " - ")
+  p = sprintf("p = %.4f", emmpairs$p.value)
+  
+  ctl_mean = df_scores %>% filter(Factor %in% c("Sain..")) %>% select(!!sym(i)) %>% pull() %>% mean()
+  
+  P[[i]] = ggplot(emm, aes(Factor, emmean)) + 
+    geom_hline(yintercept = 0) + 
+    geom_hline(yintercept = ctl_mean, color = "#1ACAEF") + 
+    geom_linerange(aes(ymin = lower.CL, ymax = upper.CL), linewidth = 1.5) +
+    geom_point(size = 4)
+
+  if (nrow(emmpairs)>1) {
+    P[[i]] = P[[i]] + geom_signif(
+      comparisons = comparisons,
+      step_increase = 0.2,
+      annotations = p,
+      color = "black",
+    )
+  }
+  
+  ymax = max(max(emm$upper.CL), ctl_mean) + 0.03 * (max(emm$upper.CL) - min(emm$lower.CL))
+  if (nrow(emsuperC)>0) {
+    P[[i]] = P[[i]] + geom_text(data = emsuperC, aes(x = length(emm$Factor)/2-1, y = ymax, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax2 = ymax + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax2 = ymax
+  }
+  if (nrow(emsuperF)>0) {
+    P[[i]] = P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2-1, y = ymax2, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax3 = ymax2 + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax3 = ymax2
+  }
+  P[[i]] = P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2, y = ymax3, label = " "), hjust = 0, vjust = 0)
+  
+  P[[i]] = P[[i]] +
+    ylab("") + xlab("") + 
+    ggtitle(i) +
+    theme_pubr(legend = "bottom") +
+    theme(panel.grid.major.x = element_line(color = "grey",
+                                            size = 0.25)) + 
+    # theme_Publication()+
+    scale_x_discrete(guide = guide_axis(angle = 90)) 
+}
+
+if ("FNF" %in% TodoComparisons) ptitle = "Non-Freezers vs. Freezers" else ptitle = "Freezers: noFOG vs.FOG"
+p = wrap_plots(P, nrow = 1) + plot_layout(guides = "collect") + plot_annotation(title = ptitle)
+cowplot::ggsave2(here("Figures_MarcheLancee", "lmer_varimax_red_FOG.png"), plot = p, width = 45, height = 20, units = "cm")
+```
+
+Marginal means, CIs, p-values for varimax rotated (RPC), for FOG+/*,
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "lmer_varimax_red_FOG.png"))
+```
+
+
+```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
+TodoComparisons = "FOG" # "FOG" or "FNF"
+  
+if (TodoComparisons == "FOG") {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) %>% # , "OFF.F.TRUE", "ON.F.TRUE", "Sain.SS.FALSE"
+    mutate(Pat_Foggeur = factor(is_FOG, levels = c("TRUE", "FALSE")))
+} else {
+  df_mod = df_scores %>% filter(Factor %in% c("OFF.NF.FALSE", "ON.NF.FALSE", "OFF.F.FALSE", "ON.F.FALSE")) %>% 
+    mutate(Pat_Foggeur = factor(Pat_Foggeur, levels = c("NF", "F")))
+}
+
+  
+control <- lmerControl(
+  calc.derivs = T,
+  optimizer="nloptwrap", 
+  optCtrl = list(algorithm = "NLOPT_LN_BOBYQA"))
+  
+superdf = data.frame()
+
+P = list()
+vars <- c(paste(rep("RPC",5), 1:5, sep = "."))
+for (i in vars) {
+  f <- as.formula(paste0(i,"~ 1 + Pat_Foggeur*Condition + (1+Condition||Subject)"))
+  m <- lmerTest::lmer(f, data = df_mod, control = control)
+  emm <- emmeans::emmeans(m, ~Pat_Foggeur*Condition)
+  emmpairs <- summary(emm %>% pairs(), infer = c(T,T), adjust = "fdr") %>% 
+    as_tibble()
+  emm <- summary(emm, infer = c(T,T))  %>%
+    mutate(Factor = paste0(Pat_Foggeur, " ", Condition))%>% 
+    as_tibble()
+  emsuperC = emmeans::emmeans(m, ~Condition)   %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15) 
+  emsuperF = emmeans::emmeans(m, ~Pat_Foggeur) %>% pairs() %>% summary(infer = c(T,T), adjust = "fdr") %>% as_tibble() %>% filter(p.value < 0.15)
+  
+  tooutput = rbind(emmpairs, emsuperC, emsuperF, emm %>% mutate(contrast = paste0(Factor, " seul"), estimate = emmean) %>% select(contrast, estimate, SE, df, lower.CL, upper.CL, t.ratio, p.value)) %>% select(contrast, estimate, SE, df, p.value)
+  tooutput$df = i
+  tooutput$p.value = p.adjust(tooutput$p.value, method = "fdr")
+  
+  superdf = rbind(superdf, tooutput)
+  print(rbind(emsuperC, emsuperF) %>% select(contrast, estimate, SE, p.value))
+  
+  print(emmpairs %>% select(contrast, estimate, SE, p.value))
+  emmpairs %<>% filter(p.value < 0.15) 
+  comparisons <- stringr::str_split(emmpairs$contrast, pattern = " - ")
+  # p <- sprintf("p = %.4f", emmpairs$p.value)
+  emmpairs %<>% mutate(p_significance = ifelse(p.value > 0.05, "n.s.", ifelse(p.value > 0.01, "*", ifelse(p.value > 0.001, "**", "***"))))
+  p = emmpairs$p_significance
+  
+  ctl_mean <- df_scores %>% filter(Factor %in% c("Sain.SS.FALSE")) %>% select(!!sym(i)) %>% pull() %>% mean()
+  
+  P[[i]] <- ggplot(emm, aes(Factor, emmean)) + 
+    geom_ribbon(aes(ymin = lower.CL, ymax = upper.CL, color = NULL, group = ""), alpha = 0.5, fill = "#6ad1d1")
+   
+  add_indpoints = F
+  if(add_indpoints) {
+    P[[i]] = P[[i]] + 
+      ggbeeswarm::geom_beeswarm(data = df_scores %>% filter(Factor %in% c("OFF.PPN.FALSE", "ON.PPN.FALSE", "OFF.PPN.TRUE", "ON.PPN.TRUE")) %>% mutate(Factor = paste0(is_FOG, " ", Condition)) %>% mutate(emmean = !!sym(i)), 
+                        aes(shape = Subject), color = "black", size = 1, alpha = 0.3)
+  }
+  
+  P[[i]] = P[[i]] + 
+    geom_hline(yintercept = 0) + 
+    geom_hline(yintercept = ctl_mean, color = "#1ACAEF", size = 2) + 
+   # geom_linerange(aes(ymin = lower.CL, ymax = upper.CL), linewidth = 1.5) +
+   # geom_point(size = 4)
+    geom_point(color = "#4ca5a5", size = 4) + 
+    geom_line(aes(group = ""), color = "#4ca5a5")
+    
+  if (nrow(emmpairs)>1) {
+    P[[i]] <- P[[i]] + geom_signif(
+      comparisons = comparisons,
+      step_increase = 0.2,
+      annotations = p,
+      color = "black",
+      textsize = 8
+    )
+  }
+  
+  ymax = max(max(emm$upper.CL), ctl_mean) + 0.03 * (max(emm$upper.CL) - min(emm$lower.CL))
+  if (nrow(emsuperC)>0) {
+  #  P[[i]] <- P[[i]] + geom_text(data = emsuperC, aes(x = length(emm$Factor)/2-1, y = ymax, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax2 = ymax + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax2 = ymax
+  }
+  if (nrow(emsuperF)>0) {
+  #  P[[i]] <- P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2-1, y = ymax2, label = paste0(contrast, " : p = ", round(p.value, digits = 3))), hjust = 0, vjust = 0, color = "red")
+    ymax3 = ymax2 + 0.13 * (max(emm$upper.CL) - min(emm$lower.CL))
+  } else {
+    ymax3 = ymax2
+  }
+  P[[i]] = P[[i]] + geom_text(data = emsuperF, aes(x = length(emm$Factor)/2, y = ymax3, label = " "), hjust = 0, vjust = 0)
+  
+  P[[i]] <- P[[i]] +
+    ylab("") + xlab("") + 
+    ggtitle(switch(as.numeric(str_extract(i, "[1-9]")), "Pace (RPC 1)", "Rhythm (RPC 2)", "Vertical (RPC 3)", "Balance (RPC 4)", "Balance (RPC 5)")) +
+    theme_pubr(legend = "bottom") +
+    theme(panel.grid.major.x = element_line(color = "grey",
+                                            size = 0.25)) + 
+    theme_Publication() + 
+    theme(legend.position = "bottom") +
+    scale_x_discrete(guide = guide_axis(angle = 45), labels = c("OFF without FOG", "ON without FOG", "OFF with FOG", "ON with FOG")) 
+  
+  #Niceplot
+#  P[[i]] <- P[[i]] + theme_dark_dark_classiclegend()
+  
+}
+
+
+p <- wrap_plots(P, nrow = 1) + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+cowplot::ggsave2(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresPPN/", "lmer_varimax_blue_FOG.png"), plot = p, width = 45, height = 20, units = "cm")
+
+
+
+
+```
+
+Marginal means, CIs, p-values for varimax rotated (RPC), for FOG+/*,
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(paste0("C:/LustreSync/LAU Brian - 2024_GBMOV/","FiguresPPN/", "lmer_varimax_blue_FOG.png"))
+```
+
+## Correlation entre les variables
+```{r}
+p = list()
+
+# IndActive
+df_scores  %>% filter(Factor %in% c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-")) %>%
+  select(contains("RPC")) %>% 
+  cor() %>% 
+  round(2) %>% 
+  kable()
+
+p[[1]] = df_scores %>% filter(Factor %in% c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-")) %>%
+  select(contains("RPC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC - FOG*/-")
+  
+
+p[[2]] = df_scores %>% filter(Factor %in% c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-")) %>%
+  select(contains("PC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC et PC - FOG*/-")
+
+
+## All pat + SS
+df_scores %>% 
+  select(contains("RPC")) %>% 
+  cor() %>% 
+  round(2) %>% 
+  kable()
+
+
+p[[3]] = df_scores %>%
+  select(contains("RPC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC - pat & ctrl") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+
+p[[4]] = df_scores %>%
+  select(contains("PC")) %>%
+  cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T) +
+  ylab("") + xlab("") +
+  theme_Publication() +
+  ggtitle("Correlation entre les RPC et PC - pat & ctrl") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+q = wrap_plots(p, nrow = 2) #+ plot_layout(guides = "collect") 
+
+invLoadings %>% cor() %>% round(2) %>% kable()
+
+cowplot::ggsave2(here("Figures_MarcheLancee", "cor_pc.png"), plot = q, width = 45, height = 45, units = "cm")
+```
+
+Marginal means, CIs, p-values (FDR-corrected) for varimax rotated (RPC),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "cor_pc.png"))
+```
+
+## Corr par gp
+```{r}
+
+p = list()
+TestsImportants = data.frame()
+df_scores %>% group_by(Factor) %>% count()
+for(fact in c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-","OFF.+.+", "Sain..")) {
+  
+  pval = df_scores  %>% filter(Factor == fact) %>% select(contains("RPC")) %>% cor_pmat()
+    
+  plot1 = df_scores  %>% filter(Factor == fact) %>%
+    select(contains("RPC")) %>% 
+    cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T,
+           p.mat = pval, insig = "pch") +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication()  + ggtitle(fact)
+  
+  pval = df_scores  %>% filter(Factor == fact) %>% select(contains("PC")) %>% cor_pmat()
+    
+  plot2 = df_scores  %>% filter(Factor == fact) %>%
+    select(contains("PC")) %>% 
+    cor() %>%
+  ggcorrplot::ggcorrplot(hc.order = F, type = "lower",
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+           lab = T,
+           p.mat = pval, insig = "pch") +
+  ylab("") + xlab("") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  theme_Publication() 
+  
+  LocalDf = data.frame() %>% add_row()
+  test1 = cor.test(df_scores  %>% filter(Factor == fact) %>% pull("RPC.1"),df_scores  %>% filter(Factor == fact) %>% pull("RPC.5") )
+  LocalDf$RPCtest[1] = "RPC.1 vs RPC.5"
+  LocalDf$cor[1] = test1$estimate
+  LocalDf$pval[1] = test1$p.value
+  LocalDf$df[1] = test1$parameter
+  LocalDf$t[1] = test1$statistic
+  
+  LocalDf %<>% add_row()
+  test1 = cor.test(df_scores  %>% filter(Factor == fact) %>% pull("RPC.2"),df_scores  %>% filter(Factor == fact) %>% pull("RPC.5") )
+  LocalDf$RPCtest[2] = "RPC.2 vs RPC.5"
+  LocalDf$cor[2] = test1$estimate
+  LocalDf$pval[2] = test1$p.value
+  LocalDf$df[2] = test1$parameter
+  LocalDf$t[2] = test1$statistic
+  
+  LocalDf %<>% add_row()
+  test1 = cor.test(df_scores  %>% filter(Factor == fact) %>% pull("RPC.2"),df_scores  %>% filter(Factor == fact) %>% pull("RPC.1") )
+  LocalDf$RPCtest[3] = "RPC.2 vs RPC.1"
+  LocalDf$cor[3] = test1$estimate
+  LocalDf$pval[3] = test1$p.value
+  LocalDf$df[3] = test1$parameter
+  LocalDf$t[3] = test1$statistic
+
+  LocalDf$Facteur = fact
+  TestsImportants = rbind(TestsImportants, LocalDf %>% relocate(Facteur, .before = RPCtest))
+  
+  p[[length(p)+1]] = wrap_plots(list(plot1, plot2), ncol = 1, nrow = 2) + plot_layout(guides = "collect")
+}
+
+q = wrap_plots(p, nrow = 1) + plot_layout(guides = "collect") 
+TestsImportants$p.adjust = round(p.adjust(TestsImportants$pval, method = "fdr"), digits = 5)
+cowplot::ggsave2(here("Figures_MarcheLancee", "cor_pc_perGP.png"), plot = q, width = 90, height = 30, units = "cm")
+TestsImportants %>% kable()
+```
+
+Marginal means, CIs, p-values (FDR-corrected) for varimax rotated (RPC),
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics(here("Figures_MarcheLancee", "cor_pc_perGP.png"))
+```
+### End
+
+
+
