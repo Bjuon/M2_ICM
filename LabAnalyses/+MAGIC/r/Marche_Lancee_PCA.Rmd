@@ -509,30 +509,45 @@ loadings <- loadings.varimax %>%
   mutate(
     var  = stringr::str_replace_all(var, "_", " "),
     name = dplyr::recode(name,
-                         "RPC.1" = "-RPC1",
-                         "RPC.2" = "-RPC2",
-                         "RPC.3" =  "-RPC3",
-                         "RPC.4" =  "-RPC4",
-                         "RPC.5" = "-RPC5"),
-    name = factor(name, levels = c("-RPC1", "-RPC2", "-RPC3", "-RPC4", "-RPC5"))
+                         "RPC.1" = "RPC1",
+                         "RPC.2" = "RPC2",
+                         "RPC.3" =  "RPC3",
+                         "RPC.4" =  "RPC4",
+                         "RPC.5" = "RPC5"),
+    name = factor(name, levels = c("RPC1", "RPC2", "RPC3", "RPC4", "RPC5"))
   )
 ##  ───▲ stop piping here; no trailing %>%  ─────────────────────────────────────
 
 ## ── 2 ️⃣  tell ggplot to respect that factor (optional safety belt) ───────────
-g <- ggplot(loadings, aes(name, forcats::fct_rev(var), fill = -value)) +
+g <- ggplot(loadings, aes(name, forcats::fct_rev(var), fill = value)) +
   geom_tile() +
   ylab("") + xlab("") +
   ggtitle("Varimax loadings") +
-  scale_fill_gradient2(low = "#075AFF", mid = "white", high = "#FF0000") +
-  scale_x_discrete(limits = levels(loadings$name),        # <- keeps -RPC5 last
-                   guide = guide_axis(angle = 90)) +
+  scale_fill_gradient2(
+    low = "#075AFF", mid = "white", high = "#FF0000",
+    name = "value",
+    breaks = c(-0.5, 0, 0.5),
+    labels = c("-0.5", "0", "0.5")
+  ) +
+  scale_x_discrete(limits = levels(loadings$name), guide = guide_axis(angle = 90)) +
   theme_pubr(legend = "bottom") +
-  theme(axis.text.x = element_text(size = 14,
-                                   vjust = 0.5, hjust = 1))
+  theme(
+    axis.text.x = element_text(size = 20, vjust = 0.5, hjust = 1),
+    axis.text.y = element_text(size = 18),
+    legend.text = element_text(size = 14, margin = margin(t = 10)),
+    legend.title = element_text(size = 18, margin = margin(r = 10))
+  ) +
+  guides(fill = guide_colorbar(
+    barwidth = 5,
+    barheight = 1,
+    title.position = "left",
+    title.hjust = 0.5,
+    label.position = "bottom"
+  ))
 
 
 p = e + f + g
-cowplot::ggsave2(here("Figures_MarcheLancee", "pca_loadings.png"), plot = p, width = 30, height = 25, units = "cm")
+cowplot::ggsave2(here("Figures_MarcheLancee", "pca_loadings.png"), plot = p, width = 28, height = 25, units = "cm")
 ```
 
 Let's look at the loadings to see if we can interpret anything.
@@ -1210,9 +1225,9 @@ make_blue_plot <- function(comparison_type) {
     p <- p +
       ylab("") + xlab("") +
       ggtitle(switch(i,
-                     "RPC.1" = "-RPC1 : Pace","RPC.2" = "-RPC2 : Rhythm",
-                     "RPC.3" = "-RPC3 : Asymmetry","RPC.4" = "-RPC4 : Velocity",
-                     "RPC.5" = "-RPC5 : Balance")) +
+                     "RPC.1" = "RPC1 : Pace","RPC.2" = "RPC2 : Rhythm",
+                     "RPC.3" = "RPC3 : Asymmetry","RPC.4" = "RPC4 : Velocity",
+                     "RPC.5" = "RPC5 : Balance")) +
       theme_pubr(legend = "bottom") +
       scale_x_discrete(labels = labels, guide = guide_axis(angle = 90)) +
       theme(panel.grid.major.x = element_line(colour = "grey", size = 0.25),
@@ -1249,140 +1264,160 @@ print(fog_plot)
 ```
 
 ```
-
-
-##  Withouth RPC3 and RPC4 
-
-
 ```{r blue_varimax_plots_setup, echo=FALSE, message=FALSE, warning=FALSE}
-# — PREAMBLE: load libraries and prepare objects —
-library(lmerTest); library(emmeans); library(dplyr)
-library(ggplot2); library(cowplot); library(patchwork); library(here)
 
-# Control and variables
-control <- lmerControl(calc.derivs = TRUE, optimizer = "nloptwrap",
-                       optCtrl = list(algorithm = "NLOPT_LN_BOBYQA"))
-# Only RPC1, RPC2 and RPC5
-vars <- paste0("RPC.", c(1,2,5))
 
-# Define separate x-axis labels for FNF vs FOG
-factor_labels_fnf <- c(
-  "- OFF" = expression(FOG[NOBS]~OFF),
-  "- ON"  = expression(FOG[NOBS]~ON),
-  "+ OFF" = expression(FOG[OBS]~OFF),
-  "+ ON"  = expression(FOG[OBS]~ON)
-)
-factor_labels_fog <- c(
-  "- OFF" = expression(FOG['OBS-']~OFF),
-  "- ON"  = expression(FOG['OBS-']~ON),
-  "+ OFF" = expression(FOG['OBS+']~OFF),
-  "+ ON"  = expression(FOG['OBS+']~ON)
+##  new plot
+
+## -------------------------------------------------------------------
+##  🆕  CODE ADDED / MODIFIED  – copy-paste into your existing script
+## -------------------------------------------------------------------
+
+# ... (all previous library calls unchanged) ...
+library(stringr)   # <- needed for str_remove_all()
+library(purrr)     # <- used for tidy list-columns in significance table
+library(ggsignif)   # <- add once (after ggplot2) so geom_signif() is available
+
+# ── unified x-axis labels (5 levels) ────────────────────────────────
+factor_labels_combined <- c(
+  "FOGNOBS OFF" = expression(FOG[NOBS]~OFF),
+  "FOGNOBS ON"  = expression(FOG[NOBS]~ON),
+  "FOGOBS- OFF" = expression(FOG['OBS-']~OFF),
+  "FOGOBS- ON"  = expression(FOG['OBS-']~ON),
+  "FOGOBS+ OFF" = expression(FOG['OBS+']~OFF)
 )
 
-# High‐level function:
-make_blue_plot <- function(comparison_type) {
-  if (comparison_type == "FNF") {
-    labels     <- factor_labels_fnf
-    df_mod     <- df_scores %>%
-                  filter(Factor %in% c("OFF.-.-","ON.-.-","OFF.+.-","ON.+.-")) %>%
-                  mutate(Pat_Foggeur = factor(Pat_Foggeur, levels = c("-","+")))
-    title_text <- "Non-Freezers vs. Freezers"
-    fname      <- "lmer_varimax_blue_FNF_125.png"
-    sig_color  <- "black"
-  } else {
-    labels     <- factor_labels_fog
-    df_mod     <- df_scores %>%
-                  filter(Factor %in% c("OFF.+.+","OFF.+.-","ON.+.-")) %>%
-                  mutate(Pat_Foggeur = factor(is_FOG, levels = c("-","+")))
-    title_text <- "Freezers: noFOG vs. FOG"
-    fname      <- "lmer_varimax_blue_FOG_125.png"
-    sig_color  <- "navy"
-  }
+# ── helper that merges the two original panels into one ─────────────
+make_combined_blue_plot <- function() {
+
+  ## 1⃣ data subsets that feed the two models ------------------------
+  df_fnf <- df_scores %>%                      # “Non-freezers vs Freezers-(OBS-)”
+    filter(Factor %in% c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-")) %>%
+    mutate(group = ifelse(Pat_Foggeur == "-", "FOGNOBS", "FOGOBS-"),
+           x_cat = factor(paste(group, Condition),
+                          levels = names(factor_labels_combined)))
+
+  df_fog <- df_scores %>%                      # “OBS- vs OBS+”  *inside* freezers
+    filter(Factor %in% c("OFF.+.+", "OFF.+.-", "ON.+.-")) %>%
+    mutate(group = ifelse(is_FOG == "+", "FOGOBS+", "FOGOBS-"),
+           x_cat = factor(paste(group, Condition),
+                          levels = names(factor_labels_combined)))
 
   plots <- list()
-  for (i in vars) {
-    # Fit LMER and get marginal means
-    m      <- lmer(as.formula(paste0(i, " ~ 1 + Pat_Foggeur*Condition + (1|Subject)")),
-                   data = df_mod, control = control)
-    emm_df <- summary(emmeans(m, ~Pat_Foggeur*Condition), infer=c(TRUE,TRUE)) %>%
-              mutate(Factor = paste0(Pat_Foggeur, " ", Condition))
 
-    # Planned‐comparison stars
-    emmp <- summary(emmeans(m, ~Pat_Foggeur*Condition) %>% pairs(),
-                    infer=c(TRUE,TRUE), adjust="fdr") %>%
-            as_tibble() %>%
-            mutate(contrast = str_remove_all(contrast, "[()]+"),
-                   p.adj     = p.adjust(p.value, method = "fdr")) %>%
-            filter(p.adj < 0.05)  # only significant after FDR
-    comparisons <- str_split(emmp$contrast, " - ")
-    annotations <- case_when(
-      emmp$p.adj < 0.001 ~ "***",
-      emmp$p.adj < 0.01  ~ "**",
-      TRUE               ~ "*"
-    )
+  for (rpc in vars) {
 
-    # Healthy control mean line
-    ctl_m <- df_scores %>% filter(Factor=="Sain..") %>% pull(!!sym(i)) %>% mean()
+    ## 2⃣ inter-group model (black sig. bars) ------------------------
+    m_fnf   <- lmer(as.formula(paste0(rpc, " ~ 1 + Pat_Foggeur*Condition + (1|Subject)")),
+                    data = df_fnf, control = control)
+    emm_fnf <- summary(emmeans(m_fnf, ~ Pat_Foggeur*Condition), infer = TRUE) %>%
+      mutate(group = ifelse(Pat_Foggeur == "-", "FOGNOBS", "FOGOBS-"),
+             x_cat = factor(paste(group, Condition),
+                            levels = names(factor_labels_combined)))
 
-    p <- ggplot(emm_df, aes(Factor, emmean)) +
-      geom_hline(yintercept=0) +
-      geom_hline(yintercept=ctl_m, colour="#1ACAEF", size=2) +
-      geom_ribbon(aes(ymin=lower.CL, ymax=upper.CL, group=1), fill="#6ad1d1", alpha=0.5) +
-      geom_line(aes(group=1), color="#4ca5a5", size=1) +
-      geom_point(color="#4ca5a5", size=4)
+    sig_fnf <- summary(pairs(emmeans(m_fnf, ~ Pat_Foggeur*Condition)),
+                       infer = TRUE, adjust = "fdr") %>%
+      as_tibble() %>%
+      mutate(p.adj = p.adjust(p.value, "fdr"),
+             anno  = case_when(p.adj < .001 ~ "***",
+                               p.adj < .01  ~ "**",
+                               p.adj < .05  ~ "*",
+                               TRUE         ~ "ns")) %>%
+      filter(anno != "ns") %>%
+      mutate(contrast   = str_remove_all(contrast, "[() ]"),
+             comparisons = map(str_split(contrast, "-"), trimws))
 
-    if (nrow(emmp)>0) {
-      p <- p + geom_signif(
-        comparisons   = comparisons,
-        annotations   = annotations,
-        step_increase = 0.2,
-        color         = sig_color,
-        textsize      = 6
+    ## 3⃣ intra-group model OBS- vs OBS+ (navy sig. bars) ------------
+    m_fog   <- lmer(as.formula(paste0(rpc, " ~ 1 + is_FOG*Condition + (1|Subject)")),
+                    data = df_fog, control = control)
+    emm_fog <- summary(emmeans(m_fog, ~ is_FOG*Condition), infer = TRUE) %>%
+      mutate(group = ifelse(is_FOG == "+", "FOGOBS+", "FOGOBS-"),
+             x_cat = factor(paste(group, Condition),
+                            levels = names(factor_labels_combined)))
+
+    sig_fog <- summary(pairs(emmeans(m_fog, ~ is_FOG*Condition)),
+                       infer = TRUE, adjust = "fdr") %>%
+      as_tibble() %>%
+      mutate(p.adj = p.adjust(p.value, "fdr"),
+             anno  = case_when(p.adj < .001 ~ "***",
+                               p.adj < .01  ~ "**",
+                               p.adj < .05  ~ "*",
+                               TRUE         ~ "ns")) %>%
+      filter(anno != "ns",
+             str_detect(contrast, "\\+\\sOFF")) %>%      # keep OBS+ OFF comparison
+      mutate(contrast   = str_remove_all(contrast, "[() ]"),
+             comparisons = map(str_split(contrast, "-"), trimws))
+
+    ## 4⃣ estimates to plot (bind the 4 FNF levels + single OBS+ OFF) --
+    emm_plot <- bind_rows(
+      emm_fnf %>% filter(x_cat != "FOGOBS+ OFF"),   # from FNF model
+      emm_fog %>% filter(x_cat == "FOGOBS+ OFF")    # from FOG model
+    ) %>% distinct(x_cat, .keep_all = TRUE)
+
+    ## 5⃣ reference (healthy controls) horizontal turquoise bar -------
+    ctl_m <- df_scores %>% filter(Factor == "Sain..") %>%
+      pull(!!sym(rpc)) %>% mean()
+
+    ## 6⃣ build single facet -----------------------------------------
+    p <- ggplot(emm_plot, aes(x_cat, emmean, group = 1)) +
+      geom_hline(yintercept = 0) +
+      { if (!rpc %in% c("RPC.3", "RPC.4"))
+          geom_hline(yintercept = ctl_m, colour = "#1ACAEF", size = 2) } +
+      geom_ribbon(aes(ymin = lower.CL, ymax = upper.CL), fill = "#6ad1d1", alpha = .5) +
+      geom_line(colour = "#4ca5a5", size = 1) +
+      geom_point(colour = "navy", size = 4) +          # ← point colour now navy
+      # significance: black for FNF, navy for OBS- vs OBS+
+      { if (nrow(sig_fnf) > 0) 
+      geom_signif(
+        comparisons   = sig_fnf$comparisons,
+        annotations   = sig_fnf$anno,
+        step_increase = 0.15,
+        textsize      = 6,
+        colour        = "black"
       )
-    }
+  } +
 
-    p <- p +
+  # only add intra-group (OBS+ vs OBS−) asterisks if present
+  { if (nrow(sig_fog) > 0)
+      geom_signif(
+        comparisons   = sig_fog$comparisons,
+        annotations   = sig_fog$anno,
+        step_increase = 0.30,
+        textsize      = 6,
+        colour        = "navy"
+      )
+  } +
+      scale_x_discrete(labels = factor_labels_combined,
+                       guide  = guide_axis(angle = 90)) +
+      ggtitle(switch(rpc,
+                     "RPC.1" = "RPC1 : Pace",      "RPC.2" = "RPC2 : Rhythm",
+                     "RPC.3" = "RPC3 : Asymmetry", "RPC.4" = "RPC4 : Velocity",
+                     "RPC.5" = "RPC5 : Balance")) +
       ylab("") + xlab("") +
-      ggtitle(switch(i,
-                     "RPC.1"="-RPC1 : Pace",
-                     "RPC.2"="-RPC2 : Rhythm",
-                     "RPC.5"="-RPC5 : Balance")) +
-      theme_pubr(legend="bottom") +
-      scale_x_discrete(labels=labels, guide=guide_axis(angle=90)) +
-      theme(
-        panel.grid.major.x=element_line(colour="grey",size=0.25),
-        axis.text.x       = element_text(size=18),
-        plot.title        = element_text(size=18,face="bold")
-      )
+      theme_pubr() +
+      theme(panel.grid.major.x = element_line(colour = "grey", size = .25),
+            axis.text.x        = element_text(size = 18),
+            plot.title         = element_text(size = 18, face = "bold"))
 
-    plots[[i]] <- p
+    plots[[rpc]] <- p
   }
 
-  combined <- wrap_plots(plots, nrow=1) +
-              plot_layout(guides="collect") +
-              plot_annotation(title=title_text)
-  cowplot::ggsave2(here("Figures_MarcheLancee", fname), combined,
-                   width=45, height=20, units="cm")
-  return(combined)
+  ## 7⃣ wrap facets, save & return -----------------------------------
+  combined <- wrap_plots(plots, nrow = 1) +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = "Combined inter-group vs intra-group")
+  cowplot::ggsave2(
+    here("Figures_MarcheLancee", "lmer_varimax_blue_COMBINED.png"),
+    combined, width = 55, height = 20, units = "cm"
+  )
+  combined
 }
-````
 
-````r
-```{r plot_and_save_blue_FNF, echo=FALSE, out.width='100%'}
-fnf_plot <- make_blue_plot("FNF")
-print(fnf_plot)
-````
+# run & display
+combined_plot <- make_combined_blue_plot()
+print(combined_plot)
 
-````r
-```{r plot_and_save_blue_FOG, echo=FALSE, out.width='100%'}
-fog_plot <- make_blue_plot("FOG")
-print(fog_plot)
-````
-
-```
-```
-
-
+```  
 
 
 ```{r, echo = F, results = "hide", message = FALSE, warning = FALSE, out.width = '100%'}
