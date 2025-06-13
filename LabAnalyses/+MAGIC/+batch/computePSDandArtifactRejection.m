@@ -3,7 +3,7 @@ function [cleanedSeg_flagged, stats, artifactFlags] = computePSDandArtifactRejec
 %  RMSE‑based 1/f validation (≥50 % increase in 10‑55 Hz band).
 % ────────────────────────────────────────────────────────────────────────────────
 global TrialRejectionDir
-todo.plot = 0;
+todo.plot = 1;
 plotVisible = 'off'; % set off or on figure visibility 
 
 %% ───── Parameters ─────────────────────────────────────────────────────────────
@@ -378,106 +378,123 @@ for i = 1:nSegments
     end
 end
 
-%% ───── PASS‑4  (plotting)  ───────────────────────────────────────────────────
+%% ───── PASS-4  (plotting)  ───────────────────────────────────────────────────
 if todo.plot
     disp('Plotting Thenaisie start')
 
-     patientTrig = cleanedSeg_flagged(i).info('trial').patient(end-2:end);
-     patientDir  = fullfile(TrialRejectionDir, patientTrig);
+    % ❶ Destination folder (unchanged logic)
+    patientTrig = cleanedSeg_flagged(i).info('trial').patient(end-2:end);
+    patientDir  = fullfile(TrialRejectionDir, patientTrig);
     if ~exist(patientDir, 'dir')
         mkdir(patientDir);
     end
+
+    % ❷ Loop on every *step* segment
     for i = 1:nSegments
         trialInfo = cleanedSeg_flagged(i).info('trial');
         if ~startsWith(trialInfo.condition,'step'), continue; end
 
-        keySuffix  = sprintf('%s_%d_%s',trialInfo.patient(end-2:end),...
-                                          trialInfo.nTrial,trialInfo.medication);
-        idxBaseline= find(endsWith({baselineStruct.trialKey},keySuffix),1);
-        if isempty(idxBaseline), warning('Plot‑PSD: baseline “%s” not found',keySuffix); continue; end
+        keySuffix  = sprintf('%s_%d_%s', ...
+                             trialInfo.patient(end-2:end), ...
+                             trialInfo.nTrial,              ...
+                             trialInfo.medication);
+
+        idxBaseline = find(endsWith({baselineStruct.trialKey},keySuffix),1);
+        if isempty(idxBaseline)
+            warning('Plot-PSD: baseline “%s” not found',keySuffix);
+            continue;
+        end
 
         eventPSD = cleanedSeg_flagged(i).info('psdInfo');
         evs      = cleanedSeg_flagged(i).eventProcess.values{1,1};
 
+        % ❸ Loop over every event (FO / FC)
         for e = 1:numel(eventPSD)
+
+            % ── NEW: one-shot scan to determine a global y-axis for *all* tiles
+            yAll = [];
+            for idxTmp = 1:nGoodChannels
+                chTmp   = goodChIdx(idxTmp);
+                pBslTmp = baselineStruct(idxBaseline).avgPSD{chTmp};     % baseline
+                evtTmp  = eventPSD(e).perChannelPSD{chTmp}.avgPSD;       % event
+                yAll    = [yAll ; 10*log10(pBslTmp(:)) ; 10*log10(evtTmp(:))];
+            end
+            yLimAll = [min(yAll)  max(yAll)];
+            % -----------------------------------------------------------------
+
             evName  = evs(e).name.name;
             figName = sprintf('%s_%s_step%02d', keySuffix, evName, trialInfo.nStep);
-            figure('Name',figName,'Color','w', 'Visible', plotVisible);
-            numCols=4; numRows=ceil(nGoodChannels/numCols); % changed to good channels
-            tl=tiledlayout(numRows,numCols,'TileSpacing','compact','Padding','compact');
-            title(tl,strrep(figName,'_',' '),'Interpreter','none',...
-                  'FontWeight','bold','FontSize',12);
+
+            % ── Figure & tiled layout
+            figure('Name',figName,'Color','w','Visible',plotVisible);
+            numCols = 4;
+            numRows = ceil(nGoodChannels/numCols);
+            tl = tiledlayout(numRows,numCols,'TileSpacing','compact','Padding','compact');
+            title(tl, strrep(figName,'_',' '), ...
+                  'Interpreter','none','FontWeight','bold','FontSize',12);
 
             legendHandles = gobjects(1,4);
 
+            % ❹ Per-channel sub-plots
             for idx = 1:nGoodChannels
-                ch = goodChIdx(idx);          % actual channel number
+                ch = goodChIdx(idx);
 
-                ax = nexttile(tl,idx); hold(ax,'on');
+                ax = nexttile(tl,idx);
+                hold(ax,'on');
 
-                % --- baseline & event PSD
+                % ▸ Baseline & event PSD
                 fBsl = baselineStruct(idxBaseline).f{ch};
                 pBsl = baselineStruct(idxBaseline).avgPSD{ch};
                 evt  = eventPSD(e).perChannelPSD{ch};
 
-                h1=plot(ax,fBsl,10*log10(pBsl),'k-','LineWidth',1.5);
-                h2=plot(ax,evt.f,10*log10(evt.avgPSD),'b-','LineWidth',1.5);
+                h1 = plot(ax, fBsl, 10*log10(pBsl), 'k-', 'LineWidth',1.5);
+                h2 = plot(ax, evt.f, 10*log10(evt.avgPSD), 'b-', 'LineWidth',1.5);
 
-                % --- aperiodic fits
+                % ▸ 1/f fits
                 bf   = baselineStruct(idxBaseline).fooofResults{ch};
                 ef   = evt.fooofResults;
                 fitB = 10.^(bf.aperiodic_params(1) - bf.aperiodic_params(2).*log10(fBsl));
                 fitE = 10.^(ef.aperiodic_params(1) - ef.aperiodic_params(2).*log10(evt.f));
-                h3=plot(ax,fBsl,10*log10(fitB),'k--','LineWidth',1);
-                h4=plot(ax,evt.f,10*log10(fitE),'b--','LineWidth',1);
+                h3   = plot(ax, fBsl, 10*log10(fitB), 'k--', 'LineWidth',1);
+                h4   = plot(ax, evt.f, 10*log10(fitE), 'b--', 'LineWidth',1);
 
+                % ▸ Unified y-axis
+                ylim(ax, yLimAll);
 
-                % --- annotate RMSE at fixed north‑centre
+                % ▸ Rel-RMSE annotation (★ bigger font)
                 rmseVal = eventPSD(e).rmseValues(ch);
                 if ~isnan(rmseVal)
-                    % reconstruct the event 1/f curve for this channel
-                    freqs    = evt.f;                     % frequency vector used in the event PSD
-                    fooofEvt = evt.fooofResults;          % saved FOOOF result
-                    % 1/f model: power = 10^(offset − slope*log10(freq))
-                    fitEvt   = 10.^( fooofEvt.aperiodic_params(1) ...
-                                   - fooofEvt.aperiodic_params(2).*log10(freqs) );
-                    % compute the normalized RMSE ratio: rmse / mean(event‑fit)
-                    relRatio = rmseVal ./ mean(fitEvt);
-                    % turn that into a text label (linear ratio and its dB equivalent)
-                    txt = sprintf('RelRMSE=%.2f (%.1f dB)', relRatio, 10*log10(relRatio));
-                    text(ax, 0.5, 1, txt, ...
-                         'Units','normalized', ...
-                         'FontSize',7, ...
-                         'HorizontalAlignment','center', ...
-                         'VerticalAlignment','top', ...
-                         'Interpreter','none');
-                 end
-
-                % --- channel title if flagged
-                isFlaggedNow = eventPSD(e).eventArtifactFlags(ch);   % <<—— per‑event flag
-                if isFlaggedNow
-                    title(ax, sprintf('%s: FLAGGED', chanNames{ch}), 'Color','k');
-                else
-                    title(ax, sprintf('%s: OK',      chanNames{ch}));
+                    fitEvt   = 10.^( ef.aperiodic_params(1) ...
+                                   -  ef.aperiodic_params(2).*log10(evt.f) );
+                    relRatio = rmseVal / mean(fitEvt);
+                    txt = sprintf('RelRMSE = %.2f (%.1f dB)', ...
+                                   relRatio, 10*log10(relRatio));
+                    text(ax, 0.5,1, txt, 'Units','normalized', ...
+                         'FontSize',12,'FontWeight','bold', ...
+                         'HorizontalAlignment','center','VerticalAlignment','top');
                 end
 
-                xlabel(ax,'Freq (Hz)'); ylabel(ax,'Power (dB)');
+                % ▸ Axes cosmetics
+                xlabel(ax,'Freq (Hz)');
+                ylabel(ax,'Power (dB)');
                 xlim(ax,freqRangeHz);
                 hold(ax,'off');
 
-                if idx==1, legendHandles=[h1 h2 h3 h4]; end
+                if idx == 1
+                    legendHandles = [h1 h2 h3 h4];
+                end
             end
 
-            lg=legend(legendHandles,{'Baseline PSD','Event PSD','Baseline 1/f','Event 1/f'},...
-                      'Orientation','horizontal','Box','off','FontSize',14);
-            lg.Layout.Tile='north';
+            % ❺ Legend (shared across tiles)
+            lg = legend(legendHandles, ...
+                        {'Baseline PSD','Event PSD','Baseline 1/f','Event 1/f'}, ...
+                        'Orientation','horizontal','Box','off','FontSize',14);
+            lg.Layout.Tile = 'north';
 
-            set(gcf,'Position',[100 100 1200 800]);
-            saveas(gcf,fullfile(patientDir,[figName,'.png']));
-          
+            % ❻ Save & close
+            set(gcf,'Position',[100 100 1200 800]);               % large canvas
+            saveas(gcf, fullfile(patientDir,[figName,'.png']));
             close(gcf);
         end
     end
-end
-
 end
