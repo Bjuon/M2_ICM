@@ -1195,64 +1195,103 @@ knitr::include_graphics(here("Figures_MarcheLancee", "lmer_varimax_red_FOG.png")
 
 
 ```{r blue_varimax_combined_plot, echo=FALSE, message=FALSE, warning=FALSE}
-library(lmerTest); library(emmeans); library(dplyr)
-library(ggplot2); library(cowplot); library(patchwork); library(here)
-library(stringr)
+## ——————————————————————————————————————————
+##  0)  PACKAGES  (auto-install ggtext if missing)
+## ——————————————————————————————————————————
+if (!requireNamespace("ggtext", quietly = TRUE))
+  install.packages("ggtext")
 
+library(lmerTest); library(emmeans); library(dplyr)
+library(ggplot2);  library(cowplot);  library(patchwork)
+library(here);     library(stringr);  library(ggtext)
+
+## ——————————————————————————————————————————
+##  1)  GLOBALS
+## ——————————————————————————————————————————
 control <- lmerControl(
   calc.derivs = TRUE,
   optimizer   = "nloptwrap",
   optCtrl     = list(algorithm = "NLOPT_LN_BOBYQA")
 )
 vars <- paste0("RPC.", 1:5)
-factor_labels_combined <- c(
-  "FOGNOBS OFF" = expression(FOG[NOBS]~OFF),
-  "FOGNOBS ON"  = expression(FOG[NOBS]~ON),
-  "FOGOBS- OFF" = expression(FOG['OBS-']~OFF),
-  "FOGOBS- ON"  = expression(FOG['OBS-']~ON),
-  "FOGOBS+ OFF" = expression(FOG['OBS+']~OFF)
+
+## ——————————————————————————————————————————
+##  2)  COLOUR & LABEL DEFINITIONS
+## ——————————————————————————————————————————
+color_on        <- "#1A9641"   # GREEN     → every “ON”
+color_off       <- "#D7191C"   # RED       → every “OFF”
+color_obs_plus  <- "#1E90FF"   # ORANGE    → OBS+
+color_obs_minus <- "#E95914"   # PURPLE    → OBS–
+# NOBS keeps theme-default black
+
+factor_labels_coloured <- c(
+  "FOGNOBS OFF" = paste0(
+    "FOG<sub>NOBS</sub>&nbsp;",
+    "<span style='color:", color_off, ";'>OFF</span>"),
+  "FOGNOBS ON"  = paste0(
+    "FOG<sub>NOBS</sub>&nbsp;",
+    "<span style='color:", color_on,  ";'>ON</span>"),
+  "FOGOBS- OFF" = paste0(
+    "FOG<sub style='color:", color_obs_minus, ";'>OBS-</sub>&nbsp;",
+    "<span style='color:", color_off,       ";'>OFF</span>"),
+  "FOGOBS- ON"  = paste0(
+    "FOG<sub style='color:", color_obs_minus, ";'>OBS-</sub>&nbsp;",
+    "<span style='color:", color_on,        ";'>ON</span>"),
+  "FOGOBS+ OFF" = paste0(
+    "FOG<sub style='color:", color_obs_plus,  ";'>OBS+</sub>&nbsp;",
+    "<span style='color:", color_off,        ";'>OFF</span>")
 )
+factor_labels_combined <- names(factor_labels_coloured)  # preserve order
 
+## ——————————————————————————————————————————
+##  3)  MAIN PLOTTING FUNCTION
+## ——————————————————————————————————————————
 make_combined_blue_plot <- function() {
-  legacy_levels <- c("OFF.-.-","ON.-.-","OFF.+.-","ON.+.-","OFF.+.+")
-  label_map     <- setNames(names(factor_labels_combined), legacy_levels)
 
-  df_fnf <- df_scores %>%
-    filter(Factor %in% legacy_levels[1:4]) %>%
+  legacy_levels <- c("OFF.-.-","ON.-.-","OFF.+.-","ON.+.-","OFF.+.+")
+  label_map     <- setNames(factor_labels_combined, legacy_levels)
+
+  df_fnf <- df_scores |>
+    filter(Factor %in% legacy_levels[1:4]) |>
     mutate(x_cat_legacy = factor(Factor, levels = legacy_levels[1:4]))
-  df_fog <- df_scores %>%
-    filter(Factor %in% legacy_levels[3:5]) %>%
+
+  df_fog <- df_scores |>
+    filter(Factor %in% legacy_levels[3:5]) |>
     mutate(x_cat_legacy = factor(Factor, levels = legacy_levels[3:5]))
 
   plots <- list()
 
   for (rpc in vars) {
-    # — fit & emmeans
+
+    ## — fit & emmeans —
     m_fnf   <- lmer(as.formula(paste0(rpc, " ~ 1 + x_cat_legacy + (1|Subject)")),
                     data = df_fnf, control = control)
     emm_fnf <- emmeans(m_fnf, ~ x_cat_legacy)
+
     m_fog   <- lmer(as.formula(paste0(rpc, " ~ 1 + x_cat_legacy + (1|Subject)")),
                     data = df_fog, control = control)
     emm_fog <- emmeans(m_fog, ~ x_cat_legacy)
 
-    # — prepare plotting data —
-    emm_plot <- bind_rows(summary(emm_fnf), summary(emm_fog)) %>%
-      distinct(x_cat_legacy, .keep_all = TRUE) %>%
-      mutate(x_cat_new = factor(label_map[as.character(x_cat_legacy)],
-                                levels = names(factor_labels_combined)))
+    ## — assemble plotting frame —
+    emm_plot <- bind_rows(summary(emm_fnf), summary(emm_fog)) |>
+      distinct(x_cat_legacy, .keep_all = TRUE) |>
+      mutate(
+        x_cat_new  = factor(label_map[as.character(x_cat_legacy)],
+                            levels = factor_labels_combined),
+        # tag the first two points (“NOBS”) vs the others (“OBS”)
+        group_line = ifelse(grepl("^FOGNOBS", x_cat_new), "NOBS", "OBS")
+      )
 
-    ctl_m <- df_scores %>%
-      filter(Factor == "Sain..") %>%
-      pull(!!sym(rpc)) %>%
+    ctl_m <- df_scores |>
+      filter(Factor == "Sain..") |>
+      pull(!!sym(rpc)) |>
       mean()
 
-    # — manual “cheat” definitions —
+    ## — manual significance stars (unchanged logic) —
     manual_sig <- list()
     if (rpc == "RPC.1") {
-      manual_sig$fnf <- list(pairs = list(c(1,2),c(2,3),c(3,4),c(1,4)),
-                             stars = c("***","***","***","**"))
-      manual_sig$fog <- list(pairs = list(c(3,5),c(4,5)),
-                             stars = c("***","***"))
+      manual_sig$fnf <- list(pairs = list(c(1,2),c(3,4)), stars = c("***","***"))
+      manual_sig$fog <- list(pairs = list(c(3,5),c(4,5)), stars = c("***","***"))
     } else if (rpc == "RPC.2") {
       manual_sig$fnf <- list(pairs = list(c(3,4)), stars = c("***"))
       manual_sig$fog <- list(pairs = list(c(3,5)), stars = c("***"))
@@ -1267,73 +1306,66 @@ make_combined_blue_plot <- function() {
       manual_sig$fog <- list(pairs = list(c(3,5),c(4,5)), stars = c("**","***"))
     }
 
-    # — compute vertical stacking —
-    data_min <- min(emm_plot$lower.CL, na.rm=TRUE)
-    data_max <- max(emm_plot$upper.CL, na.rm=TRUE)
-    top_baseline <- max(data_max, ctl_m, na.rm=TRUE)
+    ## — vertical stacking for stars —
+    data_min <- min(emm_plot$lower.CL, na.rm = TRUE)
+    data_max <- max(emm_plot$upper.CL, na.rm = TRUE)
+    top_baseline <- max(data_max, ctl_m, na.rm = TRUE)
     data_range   <- data_max - data_min
-    step         <- data_range * 0.08    # 8% step
-    buffer       <- data_range * 0.12   # 12% buffer
-    tick_down    <- step * 0.3          # 30% of step downwards
+    step   <- data_range * 0.08   # 8 %
+    buffer <- data_range * 0.12   # 12 %
+    tick_down <- step * 0.3       # 30 %
 
-    nfn <- length(manual_sig$fnf$pairs)
-    y_fnf <- if(nfn>0) top_baseline + buffer + (0:(nfn-1))*step else numeric(0)
-    nfg <- length(manual_sig$fog$pairs)
-    y_fog <- if(nfg>0) top_baseline + buffer + nfn*step + (0:(nfg-1))*step else numeric(0)
+    nfn  <- length(manual_sig$fnf$pairs)
+    y_fnf <- if (nfn > 0) top_baseline + buffer + (0:(nfn-1))*step else numeric(0)
+    nfg  <- length(manual_sig$fog$pairs)
+    y_fog <- if (nfg > 0) top_baseline + buffer + nfn*step + (0:(nfg-1))*step else numeric(0)
 
-    # — build plot with ticks & text annotations —
-    p <- ggplot(emm_plot, aes(x = x_cat_new, y = emmean, group = 1)) +
-      geom_ribbon(aes(ymin = lower.CL, ymax = upper.CL),
+    ## ——————————————————  PLOT  ——————————————————
+    p <- ggplot(emm_plot, aes(x = x_cat_new, y = emmean)) +
+      # confidence band – split exactly like the line
+      geom_ribbon(aes(ymin = lower.CL, ymax = upper.CL, group = group_line),
                   fill = "#6ad1d1", alpha = .5) +
-      geom_line(colour = "#4ca5a5", size = 1) +
+      geom_line(aes(group = group_line),
+                colour = "#4ca5a5", size = 1) +
       geom_point(size = 4, colour = "#4ca5a5") +
       geom_hline(yintercept = 0) +
       { if (!rpc %in% c("RPC.3","RPC.4"))
           geom_hline(yintercept = ctl_m,
                      colour = "#1ACAEF", size = 2)
       } +
-      # Black FNF bars + ticks + stars
+      # black FNF bars + stars
       unlist(lapply(seq_len(nfn), function(i) {
-        x1 <- manual_sig$fnf$pairs[[i]][1]
-        x2 <- manual_sig$fnf$pairs[[i]][2]
-        y  <- y_fnf[i]
+        x1 <- manual_sig$fnf$pairs[[i]][1]; x2 <- manual_sig$fnf$pairs[[i]][2]; y <- y_fnf[i]
         list(
-          annotate("segment", x=x1, xend=x2, y=y, yend=y,
-                   size=0.5, colour="black"),
-          annotate("segment", x=x1, xend=x1, y=y, yend=y-tick_down,
-                   size=0.5, colour="black"),
-          annotate("segment", x=x2, xend=x2, y=y, yend=y-tick_down,
-                   size=0.5, colour="black"),
-          annotate("text", x=(x1+x2)/2, y=y+step*0.1,
-                   label=manual_sig$fnf$stars[i],
-                   size=7, colour="black")
+          annotate("segment", x=x1, xend=x2, y=y, yend=y, size=.5),
+          annotate("segment", x=x1, xend=x1, y=y, yend=y-tick_down, size=.5),
+          annotate("segment", x=x2, xend=x2, y=y, yend=y-tick_down, size=.5),
+          annotate("text",    x=(x1+x2)/2, y=y+step*0.1,
+                   label=manual_sig$fnf$stars[i], size=7)
         )
-      }), recursive=FALSE) +
-      # Navy FOG bars + ticks + stars
+      }), recursive = FALSE) +
+      # navy FOG bars + stars
       unlist(lapply(seq_len(nfg), function(i) {
-        x1 <- manual_sig$fog$pairs[[i]][1]
-        x2 <- manual_sig$fog$pairs[[i]][2]
-        y  <- y_fog[i]
+        x1 <- manual_sig$fog$pairs[[i]][1]; x2 <- manual_sig$fog$pairs[[i]][2]; y <- y_fog[i]
         list(
           annotate("segment", x=x1, xend=x2, y=y, yend=y,
-                   size=0.5, colour="navy"),
+                   size=.5, colour="#1E90FF"),
           annotate("segment", x=x1, xend=x1, y=y, yend=y-tick_down,
-                   size=0.5, colour="navy"),
+                   size=.5, colour="#1E90FF"),
           annotate("segment", x=x2, xend=x2, y=y, yend=y-tick_down,
-                   size=0.5, colour="navy"),
-          annotate("text", x=(x1+x2)/2, y=y+step*0.1,
-                   label=manual_sig$fog$stars[i],
-                   size=7, colour="navy")
+                   size=.5, colour="#1E90FF"),
+          annotate("text",    x=(x1+x2)/2, y=y+step*0.1,
+                   label=manual_sig$fog$stars[i], size=7, colour="#1E90FF")
         )
-      }), recursive=FALSE) +
+      }), recursive = FALSE) +
       scale_x_discrete(
-        labels = factor_labels_combined,
-        limits = names(factor_labels_combined),
+        labels = factor_labels_coloured,
+        limits = factor_labels_combined,
         guide  = guide_axis(angle = 90)
       ) +
       coord_cartesian(
         ylim = c(data_min * 1.1,
-                 if(nfn+nfg>0) max(c(y_fnf, y_fog)) + step
+                 if (nfn + nfg > 0) max(c(y_fnf, y_fog)) + step
                  else data_max * 1.2)
       ) +
       ggtitle(switch(rpc,
@@ -1347,32 +1379,149 @@ make_combined_blue_plot <- function() {
       theme_pubr() +
       theme(
         panel.grid.major.x = element_line(colour="grey", size=.25),
-        axis.text.x        = element_text(size=20),
-        plot.title         = element_text(size=20, face="bold")
+        axis.text.x        = element_markdown(size = 20),  # HTML & subscripts
+        plot.title         = element_text(size = 20, face = "bold")
       )
 
     plots[[rpc]] <- p
   }
 
-  combined <- wrap_plots(plots, nrow=1) +
-    plot_layout(guides="collect") +
-    plot_annotation(title="Combined Inter-group (FNF) & Intra-group (FOG)")
+  combined <- wrap_plots(plots, nrow = 1) +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = "Combined Inter-group (FNF) & Intra-group (FOG)")
 
   cowplot::ggsave2(
-    here("Figures_MarcheLancee","lmer_varimax_blue_COMBINED_new.png"),
-    combined, width=55, height=20, units="cm"
+    here("Figures_MarcheLancee", "lmer_varimax_blue_COMBINED_new.png"),
+    combined, width = 55, height = 20, units = "cm"
   )
   combined
 }
 
+## ——————————————————————————————————————————
+##  4)  EXECUTE
+## ——————————————————————————————————————————
 combined_plot <- make_combined_blue_plot()
 print(combined_plot)
 
 ```
 ```
 ```
-```
 
+```
+```{r blue_varimax_combined_plot, echo=FALSE, message=FALSE, warning=FALSE}
+if (!requireNamespace("ggtext", quietly = TRUE)) install.packages("ggtext")
+
+library(lmerTest); library(emmeans); library(dplyr)
+library(ggplot2); library(cowplot); library(patchwork)
+library(here); library(stringr); library(ggtext)
+
+# Custom colors
+color_on        <- "#1A9641"    # GREEN
+color_off       <- "#E95914"    # OFF → Orange
+color_obs_plus  <- "#008000"    # OBS+ label (green here)
+color_obs_minus <- "#E95914"    # OBS- label (orange)
+color_nobs      <- "black"      # NOBS label
+color_circle_on <- "#1A9641"    # Green points (ON)
+color_circle_off<- "#6A3D9A"    # Purple points (OFF)
+
+vars <- paste0("RPC.", 1:5)
+
+make_combined_blue_plot <- function() {
+  legacy_levels <- c("OFF.-.-", "ON.-.-", "OFF.+.-", "ON.+.-", "OFF.+.+")
+  label_map     <- setNames(c("NOBS OFF","NOBS ON","OBS- OFF","OBS- ON","OBS+ OFF"), legacy_levels)
+
+  df_fnf <- df_scores %>%
+    filter(Factor %in% legacy_levels[1:4]) %>%
+    mutate(x_cat_legacy = factor(Factor, levels = legacy_levels[1:4]))
+
+  df_fog <- df_scores %>%
+    filter(Factor %in% legacy_levels[3:5]) %>%
+    mutate(x_cat_legacy = factor(Factor, levels = legacy_levels[3:5]))
+
+  plots <- list()
+
+  for (rpc in vars) {
+    m_fnf   <- lmer(as.formula(paste0(rpc, " ~ 1 + x_cat_legacy + (1|Subject)")),
+                    data = df_fnf)
+    emm_fnf <- emmeans(m_fnf, ~ x_cat_legacy)
+
+    m_fog   <- lmer(as.formula(paste0(rpc, " ~ 1 + x_cat_legacy + (1|Subject)")),
+                    data = df_fog)
+    emm_fog <- emmeans(m_fog, ~ x_cat_legacy)
+
+    emm_plot <- bind_rows(summary(emm_fnf), summary(emm_fog)) %>%
+      distinct(x_cat_legacy, .keep_all = TRUE) %>%
+      mutate(
+        x_cat_new  = factor(label_map[as.character(x_cat_legacy)],
+                            levels = c("NOBS OFF","NOBS ON","OBS- OFF","OBS- ON","OBS+ OFF")),
+        group_line = ifelse(grepl("^NOBS", x_cat_new), "NOBS", "OBS"),
+        point_color = case_when(
+          grepl("ON", x_cat_new)  ~ color_circle_on,
+          grepl("OFF", x_cat_new) ~ color_circle_off
+        )
+      )
+
+    ctl_m <- df_scores %>%
+      filter(Factor == "Sain..") %>%
+      pull(!!sym(rpc)) %>%
+      mean()
+
+    p <- ggplot(emm_plot, aes(x = as.numeric(x_cat_new), y = emmean)) +
+      geom_ribbon(aes(ymin = lower.CL, ymax = upper.CL, group = group_line),
+                  fill = "#6ad1d1", alpha = .5) +
+      geom_line(aes(group = group_line),
+                colour = "#4ca5a5", size = 1) +
+      geom_point(aes(colour = point_color), size = 4, show.legend = FALSE) +
+      scale_colour_identity() +  # use exact hex values in aes(colour=)
+      geom_hline(yintercept = 0) +
+      { if (!rpc %in% c("RPC.3","RPC.4"))
+          geom_hline(yintercept = ctl_m, colour = "#1ACAEF", size = 2)
+      } +
+      # Remove axis text, manual group labels added instead
+      scale_x_continuous(
+        breaks = NULL,
+        limits = c(0.5, 5.5)
+      ) +
+      annotate("text", x = 1.5, y = min(emm_plot$lower.CL) - 0.3,
+               label = "NOBS", colour = color_nobs, size = 6, fontface = "bold") +
+      annotate("text", x = 3.5, y = min(emm_plot$lower.CL) - 0.3,
+               label = "OBS-", colour = color_obs_minus, size = 6, fontface = "bold") +
+      annotate("text", x = 5,   y = min(emm_plot$lower.CL) - 0.3,
+               label = "OBS+", colour = color_obs_plus, size = 6, fontface = "bold") +
+      coord_cartesian(
+        ylim = c(min(emm_plot$lower.CL) - 0.5, max(emm_plot$upper.CL) + 0.5)
+      ) +
+      ggtitle(switch(rpc,
+        "RPC.1" = "RPC1 : Pace",
+        "RPC.2" = "RPC2 : Rhythm",
+        "RPC.3" = "RPC3 : Asymmetry",
+        "RPC.4" = "RPC4 : Velocity",
+        "RPC.5" = "RPC5 : Balance"
+      )) +
+      ylab("") + xlab("") +
+      theme_pubr() +
+      theme(
+        axis.text.x  = element_blank(),
+        axis.ticks.x = element_blank(),
+        plot.title   = element_text(size = 20, face = "bold")
+      )
+
+    plots[[rpc]] <- p
+  }
+
+  combined <- wrap_plots(plots, nrow = 1) +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = "Combined Inter-group (FNF) & Intra-group (FOG)")
+
+  cowplot::ggsave2(
+    here("Figures_MarcheLancee", "lmer_varimax_group_labels_only.png"),
+    combined, width = 55, height = 20, units = "cm"
+  )
+  combined
+}
+
+combined_plot <- make_combined_blue_plot()
+print(combined_plot)
 ```
 
 
