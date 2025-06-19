@@ -26,9 +26,9 @@ global rawLFPDir cleanLFPDir
 global ChannelMontage
 global thenaisie
 todo.plotRawLFP         = 0; % Set to 1 to enable plotting of raw LFP data.
-todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.
+todo.detectArtifacts    = 1; % Set to 1 to enable automatic artifact detection and removal.MASD filtering
 todo.plotCleanedLFP     = 0; % Set to 1 to enable plotting of cleaned LFP data after artifact removal.
-thenaisie =0; 
+thenaisie =1; 
 todo.Deriv = 0;
 baselineStruct = struct('trialKey', {}, 'window', {}, 'signal', {});  % This will gather baseline info for each trial
 

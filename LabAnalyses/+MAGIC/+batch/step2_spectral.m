@@ -148,6 +148,7 @@ else
     if ~isempty(lfp)
         TF = tfr(lfp, 'method', 'chronux', 'tBlock', tBlock, 'tStep', 0.03, ...
             'f', [fqStart 100], 'tapers', [3 5], 'pad', n_pad);
+
    
     %% Normalisation
     if norm > 0
